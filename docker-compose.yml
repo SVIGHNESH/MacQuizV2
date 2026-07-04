@@ -46,6 +46,23 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # One-shot: creates the first admin account after the schema is at head.
+  # Idempotent (no-op once any admin exists), so it is safe on every up.
+  # These credentials are development-only; production sets real ones.
+  bootstrap:
+    build: ./server
+    command: ["bootstrap"]
+    environment:
+      MACQUIZ_DATABASE_URL: postgres://macquiz:macquiz@postgres:5432/macquiz?sslmode=disable
+      MACQUIZ_ENV: development
+      MACQUIZ_BOOTSTRAP_ADMIN_EMAIL: admin@macquiz.local
+      MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD: admin-dev-password
+      MACQUIZ_BOOTSTRAP_ADMIN_NAME: Dev Admin
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   app:
     build: ./server
     command: ["serve"]
@@ -54,6 +71,7 @@ services:
       MACQUIZ_DATABASE_URL: postgres://macquiz:macquiz@postgres:5432/macquiz?sslmode=disable
       MACQUIZ_REDIS_URL: redis://redis:6379/0
       MACQUIZ_ENV: development
+      MACQUIZ_AUTH_SECRET: dev-only-insecure-secret
     ports:
       - "8080:8080"
     depends_on:
@@ -61,7 +79,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
     restart: unless-stopped
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
-	h := New(BuildInfo{Version: "test", Commit: "abc123"})
+	h := New(BuildInfo{Version: "test", Commit: "abc123"}, Deps{})
 
 	req := httptest.NewRequest("GET", "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -33,7 +33,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestUnknownRouteIs404(t *testing.T) {
-	h := New(BuildInfo{})
+	h := New(BuildInfo{}, Deps{})
 
 	req := httptest.NewRequest("GET", "/nope", nil)
 	rec := httptest.NewRecorder()

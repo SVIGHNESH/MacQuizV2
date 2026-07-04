@@ -1,12 +1,13 @@
 # MacQuiz v2 API contract (docs/04-api.md).
 # Spec-first: oapi-codegen generates the Go server interfaces and the
 # TypeScript client from this file, so frontend and backend cannot drift.
-# Endpoints are added milestone by milestone; today it covers Milestone 0.
+# Endpoints are added milestone by milestone; today it covers Milestone 0
+# plus the Milestone 1 auth flow.
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.1.0
+  version: 0.2.0
 servers:
   - url: /
 paths:
@@ -16,7 +17,7 @@ paths:
       summary: Liveness check
       description: >-
         Reports that the process is up. Deliberately checks no dependencies;
-        readiness probes arrive with the database wiring in Milestone 1.
+        use /readyz to know whether the process can serve real traffic.
       responses:
         "200":
           description: Process is alive.
@@ -24,7 +25,133 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /readyz:
+    get:
+      operationId: getReady
+      summary: Readiness check
+      description: Reports whether the process can serve traffic (Postgres answers).
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ready"
+        "503":
+          description: Not ready; keep traffic away.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ready"
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Log in with email and password
+      description: >-
+        Verifies the credential and opens a session. The access token (15 min
+        JWT) and rotating refresh token are set as httpOnly cookies; the body
+        carries only the user. Rate-limited per IP and per account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session opened; cookies set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Rotate the refresh token and mint a new access token
+      description: >-
+        Uses the refresh cookie. Presenting an already-used or revoked token
+        is treated as theft and revokes the whole session family.
+      responses:
+        "200":
+          description: Session rotated; new cookies set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the session and clear cookies
+      responses:
+        "204":
+          description: Session revoked. Always succeeds, even without a session.
+  /api/v1/auth/me:
+    get:
+      operationId: getMe
+      summary: The authenticated account
+      responses:
+        "200":
+          description: The caller's account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/password:
+    post:
+      operationId: changePassword
+      summary: Change the caller's password
+      description: >-
+        Verifies the current password, stores the new one, clears the forced
+        first-login reset flag, and revokes every session; the client logs in
+        again with the new credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed; all sessions revoked, cookies cleared.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
 components:
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationFailed:
+      description: Body-level validation failed; see fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Too many attempts; includes Retry-After.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the next attempt is allowed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -40,3 +167,78 @@ components:
         time:
           type: string
           format: date-time
+    Ready:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: >-
+            Stable machine-readable code from the docs/04-api.md vocabulary,
+            e.g. INVALID_CREDENTIALS, UNAUTHENTICATED, VALIDATION_FAILED,
+            RATE_LIMITED, PASSWORD_CHANGE_REQUIRED, NOT_FOUND.
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Per-field messages for VALIDATION_FAILED.
+    User:
+      type: object
+      required:
+        [id, role, email, full_name, status, must_change_password, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [admin, teacher, student]
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        must_change_password:
+          type: boolean
+          description: >-
+            True while the account still uses its admin-issued credential;
+            every endpoint except auth answers 403 PASSWORD_CHANGE_REQUIRED
+            until the user sets their own password.
+        created_at:
+          type: string
+          format: date-time
+    Session:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 10

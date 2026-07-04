@@ -3,9 +3,10 @@
 // It runs in two modes, matching the two containers of the Compose stack
 // (docs/09-deployment.md):
 //
-//	macquiz serve    - HTTP API + realtime gateway
-//	macquiz worker   - River job consumers (scheduler, grading, imports, rollups)
-//	macquiz migrate  - apply pending schema migrations, then exit
+//	macquiz serve      - HTTP API + realtime gateway
+//	macquiz worker     - River job consumers (scheduler, grading, imports, rollups)
+//	macquiz migrate    - apply pending schema migrations, then exit
+//	macquiz bootstrap  - idempotently create the first admin account, then exit
 //
 // All modes read the same environment configuration (internal/config).
 package main
@@ -20,6 +21,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/httpserver"
@@ -41,7 +43,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: macquiz <serve|worker|migrate>")
+		return errors.New("usage: macquiz <serve|worker|migrate|bootstrap>")
 	}
 
 	cfg := config.Load()
@@ -59,8 +61,10 @@ func run() error {
 		return worker.Run(ctx, cfg, log)
 	case "migrate":
 		return migrate(ctx, cfg, log)
+	case "bootstrap":
+		return bootstrap(ctx, cfg, log)
 	default:
-		return fmt.Errorf("unknown mode %q (want serve, worker, or migrate)", os.Args[1])
+		return fmt.Errorf("unknown mode %q (want serve, worker, migrate, or bootstrap)", os.Args[1])
 	}
 }
 
@@ -79,10 +83,39 @@ func migrate(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	return nil
 }
 
+// bootstrap creates the first admin account from MACQUIZ_BOOTSTRAP_ADMIN_*
+// and exits. Safe to run on every deploy: it is a no-op once any admin exists.
+func bootstrap(ctx context.Context, cfg config.Config, log *slog.Logger) error {
+	if cfg.BootstrapAdminEmail == "" || cfg.BootstrapAdminPassword == "" {
+		return errors.New("bootstrap requires MACQUIZ_BOOTSTRAP_ADMIN_EMAIL and MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD")
+	}
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	svc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
+	return svc.EnsureBootstrapAdmin(ctx,
+		cfg.BootstrapAdminEmail, cfg.BootstrapAdminPassword, cfg.BootstrapAdminName)
+}
+
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
+	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
+
 	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: httpserver.New(httpserver.BuildInfo{Version: version, Commit: commit}),
+		Addr: cfg.Addr,
+		Handler: httpserver.New(
+			httpserver.BuildInfo{Version: version, Commit: commit},
+			httpserver.Deps{DB: sqlDB, Auth: authHandler},
+		),
 	}
 
 	errc := make(chan error, 1)

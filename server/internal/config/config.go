@@ -22,6 +22,13 @@ type Config struct {
 	ShutdownGrace time.Duration
 	// Env is "development" or "production"; controls log format and defaults.
 	Env string
+	// AuthSecret signs JWT access tokens (HS256). The development default
+	// works with the Compose stack; production must set its own.
+	AuthSecret string
+	// Bootstrap* seed the first admin account via `macquiz bootstrap`.
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
+	BootstrapAdminName     string
 }
 
 // Load reads configuration from the environment, applying development defaults.
@@ -33,6 +40,11 @@ func Load() Config {
 		RedisURL:      getenv("MACQUIZ_REDIS_URL", "redis://localhost:6380/0"),
 		ShutdownGrace: 10 * time.Second,
 		Env:           getenv("MACQUIZ_ENV", "development"),
+		AuthSecret:    getenv("MACQUIZ_AUTH_SECRET", "dev-only-insecure-secret"),
+
+		BootstrapAdminEmail:    os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_EMAIL"),
+		BootstrapAdminPassword: os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD"),
+		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
 	}
 }
 

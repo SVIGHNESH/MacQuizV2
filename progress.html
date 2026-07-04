@@ -73,6 +73,24 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 1 - Authentication core: login, sessions, forced reset</h2>
+      <span class="tag">milestone 1</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after 34663f4</div>
+    <ul>
+      <li><strong>Argon2id password hashing</strong> in PHC string format (OWASP parameters recorded per hash, so they can be raised later without invalidating old hashes), with a constant-time decoy verification so unknown-email and wrong-password logins cost the same.</li>
+      <li><strong>Sessions per the security doc</strong>: 15-minute HS256 JWT access tokens plus opaque rotating refresh tokens, both in httpOnly cookies; the refresh cookie is path-scoped to <code>/api/v1/auth</code>. Only the SHA-256 of a refresh token touches the database (new <code>user_sessions</code> table, migration <code>00002</code>). Replaying a used or revoked token is treated as theft and revokes the whole session family.</li>
+      <li><strong>Auth endpoints live</strong>: <code>POST /api/v1/auth/login</code> (rate-limited per IP and per account, 429 + Retry-After), <code>refresh</code>, <code>logout</code>, <code>GET me</code>, and <code>POST password</code> - all added to <code>api/openapi.yaml</code> with the shared error vocabulary and regenerated into the typed web client.</li>
+      <li><strong>Forced first-login reset</strong>: accounts start with <code>must_change_password = true</code>; the <code>RequirePasswordChanged</code> middleware answers <code>403 PASSWORD_CHANGE_REQUIRED</code> on every module route until the user sets their own password, which also revokes all sessions and writes the <code>audit_log</code> row in the same transaction.</li>
+      <li><strong>Admin bootstrap</strong>: new idempotent <code>macquiz bootstrap</code> mode creates the self-referencing first admin (audited); Compose runs it as a one-shot service after <code>migrate</code>, before <code>app</code>.</li>
+      <li><strong>Readiness probe</strong>: <code>GET /readyz</code> now answers 503 until Postgres does, complementing the dependency-free <code>/healthz</code>.</li>
+      <li><strong>Tested at both levels</strong>: unit tests for hashing, JWT, and the rate limiter; an HTTP-level integration test in its own database covering bootstrap idempotency, login, refresh rotation, reuse detection, the forced-reset gate, password change, logout, and the per-account login limit.</li>
+    </ul>
+    <div class="exit">Verified live: from clean volumes the stack migrates, bootstraps the admin, and serves; curl login sets both cookies, <code>/me</code> and refresh rotation work, and refresh after logout is rejected. All Go and web checks green.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 0 - Frontend scaffold and shared contract wiring</h2>
       <span class="tag">milestone 0</span>
     </div>
