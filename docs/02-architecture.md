@@ -27,7 +27,7 @@ Edge
   API gateway (TLS, auth check, rate limiting, routing)
   Realtime gateway (WebSocket fan-out, channel authorization)
         |  internal RPC / pub-sub
-Application modules (one Node process in the default deployment)
+Application modules (one Go process in the default deployment)
   auth-users   : login, RBAC policy, admin provisioning
   quiz         : authoring, versioning, scheduling, assignment
   attempt      : session state, timing, autosave, grading triggers, guardrails, kick
@@ -38,7 +38,7 @@ Data layer
   PostgreSQL 16   : source of truth (users, quizzes, attempts, answers)
   Redis 7         : sessions, live presence, pub/sub, snapshot cache, queue backend
   Object storage  : bulk-upload files, question images, exports (S3-compatible, R2)
-  Job queue       : BullMQ on Redis (imports, grading, scheduled open/close, rollups)
+  Job queue       : River on PostgreSQL (imports, grading, scheduled open/close, rollups)
 ```
 
 ## 3. Module boundaries and responsibilities
@@ -50,7 +50,7 @@ Data layer
 | attempt | Attempt start/resume, autosave, deadline enforcement, submit funnel, violations, kick/readmit, attempt_events | Editing quiz content |
 | analytics | quiz_stats and student_stats rollups, reporting endpoints, exports | Writes to transactional tables |
 | realtime gateway | Socket lifecycle, channel subscribe authorization, fan-out of Redis pub/sub events | Business logic; it only relays |
-| worker | BullMQ consumers: scheduler transitions, deadline timers, grading, imports, rollups, backup trigger | Serving HTTP |
+| worker | River consumers: scheduler transitions, deadline timers, grading, imports, rollups, backup trigger | Serving HTTP |
 
 ## 4. Key architectural decisions
 
@@ -89,14 +89,16 @@ The defining pattern is the synchronized start: hundreds of students hit "start"
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
 | Frontend | React + TypeScript, single app, role-based routing | One codebase for three roles; shared component library |
-| Backend | Node.js (NestJS) modular monolith | First-class WebSocket support, strong typing, easy module extraction |
+| Backend | Go modular monolith (chi router, coder/websocket, pgx) | Smallest footprint (~tens of MB), true multi-core concurrency for sockets and grading, single static binary, easy module extraction |
 | Database | PostgreSQL 16 | Transactions for imports/attempts, JSONB for question bodies, read replica for reporting when needed |
 | Cache / bus | Redis 7 | Sessions, snapshot cache, pub/sub between API and gateway |
-| Queue | BullMQ on Redis | Imports, grading, scheduled open/close, rollups; no extra infrastructure |
+| Queue | River (Postgres-backed) | Jobs enqueue transactionally with the writes that cause them; delayed jobs for open/close and deadline timers; no extra infrastructure |
 | Object storage | S3-compatible (Cloudflare R2) | Bulk-upload files, question images, exports; zero egress fees |
 | Observability | OpenTelemetry + Grafana stack | The live-quiz minute is when traces and dashboards matter most |
 
-NestJS is chosen over FastAPI so the app and worker share one TypeScript codebase and one container image (see 09-deployment.md).
+Go is chosen for footprint and concurrency: tens of megabytes of resident memory, true parallelism across the VM's four cores, and one static binary that runs as both app and worker in a single container image (see 09-deployment.md).
+The API contract is defined spec-first in OpenAPI; oapi-codegen generates the Go server interfaces and the TypeScript client for the React app, so the two codebases cannot drift.
+Using River instead of a Redis-backed queue puts jobs in Postgres, so a kick, its audit row, and its grading job commit in one transaction, and delayed jobs survive even a full Redis loss.
 
 ## 7. Scaling path (in order, each triggered by observed load)
 

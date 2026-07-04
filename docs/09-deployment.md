@@ -13,7 +13,7 @@ Four properties disqualify most free hosting before price is discussed:
 | Long-lived WebSockets | Live dashboard, attempt channel, kick delivery < 1 s | Pure serverless; free tiers capping connection duration |
 | Always-on scheduler | Quiz open/close jobs and deadline timers fire on server time | Free plans that sleep on idle (a sleeping scheduler misses starts_at) |
 | No cold starts during a live window | 1,000+ students start in the same minute | Scale-to-zero platforms; anything needing 30-60 s to wake |
-| Redis pub/sub + queue | Event fan-out and BullMQ jobs | HTTP-only serverless Redis with tight command caps |
+| Redis pub/sub + job queue | Event fan-out over Redis; River jobs in Postgres | HTTP-only serverless Redis with tight command caps |
 
 The one thing v2 does not demand is horizontal scale on day one (~200 DB writes/s, ~250 events/s peak).
 
@@ -34,13 +34,13 @@ Managed free services are used only where genuinely better: DNS/CDN, object stor
 | Piece | Deployed as | Cost | Limit that matters |
 |-------|-------------|------|--------------------|
 | Frontend (React) | Static build on Cloudflare Pages | $0 | 500 builds/month, far above need |
-| API + modules | `app` container (Node/NestJS) | $0 | VM RAM/CPU only |
-| Realtime gateway | Same `app` process, `/ws` upgrade path | $0 | ~2k sockets = < 1 GB RAM |
-| Import/grading workers | `worker` container (BullMQ) | $0 | Shares VM cores; queue absorbs bursts |
+| API + modules | `app` container (Go static binary) | $0 | VM RAM/CPU only |
+| Realtime gateway | Same `app` process, `/ws` upgrade path | $0 | ~2k sockets = tens of MB in Go |
+| Import/grading workers | `worker` container (same Go binary, worker mode) | $0 | Shares VM cores; queue absorbs bursts |
 | PostgreSQL | `postgres:16` container + named volume | $0 | Backups are our responsibility |
 | Redis | `redis:7` container, AOF on | $0 | None at this scale |
 | Object storage | Cloudflare R2 (S3-compatible) | $0 up to 10 GB | Zero egress fees (the reason to pick R2) |
-| Scheduled open/close | BullMQ delayed jobs in worker | $0 | Needs the always-on VM |
+| Scheduled open/close | River scheduled jobs in worker | $0 | Needs the always-on VM |
 | Email | Brevo free (300/day) or Resend (3k/month) | $0 | Credential mail is low-volume |
 | Observability | Grafana Cloud free + UptimeRobot | $0 | 14-day retention, acceptable |
 | DNS + TLS + CDN | Cloudflare free + Caddy (Let's Encrypt at origin) | $0 | - |
@@ -60,11 +60,11 @@ services:
     env_file: .env.production
     depends_on: [postgres, redis]
     restart: unless-stopped
-    deploy: { resources: { limits: { memory: 4g } } }
+    deploy: { resources: { limits: { memory: 1g } } }   # Go headroom; typical use is tens of MB
 
-  worker:                         # BullMQ: scheduler, grading, imports, rollups
+  worker:                         # River: scheduler, grading, imports, rollups
     image: ghcr.io/ORG/macquiz-app:${TAG}
-    command: node dist/worker.js
+    command: /macquiz worker
     env_file: .env.production
     depends_on: [postgres, redis]
     restart: unless-stopped
@@ -77,7 +77,7 @@ services:
 
   redis:
     image: redis:7
-    command: redis-server --appendonly yes   # queue jobs survive restarts
+    command: redis-server --appendonly yes   # session durability; queue lives in Postgres
     volumes: [redis_data:/data]
     restart: unless-stopped
 
@@ -87,14 +87,15 @@ volumes: { pg_data: {}, redis_data: {}, caddy_data: {} }
 Notes:
 
 - API and realtime gateway share one process at this tier; splitting later is a Compose edit.
-- Redis AOF persistence is on so delayed jobs (open/close, deadline timers) survive restarts.
+- The job queue (River) lives in Postgres, so delayed jobs (open/close, deadline timers) survive restarts and even a full Redis loss.
   Belt and braces: the worker also re-scans Postgres for due-but-unfired transitions at boot (the lazy state validation the API already requires).
+  Redis keeps AOF on for session durability.
 - Firewall: only 80/443 open (Cloudflare IPs only), SSH on a non-standard port with key-only auth; Postgres and Redis never exposed.
 
 ## 5. CI/CD (GitHub Actions free minutes)
 
 1. On pull request: lint, typecheck, unit + integration tests (Postgres/Redis as Actions services).
-2. On merge to main: build the ARM64 image, push to GHCR, SSH to the VM, `TAG=sha docker compose pull app worker && docker compose up -d app worker`.
+2. On merge to main: build the ARM64 image (Go cross-compiles with `GOARCH=arm64`; the final image is distroless or scratch, ~15-20 MB), push to GHCR, SSH to the VM, `TAG=sha docker compose pull app worker && docker compose up -d app worker`.
 3. Migrations run in the app's entrypoint before it accepts traffic.
    Deploys are refused by a pre-deploy check while any quiz is `live` (a self-imposed deploy window).
 4. Frontend: Cloudflare Pages builds from the same repo on push; free preview deployments per PR.

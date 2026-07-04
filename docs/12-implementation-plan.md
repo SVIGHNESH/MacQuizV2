@@ -11,10 +11,11 @@ Status: proposed build order; each milestone is independently demoable and testa
 
 ## Milestone 0 - Repo and skeleton (foundation)
 
-- Monorepo: `apps/web` (React + TypeScript), `apps/server` (NestJS), shared `packages/contracts` (API types, event types, error codes).
-- NestJS modules scaffolded: auth-users, quiz, attempt, analytics, realtime, worker entrypoint.
-- Postgres migrations tooling; initial schema from 03-data-model.md.
-- Docker Compose dev stack (postgres, redis, app, worker); CI running lint, typecheck, tests on PR.
+- Monorepo: `web/` (React + TypeScript), `server/` (Go), `api/openapi.yaml` as the shared contract.
+  oapi-codegen generates the Go server interfaces and the TypeScript client, so frontend and backend cannot drift.
+- Go packages scaffolded: `authusers`, `quiz`, `attempt`, `analytics`, `realtime`, plus a `worker` entrypoint in the same binary (chi router, coder/websocket, pgx, River).
+- Postgres migrations tooling (goose or golang-migrate); initial schema from 03-data-model.md.
+- Docker Compose dev stack (postgres, redis, app, worker); CI running golangci-lint, go test, and frontend lint/typecheck on PR.
 
 Exit: `docker compose up` serves a health check; CI green.
 
@@ -38,7 +39,7 @@ Exit: teacher creates a draft quiz with questions of all four types.
 
 - Publish: snapshot + version, window validation, guardrail config storage.
 - Assignments (individual + group expansion), 404-not-403 scoping, student quiz list.
-- Scheduler jobs `open_quiz` / `close_quiz` via BullMQ delayed jobs, plus lazy state validation on read and worker boot re-scan.
+- Scheduler jobs `open_quiz` / `close_quiz` via River scheduled jobs, plus lazy state validation on read and worker boot re-scan.
 
 Exit: quiz goes live at starts_at with no manual action; assigned student sees it, unassigned student gets 404.
 
@@ -105,7 +106,7 @@ Diagnostic check of the design as documented:
 | Every component redundant | Fail by choice at Tier 0: single VM, single region; mitigated by backups + restore path; Tier 2 adds warm standby |
 | DB scaling strategy defined | Pass (vertical first, read replica, split later; no premature sharding) |
 | Cache for read-heavy paths | Pass (Redis snapshot cache, rollup tables) |
-| Async via queues | Pass (BullMQ: imports, grading, scheduling, rollups) |
+| Async via queues | Pass (River: imports, grading, scheduling, rollups) |
 | Monitoring and alerting plan | Pass (10-operations.md) |
 | Deployment strategy defined | Pass (09-deployment.md; deploy freeze in live windows instead of zero-downtime) |
 

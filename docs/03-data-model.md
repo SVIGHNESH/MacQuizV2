@@ -6,6 +6,7 @@ Status: implementation baseline; this is the authoritative schema reference for 
 ## 1. Principles
 
 - PostgreSQL 16 is the single source of truth; Redis holds only ephemeral or derivable state.
+- The job queue (River) also lives in Postgres, so a job is enqueued in the same transaction as the write that causes it (for example a kick, its audit row, and its grading job commit together).
 - Quizzes snapshot their questions on publish so mid-quiz edits can never corrupt an in-flight attempt.
 - Answers are one row per question for granular autosave and per-question analytics.
 - All timestamps are `timestamptz` stored in UTC; rendering in the user's timezone is a client concern.

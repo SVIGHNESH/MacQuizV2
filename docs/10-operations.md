@@ -46,7 +46,7 @@ Status: implementation baseline.
 
 | Symptom | Likely cause | First move |
 |---------|-------------|-----------|
-| Students cannot start at go-live | Scheduler job missed (worker down or Redis lost delayed jobs) | Lazy validation should already treat the quiz as live on read; verify worker container, then re-run the boot re-scan |
+| Students cannot start at go-live | Scheduler job missed (worker down or job stuck in River) | Lazy validation should already treat the quiz as live on read; verify worker container, then re-run the boot re-scan |
 | Autosaves slow or failing | Postgres pressure or disk | Check pg volume, active connections, autosave p95 dashboard |
 | Teacher dashboard frozen but students fine | Gateway or pub/sub issue | Dashboard falls back to 10 s polling automatically; restart app container after the window if needed |
 | Kick not reflected on student screen | Socket lost | By design the next autosave returns 409 ATTEMPT_KICKED; no action needed, verify the attempt row status |
@@ -55,5 +55,5 @@ Status: implementation baseline.
 ## 6. Boot recovery invariants
 
 - Worker re-scans Postgres at boot for due-but-unfired quiz transitions and overdue attempt deadlines, and fires them immediately.
-- Redis AOF persistence means delayed jobs usually survive restarts; the re-scan makes Redis loss survivable too.
+- Delayed jobs live in Postgres (River), so they survive restarts and outright Redis loss; the boot re-scan remains as a second belt.
 - The app refuses to start if migrations fail; Compose `restart: unless-stopped` handles crash loops visibly rather than silently.
