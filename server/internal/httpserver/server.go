@@ -54,6 +54,8 @@ func New(build BuildInfo, deps Deps) http.Handler {
 	if deps.Auth != nil {
 		r.Route("/api/v1", func(r chi.Router) {
 			r.Mount("/auth", deps.Auth.Routes())
+			r.Mount("/users", deps.Auth.UserRoutes())
+			r.Mount("/groups", deps.Auth.GroupRoutes())
 		})
 	}
 

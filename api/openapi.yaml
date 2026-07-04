@@ -2,12 +2,12 @@
 # Spec-first: oapi-codegen generates the Go server interfaces and the
 # TypeScript client from this file, so frontend and backend cannot drift.
 # Endpoints are added milestone by milestone; today it covers Milestone 0
-# plus the Milestone 1 auth flow.
+# plus Milestone 1 (auth flow, admin user provisioning, groups).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.2.0
+  version: 0.3.0
 servers:
   - url: /
 paths:
@@ -127,6 +127,196 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: List accounts (admin)
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, teacher, student]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, disabled]
+      responses:
+        "200":
+          description: Accounts, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    post:
+      operationId: createUser
+      summary: Provision a teacher or student (admin)
+      description: >-
+        Creates the account with a generated one-time credential, returned
+        exactly once in this response. The account must change its password
+        on first login before any other endpoint works. Admin accounts are
+        created only by the operator bootstrap, never over the API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Account created; initial_password appears only here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvisionedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/users/{id}:
+    patch:
+      operationId: updateUser
+      summary: Deactivate, reset the credential, or edit an account (admin)
+      description: >-
+        Disabling an account or resetting its credential revokes every live
+        session immediately. Admins cannot disable or reset themselves here;
+        that path goes through the auth endpoints. Each mutation writes an
+        audit row in the same transaction.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: >-
+            The updated account; initial_password is present only when
+            reset_password was requested.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvisionedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/groups:
+    get:
+      operationId: listGroups
+      summary: List cohorts with member counts (admin)
+      responses:
+        "200":
+          description: Cohorts, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createGroup
+      summary: Create a cohort (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Cohort created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/groups/{id}/members:
+    put:
+      operationId: setGroupMembers
+      summary: Replace a cohort's membership (admin)
+      description: >-
+        Replaces the membership with exactly student_ids, validated and
+        swapped in one transaction - a single bad id changes nothing. An
+        empty list clears the cohort.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_ids]
+              properties:
+                student_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Membership replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
 components:
   responses:
     Unauthorized:
@@ -137,6 +327,20 @@ components:
             $ref: "#/components/schemas/Error"
     ValidationFailed:
       description: Body-level validation failed; see fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The policy denies this action for the caller's role.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: >-
+        No such resource. Also the answer for resources the caller is not
+        assigned to, so existence is never leaked.
       content:
         application/json:
           schema:
@@ -242,3 +446,57 @@ components:
         new_password:
           type: string
           minLength: 10
+    CreateUserRequest:
+      type: object
+      required: [role, email, full_name]
+      properties:
+        role:
+          type: string
+          enum: [teacher, student]
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+    UpdateUserRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        reset_password:
+          type: boolean
+          description: Issue a fresh one-time credential and revoke all sessions.
+    ProvisionedUser:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        initial_password:
+          type: string
+          description: >-
+            The generated one-time credential. Returned exactly once, never
+            stored in the clear, never retrievable again.
+    Group:
+      type: object
+      required: [id, name, member_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        member_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    GroupResponse:
+      type: object
+      required: [group]
+      properties:
+        group:
+          $ref: "#/components/schemas/Group"

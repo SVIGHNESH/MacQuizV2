@@ -73,6 +73,24 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 1 - Admin provisioning, groups, and the central policy</h2>
+      <span class="tag">milestone 1</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after afd0aac</div>
+    <ul>
+      <li><strong>The single policy function landed</strong>: <code>Can(actor, action, resource)</code> in <code>authusers</code> encodes the whole permission matrix from <code>docs/04-api.md</code> as one pure function - admin-console rights, teacher-owns-quiz authoring, admin-cannot-author, assigned-student attempt taking, and the three analytics scopes. Unknown actions fail closed, and a table-driven unit test pins every cell of the matrix. Every future module route and WebSocket subscribe consults this one function.</li>
+      <li><strong><code>POST /api/v1/users</code></strong>: admins provision teachers and students with a generated 96-bit one-time credential, returned exactly once in the response and never stored in the clear; the account starts on the forced first-login reset. Admin accounts stay bootstrap-only, never API-creatable. Duplicate emails answer a clean field error instead of a 500.</li>
+      <li><strong><code>PATCH /api/v1/users/:id</code></strong>: rename, disable/re-enable, and credential reset. Disabling or resetting revokes every live session in the same transaction, so the change bites on the next request, not at token expiry; admins cannot disable or reset themselves - the path that locks out the last admin. <code>GET /users</code> lists accounts with role/status filters for the admin console.</li>
+      <li><strong>Groups as cohorts</strong>: <code>POST /groups</code>, <code>GET /groups</code> (with member counts), and <code>PUT /groups/:id/members</code>, which replaces membership atomically - the whole list is validated as student accounts and a single bad id changes nothing.</li>
+      <li><strong>Every mutation audited</strong>: <code>users.created</code>, <code>users.updated</code> (with the changed fields), <code>groups.created</code>, and <code>groups.members_set</code> rows commit in the same transaction as the change.</li>
+      <li><strong>Contract updated to v0.3.0</strong>: the six new operations, Forbidden/NotFound responses, and the provisioning schemas added to <code>api/openapi.yaml</code> and regenerated into the typed web client (drift check green).</li>
+      <li><strong>Tested at both levels</strong>: the policy unit-test table, plus an HTTP-level integration test in its own database covering provisioning, the one-time credential lifecycle, role gates (401/403/PASSWORD_CHANGE_REQUIRED), disable-kills-sessions, credential reset, group membership swaps, and the audit counts.</li>
+    </ul>
+    <div class="exit">Verified live against the Compose stack: curl as the bootstrap admin provisioned a teacher and student (one-time passwords returned once), created a group and set its members, the freshly provisioned teacher was gated by <code>PASSWORD_CHANGE_REQUIRED</code>, and <code>audit_log</code> held one row per mutation. Milestone 1 API surface is complete; the web login screen is the remaining exit item.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 1 - Authentication core: login, sessions, forced reset</h2>
       <span class="tag">milestone 1</span>
     </div>

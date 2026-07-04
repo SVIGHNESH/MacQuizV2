@@ -138,6 +138,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List accounts (admin) */
+        get: operations["listUsers"];
+        put?: never;
+        /**
+         * Provision a teacher or student (admin)
+         * @description Creates the account with a generated one-time credential, returned exactly once in this response. The account must change its password on first login before any other endpoint works. Admin accounts are created only by the operator bootstrap, never over the API.
+         */
+        post: operations["createUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Deactivate, reset the credential, or edit an account (admin)
+         * @description Disabling an account or resetting its credential revokes every live session immediately. Admins cannot disable or reset themselves here; that path goes through the auth endpoints. Each mutation writes an audit row in the same transaction.
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/api/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List cohorts with member counts (admin) */
+        get: operations["listGroups"];
+        put?: never;
+        /** Create a cohort (admin) */
+        post: operations["createGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a cohort's membership (admin)
+         * @description Replaces the membership with exactly student_ids, validated and swapped in one transaction - a single bad id changes nothing. An empty list clears the cohort.
+         */
+        put: operations["setGroupMembers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -189,6 +268,36 @@ export interface components {
             current_password: string;
             new_password: string;
         };
+        CreateUserRequest: {
+            /** @enum {string} */
+            role: "teacher" | "student";
+            /** Format: email */
+            email: string;
+            full_name: string;
+        };
+        UpdateUserRequest: {
+            full_name?: string;
+            /** @enum {string} */
+            status?: "active" | "disabled";
+            /** @description Issue a fresh one-time credential and revoke all sessions. */
+            reset_password?: boolean;
+        };
+        ProvisionedUser: {
+            user: components["schemas"]["User"];
+            /** @description The generated one-time credential. Returned exactly once, never stored in the clear, never retrievable again. */
+            initial_password?: string;
+        };
+        Group: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            member_count: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        GroupResponse: {
+            group: components["schemas"]["Group"];
+        };
     };
     responses: {
         /** @description Missing, invalid, or expired credentials. */
@@ -202,6 +311,24 @@ export interface components {
         };
         /** @description Body-level validation failed; see fields. */
         ValidationFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The policy denies this action for the caller's role. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such resource. Also the answer for resources the caller is not assigned to, so existence is never leaked. */
+        NotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -385,6 +512,176 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: {
+                role?: "admin" | "teacher" | "student";
+                status?: "active" | "disabled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accounts, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: components["schemas"]["User"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Account created; initial_password appears only here. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedUser"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated account; initial_password is present only when reset_password was requested. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedUser"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cohorts, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groups: components["schemas"]["Group"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cohort created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    setGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    student_ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Membership replaced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
         };
     };
