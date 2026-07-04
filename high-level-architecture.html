@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz v2 - High-Level Architecture, Explained Simply</title>
+<style>
+  :root {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --red: #A8402F;
+    --red-soft: #F4E3DF;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F181D;
+      --panel: #16232A;
+      --panel-2: #1C2C34;
+      --ink: #E4ECEC;
+      --ink-2: #AFC2C4;
+      --muted: #8AA0A4;
+      --line: #24363E;
+      --line-strong: #33484F;
+      --accent: #3FC2A8;
+      --accent-ink: #0B1A17;
+      --accent-soft: #14332F;
+      --amber: #E0A44A;
+      --amber-soft: #33290F;
+      --red: #E08D7C;
+      --red-soft: #3A211B;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F9F9; --panel: #FFFFFF; --panel-2: #EEF3F3;
+    --ink: #1B2A31; --ink-2: #45565F; --muted: #5C6E77;
+    --line: #DDE5E6; --line-strong: #C4D0D2;
+    --accent: #0E7568; --accent-ink: #FFFFFF; --accent-soft: #E1F0ED;
+    --amber: #B4740E; --amber-soft: #F6ECDA; --red: #A8402F; --red-soft: #F4E3DF;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F181D; --panel: #16232A; --panel-2: #1C2C34;
+    --ink: #E4ECEC; --ink-2: #AFC2C4; --muted: #8AA0A4;
+    --line: #24363E; --line-strong: #33484F;
+    --accent: #3FC2A8; --accent-ink: #0B1A17; --accent-soft: #14332F;
+    --amber: #E0A44A; --amber-soft: #33290F; --red: #E08D7C; --red-soft: #3A211B;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.68;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .frame { max-width: 1080px; margin: 0 auto; padding: 0 24px 96px; }
+
+  header.masthead { padding: 56px 0 36px; border-bottom: 3px solid var(--ink); }
+  .doc-meta-row {
+    display: flex; flex-wrap: wrap; gap: 8px 28px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-bottom: 26px;
+  }
+  .doc-meta-row .k { color: var(--accent); }
+  header.masthead h1 {
+    font-family: var(--sans);
+    font-size: clamp(32px, 5vw, 50px);
+    font-weight: 750; letter-spacing: -0.022em; line-height: 1.08;
+    margin: 0 0 18px; text-wrap: balance;
+  }
+  header.masthead h1 .accent { color: var(--accent); }
+  .masthead-sub { font-size: 19px; color: var(--ink-2); max-width: 62ch; margin: 0; }
+
+  section { margin: 72px 0 0; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 10px;
+  }
+  h2 {
+    font-family: var(--sans); font-size: 28px; font-weight: 720;
+    letter-spacing: -0.015em; line-height: 1.15; margin: 0 0 16px; text-wrap: balance;
+  }
+  p { max-width: 70ch; margin: 0 0 16px; }
+  .lede { font-size: 18.5px; color: var(--ink-2); }
+  p code, li code {
+    font-family: var(--mono); font-size: 0.86em; background: var(--panel-2);
+    border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; color: var(--ink);
+  }
+
+  /* People cards */
+  .people { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 26px 0 0; }
+  .person {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    padding: 20px 22px; font-family: var(--sans);
+  }
+  .person .who {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 16px; margin-bottom: 8px;
+  }
+  .person .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); flex: none; }
+  .person.teacher .dot { background: var(--accent); }
+  .person.student .dot { background: var(--red); }
+  .person p { font-size: 14px; color: var(--ink-2); margin: 0; line-height: 1.55; }
+
+  /* Architecture tiers */
+  .tier {
+    border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel);
+    padding: 20px 22px 22px; font-family: var(--sans);
+  }
+  .tier-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  .tier-head .t-name { font-weight: 750; font-size: 18px; letter-spacing: -0.01em; }
+  .tier-head .t-tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .tier > .t-plain { font-family: var(--serif); font-size: 15px; color: var(--ink-2); max-width: 75ch; margin: 0 0 16px; }
+  .tier-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .abox {
+    border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel-2);
+    padding: 13px 15px;
+  }
+  .abox .abox-name { font-weight: 680; font-size: 14.5px; margin-bottom: 4px; }
+  .abox .abox-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .abox .abox-analogy {
+    margin-top: 9px; font-size: 12px; line-height: 1.45; color: var(--accent);
+    font-family: var(--serif); font-style: italic;
+  }
+  .abox.hot { border-color: var(--accent); background: var(--accent-soft); }
+  .abox.hot .abox-name { color: var(--accent); }
+
+  .connector {
+    display: flex; justify-content: center; align-items: center; gap: 14px;
+    padding: 10px 0; color: var(--muted); font-family: var(--mono); font-size: 12px;
+  }
+  .connector .arrow { width: 1.5px; height: 26px; background: var(--line-strong); position: relative; }
+  .connector .arrow::after {
+    content: ""; position: absolute; bottom: -1px; left: -3.75px;
+    border-left: 4.5px solid transparent; border-right: 4.5px solid transparent;
+    border-top: 7px solid var(--line-strong);
+  }
+
+  /* Story timeline */
+  .story { margin-top: 26px; border-left: 2px solid var(--line-strong); }
+  .beat { position: relative; padding: 0 0 30px 30px; }
+  .beat:last-child { padding-bottom: 4px; }
+  .beat::before {
+    content: ""; position: absolute; left: -8px; top: 5px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--panel); border: 3px solid var(--accent);
+  }
+  .beat.warn::before { border-color: var(--amber); }
+  .beat .b-time {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 3px;
+  }
+  .beat.warn .b-time { color: var(--amber); }
+  .beat .b-title { font-family: var(--sans); font-weight: 700; font-size: 16.5px; margin-bottom: 5px; }
+  .beat p { font-size: 15.5px; color: var(--ink-2); margin: 0; max-width: 66ch; }
+
+  /* Rules */
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin-top: 26px; }
+  .rule {
+    border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 0 10px 10px 0; background: var(--panel); padding: 16px 20px;
+  }
+  .rule h3 { font-family: var(--sans); font-size: 15.5px; font-weight: 700; margin: 0 0 6px; }
+  .rule p { font-size: 14px; color: var(--ink-2); margin: 0; line-height: 1.55; }
+
+  .callout {
+    max-width: 74ch; background: var(--accent-soft); border-left: 4px solid var(--accent);
+    padding: 14px 20px; margin: 26px 0 0; border-radius: 0 8px 8px 0;
+  }
+  .callout p { margin: 0; font-size: 15.5px; }
+  .callout .co-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); display: block; margin-bottom: 6px;
+  }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 72px; padding-top: 24px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+<header class="masthead">
+  <div class="doc-meta-row">
+    <span><span class="k">DOC</span> ARC-001</span>
+    <span><span class="k">COMPANION TO</span> SDD-001 · DEP-001</span>
+    <span><span class="k">AUDIENCE</span> Everyone</span>
+    <span><span class="k">DATE</span> 2026-07-05</span>
+  </div>
+  <h1>How MacQuiz works,<br><span class="accent">explained for everyone</span></h1>
+  <p class="masthead-sub">
+    No jargon required. This page shows the whole system in one picture: who uses it,
+    the four layers it is built from, what happens on quiz day, and the rules the
+    system is never allowed to break.
+  </p>
+</header>
+
+<!-- WHO -->
+<section>
+  <p class="eyebrow">The people</p>
+  <h2>Three kinds of users, three jobs</h2>
+  <p class="lede">
+    Nobody signs themselves up. One admin creates every account, which is exactly what
+    makes the platform safe to run real exams on.
+  </p>
+  <div class="people">
+    <div class="person admin">
+      <div class="who"><span class="dot"></span>The Admin</div>
+      <p>Runs the institution's side of things. Creates every teacher and student account,
+      organizes students into class groups, and can see activity across the whole organization.
+      The admin never writes quizzes, so responsibility stays clear.</p>
+    </div>
+    <div class="person teacher">
+      <div class="who"><span class="dot"></span>The Teacher</div>
+      <p>Owns the quiz from start to finish: writes the questions (or uploads a spreadsheet of them),
+      picks exactly which students may see it, sets the date and time, watches everyone live
+      while it runs, and reviews the results afterwards.</p>
+    </div>
+    <div class="person student">
+      <div class="who"><span class="dot"></span>The Student</div>
+      <p>Sees only the quizzes assigned to them, and can start only during the scheduled window.
+      Their answers are saved automatically every few seconds, so a crashed laptop or dropped
+      Wi-Fi never loses work.</p>
+    </div>
+  </div>
+</section>
+
+<!-- THE PICTURE -->
+<section>
+  <p class="eyebrow">The big picture</p>
+  <h2>Four layers, one server</h2>
+  <p class="lede">
+    Everything a user does travels down through four layers and the answer travels back up.
+    Each layer has one clear job.
+  </p>
+
+  <div style="margin-top: 26px;">
+    <div class="tier">
+      <div class="tier-head"><span class="t-name">1 · The apps</span><span class="t-tag">what people see</span></div>
+      <p class="t-plain">One website with three faces. It shows each person only what their role allows.</p>
+      <div class="tier-boxes">
+        <div class="abox"><div class="abox-name">Admin console</div><div class="abox-desc">Add people, manage groups, see the whole organization.</div></div>
+        <div class="abox"><div class="abox-name">Teacher app</div><div class="abox-desc">Write, schedule, watch live, analyze.</div></div>
+        <div class="abox"><div class="abox-name">Student app</div><div class="abox-desc">See your quizzes, take them, view your results.</div></div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="arrow"></div><span>every click travels over a secure connection</span><div class="arrow"></div></div>
+
+    <div class="tier">
+      <div class="tier-head"><span class="t-name">2 · The front door</span><span class="t-tag">checks &amp; directs</span></div>
+      <p class="t-plain">Before any request reaches the server, it passes a checkpoint.</p>
+      <div class="tier-boxes">
+        <div class="abox">
+          <div class="abox-name">Gatekeeper (API gateway)</div>
+          <div class="abox-desc">Confirms who you are and whether you are allowed to do what you are asking. Blocks anything suspicious or too frequent.</div>
+          <div class="abox-analogy">Like the receptionist who checks your ID before letting you into the building.</div>
+        </div>
+        <div class="abox hot">
+          <div class="abox-name">Live line (realtime gateway)</div>
+          <div class="abox-desc">Keeps an open connection to every active user so updates arrive instantly, without anyone refreshing the page.</div>
+          <div class="abox-analogy">Like an intercom that stays on during the exam instead of passing notes.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="arrow"></div><span>approved requests go to the brain</span><div class="arrow"></div></div>
+
+    <div class="tier">
+      <div class="tier-head"><span class="t-name">3 · The brain</span><span class="t-tag">where decisions happen</span></div>
+      <p class="t-plain">
+        One program, organized into focused departments. Because it is one program on one machine,
+        it is simple to run and costs almost nothing to host.
+      </p>
+      <div class="tier-boxes">
+        <div class="abox"><div class="abox-name">Accounts</div><div class="abox-desc">Logins, passwords, and the single rulebook of who may do what.</div></div>
+        <div class="abox"><div class="abox-name">Quizzes</div><div class="abox-desc">Questions, schedules, and who is invited. Freezes a quiz the moment it is published so it cannot change mid-exam.</div></div>
+        <div class="abox hot"><div class="abox-name">Attempts</div><div class="abox-desc">The exam invigilator. Keeps official time, saves every answer, ends attempts exactly on the deadline, and enforces a teacher's decision to remove someone.</div></div>
+        <div class="abox"><div class="abox-name">Analytics</div><div class="abox-desc">Turns raw results into scores, charts, and question difficulty after the quiz closes.</div></div>
+        <div class="abox"><div class="abox-name">Background helpers</div><div class="abox-desc">Do the slow chores off to the side: checking uploaded question files, grading, opening and closing quizzes on schedule.</div></div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="arrow"></div><span>everything important is written down</span><div class="arrow"></div></div>
+
+    <div class="tier">
+      <div class="tier-head"><span class="t-name">4 · The memory</span><span class="t-tag">where everything lives</span></div>
+      <p class="t-plain">Four kinds of storage, each chosen for what it is best at.</p>
+      <div class="tier-boxes">
+        <div class="abox">
+          <div class="abox-name">The record book (PostgreSQL)</div>
+          <div class="abox-desc">The permanent, authoritative copy of everything: people, quizzes, every saved answer, every action taken.</div>
+          <div class="abox-analogy">The school's official register. If it is not written here, it did not happen.</div>
+        </div>
+        <div class="abox">
+          <div class="abox-name">The whiteboard (Redis)</div>
+          <div class="abox-desc">Fast, temporary notes: who is online right now, live updates in flight, the to-do list for the helpers.</div>
+          <div class="abox-analogy">Quick notes that make things fast; nothing precious lives only here.</div>
+        </div>
+        <div class="abox">
+          <div class="abox-name">The store room (file storage)</div>
+          <div class="abox-desc">Uploaded spreadsheets, question images, exported reports, and nightly backup copies.</div>
+        </div>
+        <div class="abox">
+          <div class="abox-name">The to-do list (job queue)</div>
+          <div class="abox-desc">Slow tasks wait in line here so the app stays fast even when 2,000 students finish at once.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="co-label">Why this shape</span>
+    <p>
+      A quiz platform is idle most days, then intensely busy for one hour.
+      One well-organized server handles that hour with roughly ten times the needed capacity,
+      which is why the whole thing runs on a free-tier machine (see the deployment plan, DEP-001).
+      If the school ever grows past it, each department is already built so it can move to its own
+      machine without a rewrite.
+    </p>
+  </div>
+</section>
+
+<!-- QUIZ DAY -->
+<section>
+  <p class="eyebrow">A day in the life</p>
+  <h2>What actually happens on quiz day</h2>
+  <div class="story">
+    <div class="beat">
+      <div class="b-time">Days before</div>
+      <div class="b-title">The teacher prepares</div>
+      <p>Questions are written one by one or uploaded as a spreadsheet, which the system checks
+      row by row before accepting all of it or none of it. The teacher picks the students,
+      sets Friday 10:00-11:00 with 30 minutes per student, and publishes.
+      Publishing takes a frozen snapshot of the quiz, so nothing can change under the students later.</p>
+    </div>
+    <div class="beat">
+      <div class="b-time">Friday 10:00:00</div>
+      <div class="b-title">The quiz opens itself</div>
+      <p>A scheduled task flips the quiz to live at the exact second, using the server's clock.
+      No one has to press a button, and a student's laptop clock being wrong changes nothing.</p>
+    </div>
+    <div class="beat">
+      <div class="b-time">10:00-10:01</div>
+      <div class="b-title">A thousand students start at once</div>
+      <p>This stampede is the moment the system is designed around. The frozen quiz is kept ready
+      on the whiteboard, so handing it to each student is nearly free, and every answer is saved
+      to the record book within seconds of being chosen.</p>
+    </div>
+    <div class="beat">
+      <div class="b-time">While it runs</div>
+      <div class="b-title">The teacher watches live</div>
+      <p>The live dashboard shows every student's row: which question they are on, how many they
+      have answered, who lost connection. If a student leaves fullscreen or switches tabs, the row
+      quietly gains an amber note, evidence for the teacher, not an automatic punishment.</p>
+    </div>
+    <div class="beat warn">
+      <div class="b-time">If needed</div>
+      <div class="b-title">The teacher can remove someone</div>
+      <p>Removal takes two steps and a written reason. The moment it is confirmed, the server stops
+      accepting anything from that attempt, no matter what the student's device does. The work done
+      so far is kept and graded, so any dispute can be settled from the record.</p>
+    </div>
+    <div class="beat">
+      <div class="b-time">Each deadline</div>
+      <div class="b-title">Time runs out safely</div>
+      <p>Each student's attempt ends at their own deadline, even if they closed the laptop and
+      walked away, whatever was already saved is submitted automatically. At 11:00 the quiz closes
+      for everyone.</p>
+    </div>
+    <div class="beat">
+      <div class="b-time">Minutes after</div>
+      <div class="b-title">Grading and results</div>
+      <p>The helpers grade every attempt from the frozen answer key, then build the analytics:
+      score distribution, hardest questions, each student's progress over time. Teachers see their
+      classes; the admin sees the whole institution.</p>
+    </div>
+  </div>
+</section>
+
+<!-- RULES -->
+<section>
+  <p class="eyebrow">The guarantees</p>
+  <h2>Five rules the system never breaks</h2>
+  <div class="rules">
+    <div class="rule">
+      <h3>The server's clock is the only clock</h3>
+      <p>Quizzes open, close, and time out on server time. The countdown on a student's screen is
+      just a courtesy display of the real one.</p>
+    </div>
+    <div class="rule">
+      <h3>Answer keys never leave the building</h3>
+      <p>Correct answers are stripped out of everything sent to a student, checked at one central
+      point so no future feature can leak them by accident.</p>
+    </div>
+    <div class="rule">
+      <h3>Saved work survives anything</h3>
+      <p>Answers are saved as they are chosen. A crash, a dead battery, or a dropped connection
+      costs a student nothing; they resume exactly where they were.</p>
+    </div>
+    <div class="rule">
+      <h3>Only invited students know a quiz exists</h3>
+      <p>An unassigned student cannot see, open, or even confirm the existence of a quiz that
+      is not theirs.</p>
+    </div>
+    <div class="rule">
+      <h3>Everything important leaves a paper trail</h3>
+      <p>Every account created, quiz published, and student removed is written to a permanent log
+      with who, what, when, and why. Nothing is silently deleted.</p>
+    </div>
+  </div>
+</section>
+
+<!-- WHERE TO GO DEEPER -->
+<section>
+  <p class="eyebrow">Going deeper</p>
+  <h2>Where the details live</h2>
+  <p>
+    This page is the map. The engineering documents are the territory:
+    <a href="quiz-system-design.html">SDD-001</a> covers the full system design,
+    <a href="deployment-plan.html">DEP-001</a> covers how it runs for $0/month,
+    <a href="design_system.html">the design system</a> defines how every screen looks,
+    and the <code>docs/</code> folder holds the implementation-ready specifications.
+  </p>
+</section>
+
+<footer>
+  <span>MacQuiz ARC-001 · v1.0 · 2026-07-05</span>
+  <span>Companion overview · safe to share with anyone</span>
+</footer>
+
+</div>
+
+</body>
+</html>

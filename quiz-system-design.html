@@ -1,0 +1,1400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz v2 - System Design Document</title>
+<style>
+  :root {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --red: #A8402F;
+    --red-soft: #F4E3DF;
+    --code-bg: #10201F;
+    --code-ink: #D7E6E2;
+    --code-accent: #7FD4C2;
+    --code-comment: #6E8B85;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F181D;
+      --panel: #16232A;
+      --panel-2: #1C2C34;
+      --ink: #E4ECEC;
+      --ink-2: #AFC2C4;
+      --muted: #8AA0A4;
+      --line: #24363E;
+      --line-strong: #33484F;
+      --accent: #3FC2A8;
+      --accent-ink: #0B1A17;
+      --accent-soft: #14332F;
+      --amber: #E0A44A;
+      --amber-soft: #33290F;
+      --red: #E08D7C;
+      --red-soft: #3A211B;
+      --code-bg: #0B1417;
+      --code-ink: #C9DCD8;
+      --code-accent: #6FD1BC;
+      --code-comment: #5D7B76;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --red: #A8402F;
+    --red-soft: #F4E3DF;
+    --code-bg: #10201F;
+    --code-ink: #D7E6E2;
+    --code-accent: #7FD4C2;
+    --code-comment: #6E8B85;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F181D;
+    --panel: #16232A;
+    --panel-2: #1C2C34;
+    --ink: #E4ECEC;
+    --ink-2: #AFC2C4;
+    --muted: #8AA0A4;
+    --line: #24363E;
+    --line-strong: #33484F;
+    --accent: #3FC2A8;
+    --accent-ink: #0B1A17;
+    --accent-soft: #14332F;
+    --amber: #E0A44A;
+    --amber-soft: #33290F;
+    --red: #E08D7C;
+    --red-soft: #3A211B;
+    --code-bg: #0B1417;
+    --code-ink: #C9DCD8;
+    --code-accent: #6FD1BC;
+    --code-comment: #5D7B76;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.68;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .frame {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---------- Masthead ---------- */
+  header.masthead {
+    padding: 56px 0 36px;
+    border-bottom: 3px solid var(--ink);
+    margin-bottom: 0;
+  }
+  .doc-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 26px;
+  }
+  .doc-meta-row .k { color: var(--accent); }
+  header.masthead h1 {
+    font-family: var(--sans);
+    font-size: clamp(34px, 5vw, 54px);
+    font-weight: 750;
+    letter-spacing: -0.022em;
+    line-height: 1.06;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  header.masthead h1 .accent { color: var(--accent); }
+  .masthead-sub {
+    font-size: 19px;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 26px;
+  }
+  .chip {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    background: var(--panel);
+  }
+  .chip.solid { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  /* ---------- Layout: TOC + main ---------- */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+    padding-top: 44px;
+  }
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    font-family: var(--sans);
+    font-size: 13.5px;
+  }
+  nav.toc .toc-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+  }
+  nav.toc li a {
+    display: block;
+    padding: 6px 0 6px 16px;
+    color: var(--ink-2);
+    border-left: 2px solid transparent;
+    margin-left: -1.5px;
+    line-height: 1.35;
+  }
+  nav.toc li a:hover {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    text-decoration: none;
+  }
+  main { min-width: 0; }
+
+  @media (max-width: 980px) {
+    .body-grid { grid-template-columns: 1fr; gap: 24px; }
+    nav.toc { position: static; }
+    nav.toc ol { border-left: none; flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
+    nav.toc li a { padding: 4px 0; border-left: none; margin-left: 0; }
+  }
+
+  /* ---------- Sections & typography ---------- */
+  section { margin-bottom: 76px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h2 {
+    font-family: var(--sans);
+    font-size: 29px;
+    font-weight: 720;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 20px;
+    text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 19px;
+    font-weight: 680;
+    letter-spacing: -0.008em;
+    margin: 38px 0 12px;
+  }
+  h4 {
+    font-family: var(--sans);
+    font-size: 15.5px;
+    font-weight: 650;
+    margin: 26px 0 8px;
+  }
+  p { max-width: 70ch; margin: 0 0 16px; }
+  ul.doc, ol.doc { max-width: 68ch; margin: 0 0 18px; padding-left: 24px; }
+  ul.doc li, ol.doc li { margin-bottom: 8px; }
+  strong { font-weight: 650; }
+  .lede { font-size: 18.5px; color: var(--ink-2); }
+
+  /* ---------- Callouts ---------- */
+  .callout {
+    max-width: 72ch;
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    padding: 14px 20px;
+    margin: 22px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .callout p { margin: 0; font-size: 15.5px; }
+  .callout .co-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .callout.warn { background: var(--amber-soft); border-left-color: var(--amber); }
+  .callout.warn .co-label { color: var(--amber); }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 22px 0 30px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    font-weight: 650;
+    font-size: 12.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--line-strong);
+    white-space: nowrap;
+    background: var(--panel-2);
+  }
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  td code, p code, li code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .yes { color: var(--accent); font-weight: 700; }
+  .no  { color: var(--muted); }
+  .partial { color: var(--amber); font-weight: 650; }
+  td.center, th.center { text-align: center; }
+
+  /* ---------- Code blocks ---------- */
+  .code-block {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    margin: 20px 0 28px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .code-block .cb-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--code-comment);
+    padding: 10px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    text-transform: uppercase;
+  }
+  .code-block pre {
+    margin: 0;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.62;
+  }
+  .code-block .c { color: var(--code-comment); }
+  .code-block .k { color: var(--code-accent); }
+
+  /* ---------- Architecture diagram ---------- */
+  .diagram-wrap { overflow-x: auto; margin: 26px 0 32px; }
+  .arch {
+    min-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    font-family: var(--sans);
+  }
+  .arch-tier {
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: var(--panel);
+    padding: 16px 18px 18px;
+  }
+  .arch-tier + .arch-connect + .arch-tier { margin-top: 0; }
+  .tier-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .tier-boxes { display: flex; gap: 12px; flex-wrap: nowrap; }
+  .abox {
+    flex: 1;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--panel-2);
+    padding: 12px 14px;
+    min-width: 130px;
+  }
+  .abox .abox-name {
+    font-weight: 650;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--ink);
+  }
+  .abox .abox-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .abox.hot { border-color: var(--accent); background: var(--accent-soft); }
+  .abox.hot .abox-name { color: var(--accent); }
+  .arch-connect {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .arch-connect .arrow {
+    width: 1px;
+    height: 22px;
+    background: var(--line-strong);
+    position: relative;
+  }
+  .arch-connect .arrow::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: -3.5px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  /* ---------- State machine ---------- */
+  .lifecycle {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-width: 820px;
+    font-family: var(--sans);
+    margin: 8px 0;
+  }
+  .state {
+    border: 1.5px solid var(--line-strong);
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 12px 18px;
+    text-align: center;
+    min-width: 118px;
+  }
+  .state .s-name { font-weight: 700; font-size: 14.5px; }
+  .state .s-desc { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .state.live { border-color: var(--accent); background: var(--accent-soft); }
+  .state.live .s-name { color: var(--accent); }
+  .s-arrow {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0 6px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    min-width: 86px;
+    text-align: center;
+  }
+  .s-arrow .line {
+    width: 100%;
+    height: 1.5px;
+    background: var(--line-strong);
+    position: relative;
+    margin-top: 5px;
+  }
+  .s-arrow .line::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    top: -3.5px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--line-strong);
+  }
+
+  /* ---------- Sequence / event flow ---------- */
+  .seq { min-width: 700px; font-family: var(--sans); font-size: 14px; margin: 8px 0; }
+  .seq-row {
+    display: grid;
+    grid-template-columns: 170px 44px minmax(0, 1fr);
+    gap: 0 14px;
+    align-items: baseline;
+    padding: 10px 4px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .seq-row:last-child { border-bottom: none; }
+  .seq-actor { font-weight: 650; color: var(--ink); font-size: 13.5px; }
+  .seq-dir { font-family: var(--mono); color: var(--accent); font-size: 12px; text-align: center; }
+  .seq-msg { color: var(--ink-2); }
+  .seq-msg code { white-space: normal; }
+
+  /* ---------- Cards grid ---------- */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 24px 0 30px;
+  }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    padding: 20px 22px;
+  }
+  .card h4 { margin: 0 0 8px; font-size: 15px; }
+  .card h4 .role-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-right: 8px;
+  }
+  .card.admin h4 .role-dot { background: var(--amber); }
+  .card.student h4 .role-dot { background: var(--red); }
+  .card p, .card ul { font-size: 14px; color: var(--ink-2); margin-bottom: 0; font-family: var(--sans); line-height: 1.55; }
+  .card ul { padding-left: 18px; margin-top: 6px; }
+  .card ul li { margin-bottom: 5px; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--line);
+    margin-top: 40px;
+    padding-top: 24px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .num {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    color: var(--muted);
+    margin-right: 10px;
+    font-weight: 400;
+  }
+</style>
+</head>
+<body>
+
+
+<div class="frame">
+
+<header class="masthead">
+  <div class="doc-meta-row">
+    <span><span class="k">DOC</span> SDD-001</span>
+    <span><span class="k">STATUS</span> Draft for review</span>
+    <span><span class="k">VERSION</span> 2.0</span>
+    <span><span class="k">DATE</span> 2026-07-04</span>
+  </div>
+  <h1>MacQuiz v2<br><span class="accent">Scheduled Quiz Platform</span> - System Design</h1>
+  <p class="masthead-sub">
+    A role-based quiz platform where an admin provisions every account, teachers author and schedule
+    time-boxed quizzes for hand-picked students, and live attempt telemetry streams back to the
+    quiz owner in real time. Version 2 adds in-attempt integrity guardrails and live moderation:
+    the teacher can now remove a candidate from a quiz mid-attempt.
+  </p>
+  <div class="status-chips">
+    <span class="chip solid">Admin-provisioned accounts</span>
+    <span class="chip">Scheduled live windows</span>
+    <span class="chip">Per-student visibility</span>
+    <span class="chip">Realtime attempt tracking</span>
+    <span class="chip">Analytics for teacher &amp; admin</span>
+    <span class="chip">Attempt guardrails (v2)</span>
+    <span class="chip">Live kick control (v2)</span>
+  </div>
+</header>
+
+<div class="body-grid">
+
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-label">Contents</div>
+  <ol>
+    <li><a href="#overview">1. Overview &amp; goals</a></li>
+    <li><a href="#requirements">2. Requirements</a></li>
+    <li><a href="#roles">3. Roles &amp; permissions</a></li>
+    <li><a href="#architecture">4. High-level architecture</a></li>
+    <li><a href="#datamodel">5. Data model</a></li>
+    <li><a href="#lifecycle">6. Quiz lifecycle</a></li>
+    <li><a href="#authoring">7. Authoring &amp; bulk upload</a></li>
+    <li><a href="#scheduling">8. Scheduling &amp; visibility</a></li>
+    <li><a href="#attempt">9. Attempt flow &amp; timing</a></li>
+    <li><a href="#guardrails">10. Guardrails &amp; kick control</a></li>
+    <li><a href="#realtime">11. Live tracking</a></li>
+    <li><a href="#analytics">12. Analytics</a></li>
+    <li><a href="#api">13. API surface</a></li>
+    <li><a href="#security">14. Security</a></li>
+    <li><a href="#scale">15. Scaling &amp; tech stack</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 1. OVERVIEW ============ -->
+<section id="overview">
+  <p class="eyebrow">Section 01</p>
+  <h2>Overview &amp; goals</h2>
+  <p class="lede">
+    MacQuiz is a closed-enrollment assessment platform.
+    There is no self-signup: a single admin (or admin team) creates every teacher and student account.
+    Teachers own the full quiz lifecycle - authoring, scheduling, audience selection, live monitoring,
+    and post-quiz analytics - while the admin has organization-wide visibility over both teachers and students.
+  </p>
+  <h3>Primary goals</h3>
+  <ul class="doc">
+    <li><strong>Strict access control.</strong> Every capability is derived from role plus ownership. A teacher sees only their own quizzes and assigned students; a student sees only quizzes assigned to them, and only inside the live window.</li>
+    <li><strong>Server-authoritative timing.</strong> The quiz opens, closes, and auto-submits based on server time. Client clocks are never trusted.</li>
+    <li><strong>Real-time monitoring.</strong> While a quiz is live, the owning teacher watches attempts progress question-by-question with sub-second latency.</li>
+    <li><strong>Layered analytics.</strong> Teachers analyze their students and quizzes; the admin analyzes everything, including teacher activity itself.</li>
+    <li><strong>Attempt integrity (v2).</strong> Browser-level guardrails (fullscreen lock, focus tracking, clipboard blocking) feed a violation ladder, and the owning teacher can remove a candidate from a live attempt. Every signal and action is server-recorded and auditable.</li>
+  </ul>
+  <h3>Non-goals (v2)</h3>
+  <ul class="doc">
+    <li>Camera-based proctoring (webcam / screen recording). v2 covers browser-level guardrails (section 10); camera and screen capture remain out of scope, though the violation event stream leaves room for them.</li>
+    <li>Subjective grading workflows (essay questions with manual marking). v1 supports auto-gradable types: single choice, multiple choice, true/false, and short numeric/text answers.</li>
+    <li>Public quiz sharing or anonymous access.</li>
+  </ul>
+</section>
+
+<!-- ============ 2. REQUIREMENTS ============ -->
+<section id="requirements">
+  <p class="eyebrow">Section 02</p>
+  <h2>Requirements</h2>
+
+  <h3>Functional requirements</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Requirement</th><th>Actor</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>FR-1</td><td>Create, deactivate, and manage teacher and student accounts; no self-signup exists anywhere in the system.</td><td>Admin</td></tr>
+        <tr><td>FR-2</td><td>Create quizzes by adding questions one at a time through the authoring UI.</td><td>Teacher</td></tr>
+        <tr><td>FR-3</td><td>Bulk-upload questions via CSV/XLSX with validation, per-row error reporting, and an all-or-nothing commit.</td><td>Teacher</td></tr>
+        <tr><td>FR-4</td><td>Schedule a quiz with a go-live time and end time; students can start an attempt only inside that window.</td><td>Teacher</td></tr>
+        <tr><td>FR-5</td><td>Select exactly which students a quiz is visible to (individually or by group). Unassigned students never see it.</td><td>Teacher</td></tr>
+        <tr><td>FR-6</td><td>Take an assigned quiz during its live window, with a per-attempt countdown, autosave, and auto-submit at the deadline.</td><td>Student</td></tr>
+        <tr><td>FR-7</td><td>Watch a live dashboard of attempts on their own quiz: who started, current question, answered count, submissions, disconnects.</td><td>Teacher</td></tr>
+        <tr><td>FR-8</td><td>View analytics for their own quizzes and assigned students: scores, distributions, per-question difficulty, time spent.</td><td>Teacher</td></tr>
+        <tr><td>FR-9</td><td>View organization-wide analytics covering all students and all teachers (quizzes created, participation, outcomes).</td><td>Admin</td></tr>
+        <tr><td>FR-10</td><td>Configure per-quiz attempt guardrails: fullscreen lock, tab/focus-loss tracking, clipboard blocking, and a violation ladder (warn, flag, auto-submit) enforced server-side.</td><td>Teacher</td></tr>
+        <tr><td>FR-11</td><td>Remove (kick) a candidate from a live attempt with a recorded reason; the attempt is terminated server-side immediately, retained for audit, and optionally re-admitted.</td><td>Teacher</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Non-functional requirements</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Concern</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td>Concurrency</td><td>A single quiz go-live can bring 1,000+ students online within the same minute; the platform must absorb this thundering herd.</td></tr>
+        <tr><td>Latency</td><td>Answer autosave acknowledged &lt; 300 ms p95; live-tracking events visible to the teacher &lt; 1 s after the student action.</td></tr>
+        <tr><td>Correctness</td><td>No attempt may be accepted after its server-computed deadline; grading is deterministic and idempotent.</td></tr>
+        <tr><td>Durability</td><td>Every saved answer survives a client crash; a student who reconnects resumes exactly where they left off.</td></tr>
+        <tr><td>Auditability</td><td>All admin and teacher mutations (user creation, quiz publication, assignment changes, kicks and re-admissions) are written to an append-only audit log.</td></tr>
+        <tr><td>Enforcement</td><td>A kick takes effect server-side in the same transaction that records it; the student's UI reflects it within 1 s over WebSocket, or on the next autosave (&le; 2 s debounce) if the socket is gone. No write is accepted after the kick, regardless of client state.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 3. ROLES ============ -->
+<section id="roles">
+  <p class="eyebrow">Section 03</p>
+  <h2>Roles &amp; permissions</h2>
+  <p>
+    Three roles, one hierarchy. The admin provisions people; teachers provision content and audiences;
+    students consume. Ownership matters as much as role: teacher permissions on quizzes and analytics
+    apply only to quizzes they created and students assigned to those quizzes.
+  </p>
+
+  <div class="card-grid">
+    <div class="card admin">
+      <h4><span class="role-dot"></span>Admin</h4>
+      <ul>
+        <li>Creates and deactivates all teacher and student accounts</li>
+        <li>Resets credentials, assigns students to class groups</li>
+        <li>Sees analytics across every teacher and student</li>
+        <li>Cannot author quizzes (keeps the audit story clean)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4><span class="role-dot"></span>Teacher</h4>
+      <ul>
+        <li>Authors quizzes: one-by-one or bulk upload</li>
+        <li>Schedules the live window and picks the audience</li>
+        <li>Live-monitors attempts on their own quizzes</li>
+        <li>Sets guardrails and can kick a candidate mid-attempt</li>
+        <li>Analytics scoped to their own quizzes and students</li>
+      </ul>
+    </div>
+    <div class="card student">
+      <h4><span class="role-dot"></span>Student</h4>
+      <ul>
+        <li>Sees only quizzes assigned to them</li>
+        <li>Can start an attempt only inside the live window</li>
+        <li>One attempt per quiz (configurable per quiz)</li>
+        <li>Sees own results and history after quiz close</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Permission matrix</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th class="center">Admin</th>
+          <th class="center">Teacher</th>
+          <th class="center">Student</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Create / deactivate users</td><td class="center yes">Yes</td><td class="center no">-</td><td class="center no">-</td></tr>
+        <tr><td>Create / edit quiz</td><td class="center no">-</td><td class="center yes">Own only</td><td class="center no">-</td></tr>
+        <tr><td>Bulk-upload questions</td><td class="center no">-</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Schedule live window</td><td class="center no">-</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Assign quiz audience</td><td class="center no">-</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Take a quiz</td><td class="center no">-</td><td class="center no">-</td><td class="center yes">If assigned, in window</td></tr>
+        <tr><td>Live attempt dashboard</td><td class="center partial">Read-only, all</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Configure attempt guardrails</td><td class="center no">-</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Kick student from live attempt</td><td class="center yes">Any quiz</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Re-admit a kicked student</td><td class="center yes">Any quiz</td><td class="center yes">Own quizzes</td><td class="center no">-</td></tr>
+        <tr><td>Student analytics</td><td class="center yes">All students</td><td class="center yes">Assigned students</td><td class="center partial">Self only</td></tr>
+        <tr><td>Teacher analytics</td><td class="center yes">All teachers</td><td class="center partial">Self only</td><td class="center no">-</td></tr>
+        <tr><td>Audit log</td><td class="center yes">Yes</td><td class="center no">-</td><td class="center no">-</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="co-label">Design decision</span>
+    <p>
+      Permissions are enforced at the API layer with a single policy function
+      <code>can(actor, action, resource)</code> evaluated on every request, never in the UI alone.
+      The UI merely hides what the API would reject.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 4. ARCHITECTURE ============ -->
+<section id="architecture">
+  <p class="eyebrow">Section 04</p>
+  <h2>High-level architecture</h2>
+  <p>
+    A modular monolith behind one API gateway, with a dedicated realtime gateway for WebSockets.
+    The modules (auth, users, quizzes, attempts, analytics) are separate packages with clean interfaces,
+    so any of them can be split into a service later without a rewrite. Redis carries ephemeral state
+    (sessions, live presence, pub/sub); PostgreSQL is the single source of truth.
+  </p>
+
+  <div class="diagram-wrap">
+    <div class="arch">
+      <div class="arch-tier">
+        <div class="tier-label">Clients</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">Admin console</div><div class="abox-desc">User management, org-wide analytics</div></div>
+          <div class="abox"><div class="abox-name">Teacher app</div><div class="abox-desc">Authoring, scheduling, live dashboard</div></div>
+          <div class="abox"><div class="abox-name">Student app</div><div class="abox-desc">Quiz list, attempt player, results</div></div>
+        </div>
+      </div>
+      <div class="arch-connect"><div class="arrow"></div><span>HTTPS / REST + WebSocket</span><div class="arrow"></div></div>
+      <div class="arch-tier">
+        <div class="tier-label">Edge</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">API gateway</div><div class="abox-desc">TLS, auth check, rate limiting, routing</div></div>
+          <div class="abox hot"><div class="abox-name">Realtime gateway</div><div class="abox-desc">WebSocket fan-out, channel authorization</div></div>
+        </div>
+      </div>
+      <div class="arch-connect"><div class="arrow"></div><span>internal RPC / pub-sub</span><div class="arrow"></div></div>
+      <div class="arch-tier">
+        <div class="tier-label">Application modules</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">Auth &amp; users</div><div class="abox-desc">Login, RBAC policy, admin provisioning</div></div>
+          <div class="abox"><div class="abox-name">Quiz</div><div class="abox-desc">Authoring, versioning, scheduling, assignment</div></div>
+          <div class="abox hot"><div class="abox-name">Attempt</div><div class="abox-desc">Session state, timing, autosave, grading</div></div>
+          <div class="abox"><div class="abox-name">Analytics</div><div class="abox-desc">Aggregation jobs, reporting queries</div></div>
+          <div class="abox"><div class="abox-name">Import worker</div><div class="abox-desc">Bulk-upload validation &amp; commit</div></div>
+        </div>
+      </div>
+      <div class="arch-connect"><div class="arrow"></div><span>SQL / cache / queue</span><div class="arrow"></div></div>
+      <div class="arch-tier">
+        <div class="tier-label">Data layer</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">PostgreSQL</div><div class="abox-desc">Source of truth: users, quizzes, attempts, answers</div></div>
+          <div class="abox"><div class="abox-name">Redis</div><div class="abox-desc">Sessions, live presence, pub/sub, deadline timers</div></div>
+          <div class="abox"><div class="abox-name">Object storage</div><div class="abox-desc">Bulk-upload files, question images, exports</div></div>
+          <div class="abox"><div class="abox-name">Job queue</div><div class="abox-desc">Imports, grading, scheduled open/close, rollups</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Why a modular monolith</h3>
+  <p>
+    At this product's scale (thousands of concurrent students, not millions), one well-factored deployable
+    is simpler, more robust, and easier to reason about than microservices. The two pieces that genuinely
+    benefit from independence are pulled out from day one: the <strong>realtime gateway</strong> (different
+    scaling profile - many long-lived connections, little CPU) and the <strong>import/grading workers</strong>
+    (bursty, queue-driven). Everything communicates through Redis pub/sub and the job queue, so extraction
+    later is a deployment change, not a design change.
+  </p>
+</section>
+
+<!-- ============ 5. DATA MODEL ============ -->
+<section id="datamodel">
+  <p class="eyebrow">Section 05</p>
+  <h2>Data model</h2>
+  <p>
+    Ten core tables. Quizzes snapshot their questions on publish so that mid-quiz edits can never
+    corrupt an in-flight attempt, and answers are stored one row per question for granular autosave
+    and per-question analytics.
+  </p>
+
+  <div class="code-block">
+    <div class="cb-title">schema.sql - core tables (abridged)</div>
+    <pre>
+<span class="c">-- Identity: every account is admin-created (created_by is NOT NULL)</span>
+<span class="k">users</span> (
+  id            uuid PK,
+  role          enum('admin','teacher','student'),
+  email         citext UNIQUE,
+  password_hash text,
+  full_name     text,
+  status        enum('active','disabled'),
+  created_by    uuid FK -> users.id,      <span class="c">-- the admin who provisioned this account</span>
+  created_at    timestamptz
+)
+
+<span class="k">groups</span> (id, name, created_by)             <span class="c">-- optional cohorts, e.g. "Class 10-B"</span>
+<span class="k">group_members</span> (group_id FK, student_id FK, UNIQUE(group_id, student_id))
+
+<span class="c">-- Quiz content: owned by exactly one teacher</span>
+<span class="k">quizzes</span> (
+  id             uuid PK,
+  owner_id       uuid FK -> users.id,     <span class="c">-- the teacher; scopes every permission check</span>
+  title          text,
+  status         enum('draft','scheduled','live','closed','archived'),
+  starts_at      timestamptz,             <span class="c">-- go-live moment (FR-4)</span>
+  ends_at        timestamptz,             <span class="c">-- hard close</span>
+  duration_sec   int,                     <span class="c">-- per-attempt time limit</span>
+  max_attempts   int DEFAULT 1,
+  shuffle_questions boolean,
+  guardrails     jsonb,   <span class="c">-- v2: {fullscreen, focus_tracking, block_clipboard,
+                                   max_violations, violation_action} - snapshotted at publish</span>
+  published_at   timestamptz,
+  version        int                      <span class="c">-- bumped on republish</span>
+)
+
+<span class="k">questions</span> (
+  id           uuid PK,
+  quiz_id      uuid FK -> quizzes.id,
+  position     int,
+  type         enum('single','multi','truefalse','short'),
+  body         jsonb,                     <span class="c">-- rich text + optional image ref</span>
+  options      jsonb,                     <span class="c">-- [{key, text}] for choice types</span>
+  correct      jsonb,                     <span class="c">-- never serialized to student clients</span>
+  points       numeric DEFAULT 1,
+  source       enum('manual','import'),   <span class="c">-- FR-2 vs FR-3 provenance</span>
+  import_id    uuid NULL FK -> imports.id
+)
+
+<span class="c">-- Audience: explicit per-student visibility (FR-5)</span>
+<span class="k">quiz_assignments</span> (
+  quiz_id     uuid FK -> quizzes.id,
+  student_id  uuid FK -> users.id,
+  assigned_by uuid FK -> users.id,
+  assigned_at timestamptz,
+  PRIMARY KEY (quiz_id, student_id)
+)
+
+<span class="c">-- Attempts: one row per student per try; the timing authority</span>
+<span class="k">attempts</span> (
+  id           uuid PK,
+  quiz_id      uuid FK,
+  student_id   uuid FK,
+  quiz_version int,                       <span class="c">-- pins the snapshot the student saw</span>
+  started_at   timestamptz,               <span class="c">-- server time, set on start</span>
+  deadline_at  timestamptz,  <span class="c">-- min(started_at + duration, quiz.ends_at); precomputed</span>
+  submitted_at timestamptz NULL,
+  submit_kind  enum('manual','auto','forced','kicked') NULL,
+  score        numeric NULL,
+  status       enum('in_progress','submitted','graded','kicked'),
+  violation_count int DEFAULT 0,          <span class="c">-- v2: guardrail violations accumulated</span>
+  kicked_by    uuid NULL FK -> users.id,  <span class="c">-- v2: teacher/admin who removed the student</span>
+  kick_reason  text NULL,                 <span class="c">-- v2: required when kicked; shown in audit</span>
+  UNIQUE (quiz_id, student_id, attempt_no)
+)
+
+<span class="k">attempt_answers</span> (
+  attempt_id   uuid FK,
+  question_id  uuid FK,
+  response     jsonb,
+  is_correct   boolean NULL,              <span class="c">-- filled by grader</span>
+  points_awarded numeric NULL,
+  time_spent_ms  int,                     <span class="c">-- accumulated focus time, for analytics</span>
+  saved_at     timestamptz,               <span class="c">-- last autosave</span>
+  PRIMARY KEY (attempt_id, question_id)
+)
+
+<span class="k">imports</span> (id, quiz_id, uploaded_by, file_ref, status
+          enum('validating','failed','ready','committed'),
+          row_count, error_report jsonb)
+
+<span class="k">attempt_events</span> (                          <span class="c">-- append-only realtime + audit trail</span>
+  id BIGSERIAL, attempt_id FK, type text, payload jsonb, at timestamptz
+)
+
+<span class="k">audit_log</span> (id, actor_id, action, resource_type, resource_id, detail jsonb, at)
+</pre>
+  </div>
+
+  <h3>Notes on the model</h3>
+  <ul class="doc">
+    <li><strong>Snapshot on publish.</strong> Publishing copies the question set into an immutable version. Editing a scheduled quiz creates version n+1; attempts record which version they ran against, so results always match what the student actually saw.</li>
+    <li><strong><code>deadline_at</code> is precomputed</strong> at attempt start as <code>min(started_at + duration_sec, quiz.ends_at)</code>. Every autosave and the final submit are validated against this one column - a single comparison, no clock math scattered around the codebase.</li>
+    <li><strong><code>attempt_events</code> doubles as replay.</strong> The realtime dashboard is driven by these events; because they persist, a teacher who opens the dashboard late (or the admin, after the fact) gets an accurate timeline, not just whatever they happened to be connected for.</li>
+    <li><strong>Assignments are rows, not JSON.</strong> The student's quiz list is a simple indexed join: <code>quiz_assignments WHERE student_id = ?</code>. Group assignment is expanded to individual rows at assignment time, so removing a student from a group never silently revokes an already-assigned quiz.</li>
+    <li><strong>Kicked attempts are terminal, not deleted.</strong> A kick flips <code>status</code> to <code>kicked</code> in the same transaction that records who and why. The row, its answers, and its event trail survive for audit and dispute resolution; only new writes are refused.</li>
+  </ul>
+</section>
+
+<!-- ============ 6. LIFECYCLE ============ -->
+<section id="lifecycle">
+  <p class="eyebrow">Section 06</p>
+  <h2>Quiz lifecycle</h2>
+  <p>
+    A quiz moves through five states. Transitions into and out of <strong>live</strong> are executed
+    by the scheduler worker on server time, never by a client request.
+  </p>
+
+  <div class="diagram-wrap">
+    <div class="lifecycle">
+      <div class="state">
+        <div class="s-name">Draft</div>
+        <div class="s-desc">Authoring: add, edit, import questions</div>
+      </div>
+      <div class="s-arrow">publish + schedule<div class="line"></div></div>
+      <div class="state">
+        <div class="s-name">Scheduled</div>
+        <div class="s-desc">Snapshot frozen, audience assigned, visible as "upcoming"</div>
+      </div>
+      <div class="s-arrow">starts_at reached<div class="line"></div></div>
+      <div class="state live">
+        <div class="s-name">Live</div>
+        <div class="s-desc">Students can start attempts; teacher dashboard streaming</div>
+      </div>
+      <div class="s-arrow">ends_at reached<div class="line"></div></div>
+      <div class="state">
+        <div class="s-name">Closed</div>
+        <div class="s-desc">Open attempts force-submitted, grading runs, results release</div>
+      </div>
+      <div class="s-arrow">teacher archives<div class="line"></div></div>
+      <div class="state">
+        <div class="s-name">Archived</div>
+        <div class="s-desc">Read-only; analytics retained</div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="doc">
+    <li><strong>Draft → Scheduled</strong> requires: at least one question, a valid window (<code>starts_at &lt; ends_at</code>, in the future), a duration, and at least one assigned student. The publish action snapshots questions and writes the version.</li>
+    <li><strong>Scheduled → Live / Live → Closed</strong> are fired by a scheduler that enqueues an <code>open_quiz</code> / <code>close_quiz</code> job at the exact timestamps. The API additionally validates state lazily on read (if a request arrives after <code>starts_at</code> but before the job ran, the quiz is treated as live), so a delayed job can never block students.</li>
+    <li><strong>Reschedule / cancel</strong> is allowed while Scheduled. Once Live, the teacher can only extend <code>ends_at</code>, force-close early, or kick individual students (section 10); all three actions are audited and broadcast to connected students.</li>
+  </ul>
+</section>
+
+<!-- ============ 7. AUTHORING ============ -->
+<section id="authoring">
+  <p class="eyebrow">Section 07</p>
+  <h2>Question authoring &amp; bulk upload</h2>
+
+  <h3>One-by-one authoring</h3>
+  <p>
+    The authoring UI is a straightforward CRUD flow against <code>POST /quizzes/:id/questions</code>.
+    Each question is validated on save (a correct answer must exist among the options, points &gt; 0,
+    choice types need 2-8 options). Questions are reorderable; <code>position</code> is a dense integer
+    the API rewrites on reorder. Autosave in the editor means a teacher never loses a half-written question.
+  </p>
+
+  <h3>Bulk upload pipeline</h3>
+  <p>
+    Bulk upload is asynchronous and transactional: the file is fully validated before a single
+    question row is written, and the commit is all-or-nothing so a quiz can never end up with
+    half an import.
+  </p>
+  <ol class="doc">
+    <li><strong>Template.</strong> The teacher downloads a CSV/XLSX template: <code>type, question, option_a..option_f, correct, points</code>. One row per question.</li>
+    <li><strong>Upload.</strong> The file goes to object storage via a pre-signed URL; the API creates an <code>imports</code> row in state <code>validating</code> and enqueues a job. Limit: 10 MB / 500 rows.</li>
+    <li><strong>Validate.</strong> The import worker parses every row and collects errors per row and column (unknown type, missing correct answer, correct answer not among options, duplicate question text within the file, malformed points). Nothing is written to <code>questions</code> yet.</li>
+    <li><strong>Review.</strong> The teacher sees a preview: n rows parsed, m errors, with each failing row shown inline. If there are errors, the state is <code>failed</code> with a downloadable error report; the teacher fixes the file and re-uploads.</li>
+    <li><strong>Commit.</strong> On a clean file the state becomes <code>ready</code>; the teacher confirms and the worker inserts all rows in one transaction, tagged <code>source = 'import'</code> with the <code>import_id</code> for provenance. Imported questions are ordinary questions afterwards - editable one-by-one like any other.</li>
+  </ol>
+
+  <div class="callout">
+    <span class="co-label">Why async</span>
+    <p>
+      Parsing and validating 500 rows with images is too slow for a request cycle, and a synchronous
+      import that dies halfway leaves a corrupted quiz. The job-queue pipeline gives retries,
+      progress reporting, and a clean failure mode for free.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 8. SCHEDULING ============ -->
+<section id="scheduling">
+  <p class="eyebrow">Section 08</p>
+  <h2>Scheduling &amp; audience visibility</h2>
+
+  <h3>The live window</h3>
+  <p>
+    A quiz has three time controls, all set by the teacher at publish:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Meaning</th><th>Enforced where</th></tr></thead>
+      <tbody>
+        <tr><td><code>starts_at</code></td><td>The earliest moment any assigned student can start an attempt. Before this, the quiz shows as "upcoming" with a countdown.</td><td><code>POST /attempts</code> rejects earlier starts; scheduler flips status</td></tr>
+        <tr><td><code>ends_at</code></td><td>Hard close. No new attempts may start, and every open attempt is force-submitted at this moment regardless of remaining personal time.</td><td>Scheduler job + <code>deadline_at</code> clamp</td></tr>
+        <tr><td><code>duration_sec</code></td><td>Per-attempt time budget, e.g. 30 minutes inside a 2-hour window. A student starting at any point gets <code>min(duration, time-to-close)</code>.</td><td>Precomputed into <code>attempts.deadline_at</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    All timestamps are stored in UTC and rendered in each user's timezone. The student client shows a
+    countdown driven by the server-provided deadline plus a clock-offset estimate; the client countdown
+    is cosmetic - the server enforces the real one.
+  </p>
+
+  <h3>Audience selection</h3>
+  <p>
+    Visibility is a whitelist. When publishing (or any time before close), the teacher picks the audience
+    from students the admin has placed in the system: individually via search, or by selecting a group,
+    which expands to individual <code>quiz_assignments</code> rows. A student's quiz list is therefore
+    exactly one query, and there is no path by which an unassigned student can even learn the quiz exists -
+    quiz detail endpoints return 404 (not 403) for unassigned students to avoid leaking existence.
+  </p>
+  <ul class="doc">
+    <li>Adding students while a quiz is live is allowed (late invite); removing a student who has an in-progress attempt from the <em>assignment</em> is blocked. Interrupting a live attempt goes through the explicit kick control (section 10) instead, so every interruption is attributed, reasoned, and audited.</li>
+    <li>Assignment changes emit notifications (in-app, plus optional email) so students see new quizzes without polling.</li>
+  </ul>
+</section>
+
+<!-- ============ 9. ATTEMPT FLOW ============ -->
+<section id="attempt">
+  <p class="eyebrow">Section 09</p>
+  <h2>Attempt flow &amp; timing enforcement</h2>
+
+  <h3>Starting an attempt</h3>
+  <p>
+    <code>POST /quizzes/:id/attempts</code> runs one transactional check: the caller is assigned,
+    the quiz is live (window check on server time), and attempts used &lt; <code>max_attempts</code>.
+    On success it creates the attempt with <code>started_at = now()</code> and
+    <code>deadline_at = least(now() + duration, ends_at)</code>, then returns the question set
+    <strong>without the <code>correct</code> field</strong> - answer keys never leave the server
+    until results are released.
+  </p>
+
+  <h3>During the attempt</h3>
+  <ul class="doc">
+    <li><strong>Autosave.</strong> Every answer change is debounced (2 s) and PUT to <code>/attempts/:id/answers/:questionId</code>. The server rejects writes where <code>now() &gt; deadline_at + grace</code> (grace = 5 s for network jitter). Saves are idempotent upserts keyed on <code>(attempt_id, question_id)</code>.</li>
+    <li><strong>Resume.</strong> On reload or reconnect, <code>GET /attempts/:id</code> returns saved answers, current server time, and the deadline, so the student lands exactly where they were with an accurate countdown.</li>
+    <li><strong>Heartbeat.</strong> The attempt WebSocket sends a heartbeat every 10 s; missing heartbeats mark the student "disconnected" on the teacher's dashboard but do not pause the clock.</li>
+  </ul>
+
+  <h3>Ending an attempt</h3>
+  <p>Three exits, all funneled through the same idempotent <code>submit(attempt_id, kind)</code> routine:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Kind</th><th>Trigger</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td><code>manual</code></td><td>Student clicks Submit</td><td>Validated against deadline, confirmed with an "n unanswered" prompt</td></tr>
+        <tr><td><code>auto</code></td><td><code>deadline_at</code> reached</td><td>A per-attempt timer job fires at the deadline; whatever is autosaved becomes the submission</td></tr>
+        <tr><td><code>forced</code></td><td>Quiz <code>ends_at</code> / teacher force-close</td><td>The close job sweeps all in-progress attempts of the quiz</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Submission enqueues a grading job: choice and true/false questions are compared against the snapshot key;
+    short answers use normalized exact/numeric matching. Grading writes <code>is_correct</code>,
+    <code>points_awarded</code>, and the attempt <code>score</code>, then emits a <code>graded</code> event.
+    Because grading is a pure function of (snapshot, answers), reruns are safe.
+  </p>
+
+  <div class="callout warn">
+    <span class="co-label">Edge case: the disappearing student</span>
+    <p>
+      A student who closes their laptop mid-attempt never sends a submit. The deadline timer job is the
+      safety net: it fires server-side at <code>deadline_at</code> and auto-submits the autosaved answers.
+      This is why answers are persisted on every change rather than at submit time.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 10. GUARDRAILS & KICK ============ -->
+<section id="guardrails">
+  <p class="eyebrow">Section 10</p>
+  <h2>Attempt guardrails &amp; kick control <span class="num">v2</span></h2>
+  <p class="lede">
+    v2 adds a light integrity layer to the attempt player, plus the one moderation power teachers
+    asked for most: removing a candidate from a quiz while it is running. The design principle is
+    that <strong>client signals are evidence, server actions are enforcement</strong> - nothing the
+    browser reports is trusted to block anything by itself, and nothing the browser suppresses can
+    keep the server from terminating an attempt.
+  </p>
+
+  <h3>Guardrails during an attempt</h3>
+  <p>
+    Guardrails are configured per quiz before publish and snapshotted with the question set, so the
+    rules cannot change under a student mid-window. Each one can be off, warn-only, or counted
+    toward the violation ladder.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Guardrail</th><th>What it does</th><th>Policy options</th></tr></thead>
+      <tbody>
+        <tr><td>Fullscreen lock</td><td>The attempt player requests fullscreen at start; leaving fullscreen raises a violation and overlays a "return to fullscreen" blocker.</td><td>off / warn / count</td></tr>
+        <tr><td>Focus tracking</td><td>Window blur and tab switches are reported with their duration (<code>visibilitychange</code> + <code>blur</code>), so the teacher sees "left the tab for 40 s", not just a flag.</td><td>off / warn / count</td></tr>
+        <tr><td>Clipboard &amp; context menu block</td><td>Copy, cut, paste, and right-click are disabled inside the player; attempts to use them are logged.</td><td>off / on (logged)</td></tr>
+        <tr><td>Single active session</td><td>Carried over from v1: starting the attempt from a second device invalidates the first socket and is logged as an event.</td><td>always on</td></tr>
+        <tr><td>Violation ladder</td><td>After <code>max_violations</code> counted violations, the configured action fires: <code>flag</code> (dashboard only), <code>auto_submit</code> (attempt submitted as-is), or <code>notify</code> (prompt the teacher to decide). Default: flag at 3.</td><td>flag / auto_submit / notify</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Every violation follows the same pipeline as any attempt event: the client reports it over the
+    attempt WebSocket (REST fallback), the Attempt module increments <code>attempts.violation_count</code>,
+    appends an <code>attempt_events</code> row, and publishes <code>attempt.violation</code> to the quiz
+    channel. The student sees a warning toast ("Violation 2 of 3 - stay in the quiz window"); the
+    teacher's roster row gains an amber badge with the running count and the violation types on hover.
+  </p>
+
+  <div class="callout warn">
+    <span class="co-label">Honest limits</span>
+    <p>
+      Browser guardrails deter and document; they do not make cheating impossible. A student can use a
+      second device, and a hostile client can fail to report events. That is why violations are framed
+      as evidence for the teacher rather than automatic punishment, why the default ladder action is
+      <code>flag</code> rather than <code>auto_submit</code>, and why the kick decision stays with a human.
+    </p>
+  </div>
+
+  <h3>Kicking a candidate</h3>
+  <p>
+    The kick is the teacher's server-authoritative remedy, available on every roster row of the live
+    dashboard for their own quizzes (and to the admin on any quiz). It is deliberately a two-step UI -
+    pick a reason (canned list plus free text), then confirm - because it is destructive to the
+    student's session and lands in the audit log verbatim.
+  </p>
+  <div class="diagram-wrap">
+    <div class="seq">
+      <div class="seq-row"><span class="seq-actor">Teacher dashboard</span><span class="seq-dir">-&gt;</span><span class="seq-msg"><code>POST /attempts/:id/kick {reason}</code> - policy check: caller owns the quiz or is admin</span></div>
+      <div class="seq-row"><span class="seq-actor">Attempt module</span><span class="seq-dir">-&gt;</span><span class="seq-msg">One transaction: <code>status='kicked'</code>, <code>submit_kind='kicked'</code>, <code>kicked_by</code>, <code>kick_reason</code>, <code>submitted_at=now()</code>; audit row written</span></div>
+      <div class="seq-row"><span class="seq-actor">Attempt module</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Publishes <code>attempt.kicked</code>; enqueues grading of whatever was autosaved</span></div>
+      <div class="seq-row"><span class="seq-actor">Realtime gateway</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Delivers a lockout message to the student's <code>attempt:{id}</code> socket, then force-closes it; fans the event to the monitor channel</span></div>
+      <div class="seq-row"><span class="seq-actor">Student client</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Renders the removed-from-quiz screen with the reason. If the socket message was lost, the next autosave returns <code>409 ATTEMPT_KICKED</code> and triggers the same screen</span></div>
+    </div>
+  </div>
+  <ul class="doc">
+    <li><strong>Enforcement is the status flip, not the socket.</strong> The moment the transaction commits, every autosave and submit for that attempt is rejected by the same <code>status = 'in_progress'</code> check that guards the deadline. A student who blocks WebSockets, freezes the tab, or replays requests gains nothing.</li>
+    <li><strong>Kicked work is graded, not discarded.</strong> Autosaved answers are graded normally and the result is flagged <code>kicked</code> wherever scores appear; the teacher can override the score to zero per attempt. Discarding work silently would make disputes unresolvable.</li>
+    <li><strong>Re-admission is a new attempt, not a resurrection.</strong> If the kick was a mistake, <code>POST /attempts/:id/readmit</code> grants that student one extra attempt slot (audited); they start fresh with whatever time remains in the window. The kicked attempt stays in the record.</li>
+    <li><strong>No kick storms.</strong> Kick and re-admit are rate-limited per teacher and always require the reason field - a moderation action you cannot explain is one you should not be taking.</li>
+  </ul>
+
+  <div class="callout">
+    <span class="co-label">Design decision</span>
+    <p>
+      Kick reuses the existing idempotent <code>submit(attempt_id, kind)</code> routine with
+      <code>kind='kicked'</code> rather than introducing a parallel termination path. One funnel means
+      the deadline check, grading trigger, event emission, and idempotency guarantees are shared -
+      a kick that races an auto-submit resolves cleanly to whichever committed first.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 11. REALTIME ============ -->
+<section id="realtime">
+  <p class="eyebrow">Section 11</p>
+  <h2>Live attempt tracking</h2>
+  <p>
+    While a quiz is live, the owning teacher's dashboard shows a roster of assigned students, each in one of
+    the states <strong>not started / in progress / disconnected / submitted / kicked</strong>, with the current
+    question number, answered count, violation badge, and elapsed time updating in real time. The kick control
+    lives on each in-progress row. The admin can open the same dashboard for any quiz (read-only except for
+    the kick escalation power).
+  </p>
+
+  <h3>Event pipeline</h3>
+  <div class="diagram-wrap">
+    <div class="seq">
+      <div class="seq-row"><span class="seq-actor">Student client</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Action (start, answer autosave, navigate, submit, heartbeat) hits the Attempt module over REST/WS</span></div>
+      <div class="seq-row"><span class="seq-actor">Attempt module</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Persists the change, appends a row to <code>attempt_events</code>, publishes to Redis channel <code>quiz:{quiz_id}:events</code></span></div>
+      <div class="seq-row"><span class="seq-actor">Realtime gateway</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Subscribed to the channel; fans the event out to every authorized WebSocket on <code>quiz:{quiz_id}:monitor</code></span></div>
+      <div class="seq-row"><span class="seq-actor">Teacher dashboard</span><span class="seq-dir">-&gt;</span><span class="seq-msg">Applies the event to its in-memory roster; UI cell updates in &lt; 1 s end to end</span></div>
+    </div>
+  </div>
+
+  <h3>Event vocabulary</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Event</th><th>Payload</th><th>Dashboard effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>attempt.started</code></td><td>student_id, attempt_id, deadline_at</td><td>Row moves to "in progress", countdown starts</td></tr>
+        <tr><td><code>attempt.progress</code></td><td>current_question, answered_count</td><td>Progress bar and question indicator update</td></tr>
+        <tr><td><code>attempt.disconnected</code></td><td>last_seen_at</td><td>Row flagged amber "disconnected" (clock keeps running)</td></tr>
+        <tr><td><code>attempt.reconnected</code></td><td>-</td><td>Flag cleared</td></tr>
+        <tr><td><code>attempt.violation</code></td><td>type, duration_ms, violation_count</td><td>Amber badge increments; violation type shown on hover (v2)</td></tr>
+        <tr><td><code>attempt.kicked</code></td><td>kicked_by, reason</td><td>Row moves to "kicked"; student client shows lockout screen (v2)</td></tr>
+        <tr><td><code>attempt.submitted</code></td><td>submit_kind, answered_count</td><td>Row moves to "submitted"; summary counters update</td></tr>
+        <tr><td><code>attempt.graded</code></td><td>score</td><td>Score appears (visible per quiz result policy)</td></tr>
+        <tr><td><code>quiz.extended / quiz.closed</code></td><td>new ends_at</td><td>Banner to teacher and all in-progress students</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Design details</h3>
+  <ul class="doc">
+    <li><strong>Authorization at subscribe time.</strong> Joining <code>quiz:{id}:monitor</code> requires being the quiz owner or an admin; joining <code>attempt:{id}</code> requires owning that attempt. The gateway checks once at subscribe and revalidates on token refresh.</li>
+    <li><strong>Snapshot + delta.</strong> On connect the dashboard first fetches <code>GET /quizzes/:id/live</code> (current roster state materialized from <code>attempts</code> + recent <code>attempt_events</code>), then applies streamed deltas. This makes late joins and reconnects consistent - no missed-event drift.</li>
+    <li><strong>Throttling.</strong> <code>attempt.progress</code> is coalesced per student to at most 1 event/2 s; a 500-student quiz peaks around 250 events/s, trivial for Redis pub/sub and a single gateway node.</li>
+    <li><strong>Degradation.</strong> If the WebSocket cannot connect (restrictive school network), the dashboard falls back to polling the snapshot endpoint every 10 s. Students' attempts never depend on the socket - REST autosave is the primary write path.</li>
+  </ul>
+</section>
+
+<!-- ============ 12. ANALYTICS ============ -->
+<section id="analytics">
+  <p class="eyebrow">Section 12</p>
+  <h2>Analytics</h2>
+  <p>
+    Analytics answer three questions at three altitudes: how did a <strong>student</strong> do, how did a
+    <strong>quiz</strong> perform, and how active/effective is a <strong>teacher</strong>. The first two are
+    visible to the owning teacher and the admin; the third is admin-only (teachers see their own).
+  </p>
+
+  <h3>What is computed</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Level</th><th>Metrics</th><th>Visible to</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Per student</td>
+          <td>Score and percentile per quiz, accuracy trend over time, average time per question, completion rate (assigned vs attempted), strength/weakness by topic tag</td>
+          <td>Owning teacher, admin, the student (self)</td>
+        </tr>
+        <tr>
+          <td>Per quiz</td>
+          <td>Score distribution (histogram), mean/median, participation rate, per-question item analysis: difficulty (p-value), discrimination (point-biserial), option-pick rates, average time on question, integrity summary (violations per student, kicked attempts)</td>
+          <td>Owning teacher, admin</td>
+        </tr>
+        <tr>
+          <td>Per teacher</td>
+          <td>Quizzes created/conducted, total student attempts, average participation, average class score, grading turnaround (auto, so effectively publish-to-results latency)</td>
+          <td>Admin (teacher sees own)</td>
+        </tr>
+        <tr>
+          <td>Org-wide</td>
+          <td>Active users, quizzes per week, platform participation, cohort comparisons across groups</td>
+          <td>Admin</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>How it is computed</h3>
+  <p>
+    v1 needs no separate analytics store. Two mechanisms cover everything:
+  </p>
+  <ul class="doc">
+    <li><strong>Rollup on close.</strong> When a quiz closes and grading finishes, a job writes one <code>quiz_stats</code> row (distribution buckets, mean, item-analysis JSON) and upserts <code>student_stats</code>. Dashboards read these precomputed rows, so the heavy queries run once, not per page view.</li>
+    <li><strong>Read replica for exploration.</strong> Ad-hoc admin queries and CSV exports run against a Postgres read replica, keeping reporting load off the transactional path (important while quizzes are live).</li>
+  </ul>
+  <p>
+    Item analysis deserves the precomputation: point-biserial correlation per question requires joining
+    every answer with every attempt score. Done at close time for a 500-student quiz it is milliseconds;
+    done live per dashboard load it would be the slowest query in the system.
+  </p>
+</section>
+
+<!-- ============ 13. API ============ -->
+<section id="api">
+  <p class="eyebrow">Section 13</p>
+  <h2>API surface</h2>
+  <p>REST, JSON, versioned under <code>/api/v1</code>. The interesting subset:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Endpoint</th><th>Role</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /users</code></td><td>Admin</td><td>Provision a teacher or student (generates a first-login credential)</td></tr>
+        <tr><td><code>PATCH /users/:id</code></td><td>Admin</td><td>Deactivate, reset password, edit profile, group membership</td></tr>
+        <tr><td><code>POST /quizzes</code></td><td>Teacher</td><td>Create draft quiz</td></tr>
+        <tr><td><code>POST /quizzes/:id/questions</code></td><td>Teacher</td><td>Add a question (one-by-one authoring)</td></tr>
+        <tr><td><code>POST /quizzes/:id/imports</code></td><td>Teacher</td><td>Register a bulk upload; returns pre-signed URL + import id</td></tr>
+        <tr><td><code>POST /imports/:id/commit</code></td><td>Teacher</td><td>Commit a validated import transactionally</td></tr>
+        <tr><td><code>POST /quizzes/:id/publish</code></td><td>Teacher</td><td>Snapshot questions, set window + duration, transition to scheduled</td></tr>
+        <tr><td><code>PUT /quizzes/:id/assignments</code></td><td>Teacher</td><td>Set the audience (student ids and/or group ids)</td></tr>
+        <tr><td><code>GET /quizzes/assigned</code></td><td>Student</td><td>Upcoming, live, and past quizzes for the caller</td></tr>
+        <tr><td><code>POST /quizzes/:id/attempts</code></td><td>Student</td><td>Start an attempt (window + assignment + attempt-count check)</td></tr>
+        <tr><td><code>PUT /attempts/:id/answers/:qid</code></td><td>Student</td><td>Autosave one answer (idempotent, deadline-checked)</td></tr>
+        <tr><td><code>POST /attempts/:id/submit</code></td><td>Student</td><td>Manual submit</td></tr>
+        <tr><td><code>POST /attempts/:id/events</code></td><td>Student</td><td>Report a guardrail violation (REST fallback for the attempt socket) (v2)</td></tr>
+        <tr><td><code>POST /attempts/:id/kick</code></td><td>Teacher/Admin</td><td>Terminate a live attempt with a required reason; audited (v2)</td></tr>
+        <tr><td><code>POST /attempts/:id/readmit</code></td><td>Teacher/Admin</td><td>Grant a kicked student one fresh attempt inside the window; audited (v2)</td></tr>
+        <tr><td><code>GET /quizzes/:id/live</code></td><td>Teacher/Admin</td><td>Roster snapshot for the live dashboard</td></tr>
+        <tr><td><code>WS /realtime</code></td><td>All</td><td>Channels: <code>quiz:{id}:monitor</code>, <code>attempt:{id}</code>, <code>user:{id}:notify</code></td></tr>
+        <tr><td><code>GET /analytics/quizzes/:id</code></td><td>Teacher/Admin</td><td>Quiz stats + item analysis</td></tr>
+        <tr><td><code>GET /analytics/students/:id</code></td><td>Teacher/Admin</td><td>Student performance profile (teacher: assigned students only)</td></tr>
+        <tr><td><code>GET /analytics/teachers/:id</code></td><td>Admin</td><td>Teacher activity and outcomes</td></tr>
+        <tr><td><code>GET /audit</code></td><td>Admin</td><td>Filterable audit log</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 14. SECURITY ============ -->
+<section id="security">
+  <p class="eyebrow">Section 14</p>
+  <h2>Security</h2>
+  <ul class="doc">
+    <li><strong>Authentication.</strong> Short-lived JWT access tokens (15 min) + rotating refresh tokens in httpOnly cookies. First login with an admin-issued credential forces a password reset. Argon2id for hashing.</li>
+    <li><strong>Authorization.</strong> Central <code>can(actor, action, resource)</code> policy invoked by every handler and by the realtime gateway at channel subscribe. Ownership checks (quiz owner, attempt owner, assignment) live in the policy, not scattered in handlers.</li>
+    <li><strong>Answer-key isolation.</strong> The <code>correct</code> field is stripped by the serializer for any student-facing response; results endpoints expose it only after the quiz closes and the teacher releases results. This is enforced at the serialization layer so no new endpoint can leak it by accident.</li>
+    <li><strong>Anti-abuse during attempts.</strong> Rate limits on answer saves (per attempt), single active session per student (starting an attempt from a second device invalidates the first socket and is logged as an event the teacher can see), and 404-not-403 responses for unassigned resources.</li>
+    <li><strong>Guardrail trust model (v2).</strong> Violation reports originate in the client and are therefore spoofable in both directions - they are stored as evidence and surfaced to the teacher, never used as a sole automatic trigger beyond the configured ladder. Enforcement actions (kick, auto-submit) are server-side status flips that hold regardless of what the client does or fails to report.</li>
+    <li><strong>Kick integrity (v2).</strong> The kick endpoint requires quiz ownership or admin role, a non-empty reason, and is rate-limited; the terminated attempt, its answers, and the reason are immutable after the fact, so a kick can be reviewed but never silently rewritten.</li>
+    <li><strong>Auditability.</strong> Every mutation by admin or teacher lands in <code>audit_log</code> with actor, action, resource, and diff. Attempt events give the same trail for students.</li>
+    <li><strong>Transport &amp; storage.</strong> TLS everywhere, encrypted at rest, pre-signed URLs for uploads scoped to content type and size, PII limited to name + email.</li>
+  </ul>
+</section>
+
+<!-- ============ 15. SCALE ============ -->
+<section id="scale">
+  <p class="eyebrow">Section 15</p>
+  <h2>Scaling &amp; tech stack</h2>
+
+  <h3>The load shape</h3>
+  <p>
+    The defining pattern is the <strong>synchronized start</strong>: a scheduled quiz means hundreds of
+    students hitting "start" in the same minute, then a steady drizzle of autosaves, then a submit spike
+    at the deadline. Design responses:
+  </p>
+  <ul class="doc">
+    <li>Attempt start is one small transaction plus a cached question snapshot (the snapshot JSON is cached in Redis at go-live, so 1,000 starts do not re-serialize the quiz 1,000 times).</li>
+    <li>Autosaves are single-row upserts on a primary key - they scale linearly and never contend with each other.</li>
+    <li>Grading and rollups are queue jobs, so the close-time spike is absorbed by the queue rather than the request path.</li>
+    <li>The API tier and realtime gateway are stateless (state lives in Postgres/Redis) and scale horizontally behind the load balancer; Redis pub/sub bridges gateway nodes so a teacher and their students need not share a node.</li>
+  </ul>
+
+  <h3>Capacity sanity check</h3>
+  <p>
+    2,000 concurrent students × 1 autosave/10 s ≈ 200 writes/s, plus ~250 coalesced events/s of fan-out.
+    A single modest Postgres instance and one Redis node handle this with an order of magnitude of headroom;
+    the horizontal story above exists for growth, not for day one.
+  </p>
+
+  <h3>Suggested stack</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>Frontend</td><td>React + TypeScript (single app, role-based routing)</td><td>One codebase for three roles; shared component library for tables/charts</td></tr>
+        <tr><td>Backend</td><td>Node.js (NestJS) or Python (FastAPI), modular monolith</td><td>First-class WebSocket support, strong typing, easy module extraction later</td></tr>
+        <tr><td>Database</td><td>PostgreSQL 16</td><td>Transactions for imports/attempts, JSONB for question bodies, read replica for reporting</td></tr>
+        <tr><td>Cache / realtime bus</td><td>Redis</td><td>Sessions, snapshot cache, pub/sub between API and gateway nodes</td></tr>
+        <tr><td>Queue</td><td>BullMQ / Celery on Redis</td><td>Imports, grading, scheduled open/close jobs, rollups - no extra infrastructure</td></tr>
+        <tr><td>Object storage</td><td>S3-compatible</td><td>Bulk-upload files, question images, report exports</td></tr>
+        <tr><td>Observability</td><td>OpenTelemetry + Grafana stack</td><td>The live-quiz minute is the moment you most need traces and dashboards</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Open questions for review</h3>
+  <ul class="doc">
+    <li>Should results release automatically at quiz close, or always require an explicit teacher action? (Current design: teacher toggle per quiz, default auto-release.)</li>
+    <li>Do we need per-question timing (each question individually timed) in v1, or is per-attempt duration enough?</li>
+    <li>Is email a hard requirement for account provisioning, or will the admin distribute printed credentials for younger students?</li>
+    <li>Should a kicked student's result be visible to them immediately with the kick reason, or withheld until the teacher releases results for the quiz?</li>
+    <li>Does the violation ladder need per-guardrail thresholds (e.g. 5 focus losses but 1 fullscreen exit), or is a single combined counter enough for v2?</li>
+  </ul>
+</section>
+
+<footer>
+  <span>MacQuiz SDD-001 · v2.0 · 2026-07-04</span>
+  <span>Sections 1-15 · Ready for design review</span>
+</footer>
+
+</main>
+</div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz v2 - Low-Cost Deployment Plan</title>
+<style>
+  :root {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --red: #A8402F;
+    --red-soft: #F4E3DF;
+    --code-bg: #10201F;
+    --code-ink: #D7E6E2;
+    --code-accent: #7FD4C2;
+    --code-comment: #6E8B85;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F181D;
+      --panel: #16232A;
+      --panel-2: #1C2C34;
+      --ink: #E4ECEC;
+      --ink-2: #AFC2C4;
+      --muted: #8AA0A4;
+      --line: #24363E;
+      --line-strong: #33484F;
+      --accent: #3FC2A8;
+      --accent-ink: #0B1A17;
+      --accent-soft: #14332F;
+      --amber: #E0A44A;
+      --amber-soft: #33290F;
+      --red: #E08D7C;
+      --red-soft: #3A211B;
+      --code-bg: #0B1417;
+      --code-ink: #C9DCD8;
+      --code-accent: #6FD1BC;
+      --code-comment: #5D7B76;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --red: #A8402F;
+    --red-soft: #F4E3DF;
+    --code-bg: #10201F;
+    --code-ink: #D7E6E2;
+    --code-accent: #7FD4C2;
+    --code-comment: #6E8B85;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F181D;
+    --panel: #16232A;
+    --panel-2: #1C2C34;
+    --ink: #E4ECEC;
+    --ink-2: #AFC2C4;
+    --muted: #8AA0A4;
+    --line: #24363E;
+    --line-strong: #33484F;
+    --accent: #3FC2A8;
+    --accent-ink: #0B1A17;
+    --accent-soft: #14332F;
+    --amber: #E0A44A;
+    --amber-soft: #33290F;
+    --red: #E08D7C;
+    --red-soft: #3A211B;
+    --code-bg: #0B1417;
+    --code-ink: #C9DCD8;
+    --code-accent: #6FD1BC;
+    --code-comment: #5D7B76;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.68;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .frame {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---------- Masthead ---------- */
+  header.masthead {
+    padding: 56px 0 36px;
+    border-bottom: 3px solid var(--ink);
+    margin-bottom: 0;
+  }
+  .doc-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 26px;
+  }
+  .doc-meta-row .k { color: var(--accent); }
+  header.masthead h1 {
+    font-family: var(--sans);
+    font-size: clamp(34px, 5vw, 54px);
+    font-weight: 750;
+    letter-spacing: -0.022em;
+    line-height: 1.06;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  header.masthead h1 .accent { color: var(--accent); }
+  .masthead-sub {
+    font-size: 19px;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 26px;
+  }
+  .chip {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    background: var(--panel);
+  }
+  .chip.solid { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  /* ---------- Layout: TOC + main ---------- */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+    padding-top: 44px;
+  }
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    font-family: var(--sans);
+    font-size: 13.5px;
+  }
+  nav.toc .toc-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+  }
+  nav.toc li a {
+    display: block;
+    padding: 6px 0 6px 16px;
+    color: var(--ink-2);
+    border-left: 2px solid transparent;
+    margin-left: -1.5px;
+    line-height: 1.35;
+  }
+  nav.toc li a:hover {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    text-decoration: none;
+  }
+  main { min-width: 0; }
+
+  @media (max-width: 980px) {
+    .body-grid { grid-template-columns: 1fr; gap: 24px; }
+    nav.toc { position: static; }
+    nav.toc ol { border-left: none; flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
+    nav.toc li a { padding: 4px 0; border-left: none; margin-left: 0; }
+  }
+
+  /* ---------- Sections & typography ---------- */
+  section { margin-bottom: 76px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h2 {
+    font-family: var(--sans);
+    font-size: 29px;
+    font-weight: 720;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 20px;
+    text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 19px;
+    font-weight: 680;
+    letter-spacing: -0.008em;
+    margin: 38px 0 12px;
+  }
+  h4 {
+    font-family: var(--sans);
+    font-size: 15.5px;
+    font-weight: 650;
+    margin: 26px 0 8px;
+  }
+  p { max-width: 70ch; margin: 0 0 16px; }
+  ul.doc, ol.doc { max-width: 68ch; margin: 0 0 18px; padding-left: 24px; }
+  ul.doc li, ol.doc li { margin-bottom: 8px; }
+  strong { font-weight: 650; }
+  .lede { font-size: 18.5px; color: var(--ink-2); }
+
+  /* ---------- Callouts ---------- */
+  .callout {
+    max-width: 72ch;
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    padding: 14px 20px;
+    margin: 22px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .callout p { margin: 0; font-size: 15.5px; }
+  .callout .co-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .callout.warn { background: var(--amber-soft); border-left-color: var(--amber); }
+  .callout.warn .co-label { color: var(--amber); }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 22px 0 30px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    font-weight: 650;
+    font-size: 12.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--line-strong);
+    white-space: nowrap;
+    background: var(--panel-2);
+  }
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  td code, p code, li code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .yes { color: var(--accent); font-weight: 700; }
+  .no  { color: var(--muted); }
+  .partial { color: var(--amber); font-weight: 650; }
+  td.center, th.center { text-align: center; }
+  .free {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  .paid {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--amber);
+    background: var(--amber-soft);
+    border: 1px solid var(--amber);
+    border-radius: 5px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Code blocks ---------- */
+  .code-block {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    margin: 20px 0 28px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .code-block .cb-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--code-comment);
+    padding: 10px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    text-transform: uppercase;
+  }
+  .code-block pre {
+    margin: 0;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.62;
+  }
+  .code-block .c { color: var(--code-comment); }
+  .code-block .k { color: var(--code-accent); }
+
+  /* ---------- Architecture diagram ---------- */
+  .diagram-wrap { overflow-x: auto; margin: 26px 0 32px; }
+  .arch {
+    min-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    font-family: var(--sans);
+  }
+  .arch-tier {
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: var(--panel);
+    padding: 16px 18px 18px;
+  }
+  .tier-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .tier-boxes { display: flex; gap: 12px; flex-wrap: nowrap; }
+  .abox {
+    flex: 1;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--panel-2);
+    padding: 12px 14px;
+    min-width: 130px;
+  }
+  .abox .abox-name {
+    font-weight: 650;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--ink);
+  }
+  .abox .abox-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .abox .abox-cost {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-top: 7px;
+  }
+  .abox.hot { border-color: var(--accent); background: var(--accent-soft); }
+  .abox.hot .abox-name { color: var(--accent); }
+  .arch-connect {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .arch-connect .arrow {
+    width: 1px;
+    height: 22px;
+    background: var(--line-strong);
+    position: relative;
+  }
+  .arch-connect .arrow::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: -3.5px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--line);
+    margin-top: 40px;
+    padding-top: 24px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+<header class="masthead">
+  <div class="doc-meta-row">
+    <span><span class="k">DOC</span> DEP-001</span>
+    <span><span class="k">COMPANION TO</span> SDD-001 v2.0</span>
+    <span><span class="k">STATUS</span> Draft for review</span>
+    <span><span class="k">DATE</span> 2026-07-04</span>
+  </div>
+  <h1>MacQuiz v2<br><span class="accent">Deployment Plan</span> - Low-Cost / Free Tier</h1>
+  <p class="masthead-sub">
+    How to run everything SDD-001 describes - Postgres, Redis pub/sub, WebSockets, workers,
+    object storage - at a monthly cost of zero, with a clearly-priced escape hatch when zero
+    is not available, and defined triggers for when to start spending real money.
+  </p>
+  <div class="status-chips">
+    <span class="chip solid">Target: $0 / month</span>
+    <span class="chip">Fallback: ~$5 / month</span>
+    <span class="chip">One VM, Docker Compose</span>
+    <span class="chip">No feature cut from v2</span>
+  </div>
+</header>
+
+<div class="body-grid">
+
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-label">Contents</div>
+  <ol>
+    <li><a href="#constraints">1. What v2 demands from hosting</a></li>
+    <li><a href="#strategy">2. Strategy: one VM, everything on it</a></li>
+    <li><a href="#topology">3. Deployment topology</a></li>
+    <li><a href="#components">4. Component choices &amp; free tiers</a></li>
+    <li><a href="#rejected">5. The managed-split path (and why not)</a></li>
+    <li><a href="#compose">6. The Compose stack</a></li>
+    <li><a href="#pipeline">7. CI/CD on free minutes</a></li>
+    <li><a href="#ops">8. Backups, monitoring, ops</a></li>
+    <li><a href="#capacity">9. Does free actually fit?</a></li>
+    <li><a href="#cost">10. Cost summary</a></li>
+    <li><a href="#triggers">11. When to start paying</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 1. CONSTRAINTS ============ -->
+<section id="constraints">
+  <p class="eyebrow">Section 01</p>
+  <h2>What v2 demands from hosting</h2>
+  <p class="lede">
+    The cheapest deployment is decided by the architecture, not by shopping.
+    Four properties of MacQuiz v2 disqualify most "free hosting" offers before price is even discussed.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Requirement</th><th>From SDD-001</th><th>What it rules out</th></tr></thead>
+      <tbody>
+        <tr><td>Long-lived WebSockets</td><td>Realtime gateway: live dashboard, attempt channel, kick delivery (&lt; 1 s)</td><td>Pure serverless functions; free tiers that cap connection duration</td></tr>
+        <tr><td>Always-on scheduler</td><td>Quiz open/close jobs and per-attempt deadline timers fire on server time</td><td>Free plans that sleep on idle (Render free spins down after 15 min - a sleeping scheduler misses <code>starts_at</code>)</td></tr>
+        <tr><td>No cold starts during a live window</td><td>1,000+ students start in the same minute; kick and auto-submit are time-critical</td><td>Scale-to-zero platforms; anything that needs 30-60 s to wake</td></tr>
+        <tr><td>Redis pub/sub + queue</td><td>Event fan-out between API and gateway; BullMQ jobs for imports, grading, rollups</td><td>HTTP-only "serverless Redis" free tiers with tight command/bandwidth caps</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    The one thing v2 does <em>not</em> demand is horizontal scale on day one. SDD-001's capacity math
+    (Section 15) put peak load at roughly 200 DB writes/s and 250 fan-out events/s. That is a workload
+    for one modest machine, and a single machine is exactly where hosting is cheapest.
+  </p>
+</section>
+
+<!-- ============ 2. STRATEGY ============ -->
+<section id="strategy">
+  <p class="eyebrow">Section 02</p>
+  <h2>Strategy: one VM, everything on it</h2>
+  <p>
+    The whole platform - API monolith, realtime gateway, workers, PostgreSQL, Redis, and the reverse
+    proxy - runs as one Docker Compose stack on a single always-free VM. Free managed services are used
+    only where they are genuinely better than self-hosting at this scale: DNS/CDN, object storage,
+    email, and CI.
+  </p>
+  <ul class="doc">
+    <li><strong>Primary host: Oracle Cloud "Always Free" ARM VM.</strong> Up to 4 Ampere OCPUs, 24 GB RAM, 200 GB block storage, 10 TB/month egress - permanently free, not a trial. This is more machine than the SDD-001 capacity model needs by an order of magnitude.</li>
+    <li><strong>Fallback host: Hetzner CX22 (2 vCPU / 4 GB, ~€3.8 ≈ ₹390/month).</strong> Oracle free-tier capacity in popular regions (including Mumbai) can take days of retrying to obtain. The fallback exists so that "free" never blocks the launch; the stack is identical either way.</li>
+    <li><strong>Colocated Postgres and Redis.</strong> At this scale, running them beside the app removes network latency from the autosave path (helps the &lt; 300 ms p95 target), removes two external dependencies, and removes two bills. The trade is that backups become our job - Section 8 handles that.</li>
+    <li><strong>Cloudflare free in front.</strong> DNS, TLS at the edge, CDN for the static frontend, WebSocket proxying (free plan supports it), and absorption of casual abuse before it reaches the VM.</li>
+  </ul>
+  <div class="callout">
+    <span class="co-label">Design decision</span>
+    <p>
+      SDD-001 chose a modular monolith so that everything communicates through Redis and a job queue
+      inside one deployable. That decision is what makes the $0 deployment possible: one process tree,
+      one VM, no per-service hosting fees, and extraction later remains a deployment change.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 3. TOPOLOGY ============ -->
+<section id="topology">
+  <p class="eyebrow">Section 03</p>
+  <h2>Deployment topology</h2>
+  <div class="diagram-wrap">
+    <div class="arch">
+      <div class="arch-tier">
+        <div class="tier-label">Edge - managed free tiers</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">Cloudflare</div><div class="abox-desc">DNS, proxy/CDN, edge TLS, WS passthrough, basic WAF</div><div class="abox-cost">FREE PLAN</div></div>
+          <div class="abox"><div class="abox-name">Cloudflare Pages</div><div class="abox-desc">React frontend (static build), unlimited bandwidth</div><div class="abox-cost">FREE PLAN</div></div>
+          <div class="abox"><div class="abox-name">Cloudflare R2</div><div class="abox-desc">Object storage: imports, images, exports, backups</div><div class="abox-cost">FREE ≤ 10 GB</div></div>
+        </div>
+      </div>
+      <div class="arch-connect"><div class="arrow"></div><span>HTTPS / WSS to origin</span><div class="arrow"></div></div>
+      <div class="arch-tier">
+        <div class="tier-label">The VM - Oracle Always Free ARM (4 OCPU / 24 GB) · Docker Compose</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">Caddy</div><div class="abox-desc">Origin TLS, reverse proxy, gzip, /api and /ws routing</div></div>
+          <div class="abox hot"><div class="abox-name">app</div><div class="abox-desc">API monolith + realtime gateway (one Node process, ws upgrade path)</div></div>
+          <div class="abox hot"><div class="abox-name">worker</div><div class="abox-desc">BullMQ: scheduler, grading, imports, rollups, deadline timers</div></div>
+          <div class="abox"><div class="abox-name">postgres:16</div><div class="abox-desc">Source of truth, on the VM's block volume</div></div>
+          <div class="abox"><div class="abox-name">redis:7</div><div class="abox-desc">Sessions, pub/sub, queue, snapshot cache</div></div>
+        </div>
+      </div>
+      <div class="arch-connect"><div class="arrow"></div><span>nightly pg_dump / on-demand uploads</span><div class="arrow"></div></div>
+      <div class="arch-tier">
+        <div class="tier-label">Supporting free services</div>
+        <div class="tier-boxes">
+          <div class="abox"><div class="abox-name">GitHub Actions</div><div class="abox-desc">CI + deploy over SSH</div><div class="abox-cost">FREE TIER</div></div>
+          <div class="abox"><div class="abox-name">GHCR</div><div class="abox-desc">Container image registry</div><div class="abox-cost">FREE (public)</div></div>
+          <div class="abox"><div class="abox-name">Brevo / Resend</div><div class="abox-desc">Credential + notification email</div><div class="abox-cost">FREE ≤ 300/day</div></div>
+          <div class="abox"><div class="abox-name">UptimeRobot</div><div class="abox-desc">External health checks + alerting</div><div class="abox-cost">FREE ≤ 50 monitors</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p>
+    Note what is <em>not</em> here: no load balancer, no managed Kubernetes, no per-connection realtime
+    SaaS (Pusher/Ably), no managed queue. Each of those is either a bill or a free tier with limits that
+    a live-quiz spike would blow through.
+  </p>
+</section>
+
+<!-- ============ 4. COMPONENTS ============ -->
+<section id="components">
+  <p class="eyebrow">Section 04</p>
+  <h2>Component choices &amp; free tiers</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>SDD-001 component</th><th>Deployed as</th><th>Cost</th><th>Limit that matters</th></tr></thead>
+      <tbody>
+        <tr><td>Frontend (React)</td><td>Static build on Cloudflare Pages</td><td><span class="free">$0</span></td><td>500 builds/month - far above need</td></tr>
+        <tr><td>API gateway + modules</td><td><code>app</code> container (Node/NestJS)</td><td><span class="free">$0</span></td><td>VM RAM/CPU only</td></tr>
+        <tr><td>Realtime gateway</td><td>Same <code>app</code> process, <code>/ws</code> upgrade path</td><td><span class="free">$0</span></td><td>~2k sockets ≈ &lt; 1 GB RAM; fine</td></tr>
+        <tr><td>Import/grading workers</td><td><code>worker</code> container (BullMQ)</td><td><span class="free">$0</span></td><td>Shares VM cores; queue absorbs bursts</td></tr>
+        <tr><td>PostgreSQL</td><td><code>postgres:16</code> container + named volume</td><td><span class="free">$0</span></td><td>Backups are our responsibility (Section 8)</td></tr>
+        <tr><td>Redis (cache/bus/queue)</td><td><code>redis:7</code> container, AOF on</td><td><span class="free">$0</span></td><td>None at this scale</td></tr>
+        <tr><td>Object storage</td><td>Cloudflare R2, S3-compatible API</td><td><span class="free">$0 ≤ 10 GB</span></td><td>Zero egress fees - the reason to pick R2 over S3</td></tr>
+        <tr><td>Scheduled open/close</td><td>BullMQ delayed jobs in <code>worker</code></td><td><span class="free">$0</span></td><td>Needs the always-on VM (why serverless lost)</td></tr>
+        <tr><td>Email</td><td>Brevo free (300/day) or Resend (3k/month)</td><td><span class="free">$0</span></td><td>Credential mails are low-volume; fits</td></tr>
+        <tr><td>Observability</td><td>Grafana Cloud free (metrics/logs/traces) + UptimeRobot</td><td><span class="free">$0</span></td><td>14-day retention on free - acceptable</td></tr>
+        <tr><td>DNS + TLS + CDN</td><td>Cloudflare free + Caddy (Let's Encrypt at origin)</td><td><span class="free">$0</span></td><td>-</td></tr>
+        <tr><td>Domain name</td><td>Registrar of choice</td><td><span class="paid">~$10/yr</span></td><td>The one near-unavoidable cost; skip with a college subdomain (e.g. under <code>rbmi.in</code>) for a true $0</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 5. REJECTED PATH ============ -->
+<section id="rejected">
+  <p class="eyebrow">Section 05</p>
+  <h2>The managed-split path (and why it lost)</h2>
+  <p>
+    The popular free-tier recipe - app on Render/Railway, Postgres on Neon or Supabase, Redis on
+    Upstash - was evaluated and rejected as the primary path. It is a fine pattern for a CRUD app;
+    MacQuiz is not one.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Piece</th><th>Free-tier offer</th><th>Why it breaks MacQuiz v2</th></tr></thead>
+      <tbody>
+        <tr><td>Render (free web service)</td><td>750 h/month, sleeps after 15 min idle</td><td>A sleeping instance misses <code>open_quiz</code>/<code>close_quiz</code> jobs and cold-starts ~1 min into the go-live herd. Disqualifying.</td></tr>
+        <tr><td>Railway / Fly.io</td><td>$5 one-time or usage credit</td><td>Not actually free past the first weeks; fine products, but then Hetzner is cheaper and simpler.</td></tr>
+        <tr><td>Neon Postgres</td><td>0.5 GB, scale-to-zero compute</td><td>Compute suspends when idle; first autosave after wake eats a multi-second cold start against a &lt; 300 ms p95 target. Also adds WAN latency to every write.</td></tr>
+        <tr><td>Upstash Redis</td><td>500k commands/month</td><td>One live quiz (heartbeats every 10 s, autosaves, pub/sub fan-out) burns the monthly command budget in days; per-command pricing inverts the design's "chatty Redis is fine" assumption.</td></tr>
+        <tr><td>Pusher / Ably free</td><td>100-200 concurrent connections</td><td>One 500-student quiz exceeds the cap; per-connection pricing punishes exactly our load shape.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <span class="co-label">The pattern</span>
+    <p>
+      Every managed free tier is shaped for apps that are mostly idle and lightly connected.
+      MacQuiz is the opposite: idle for days, then intensely busy and massively connected for one hour.
+      A VM does not care about that shape; per-request and per-connection pricing does.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 6. COMPOSE ============ -->
+<section id="compose">
+  <p class="eyebrow">Section 06</p>
+  <h2>The Compose stack</h2>
+  <p>
+    One file defines the whole backend. The app image is built once in CI and pulled here;
+    Postgres and Redis pin major versions and persist to named volumes on the VM's block storage.
+  </p>
+  <div class="code-block">
+    <div class="cb-title">docker-compose.yml (abridged)</div>
+    <pre>
+<span class="k">services:</span>
+  caddy:
+    image: caddy:2
+    ports: [<span class="c">"80:80"</span>, <span class="c">"443:443"</span>]
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile, caddy_data:/data]
+
+  app:                            <span class="c"># API monolith + realtime gateway (/ws)</span>
+    image: ghcr.io/ORG/macquiz-app:${TAG}
+    env_file: .env.production
+    depends_on: [postgres, redis]
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 4g } } }
+
+  worker:                         <span class="c"># BullMQ: scheduler, grading, imports, rollups</span>
+    image: ghcr.io/ORG/macquiz-app:${TAG}
+    command: node dist/worker.js
+    env_file: .env.production
+    depends_on: [postgres, redis]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    volumes: [pg_data:/var/lib/postgresql/data]
+    environment: { POSTGRES_DB: macquiz }
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: redis-server --appendonly yes   <span class="c"># queue jobs survive restarts</span>
+    volumes: [redis_data:/data]
+    restart: unless-stopped
+
+<span class="k">volumes:</span> { pg_data: {}, redis_data: {}, caddy_data: {} }
+</pre>
+  </div>
+  <ul class="doc">
+    <li><strong>API and realtime gateway share one process</strong> at this tier. SDD-001 keeps them separable; here, separation would only add a container without adding capacity. Splitting is a Compose edit when the time comes (Section 11).</li>
+    <li><strong>Redis AOF persistence is on</strong> so delayed jobs (quiz open/close, deadline timers) survive a restart. Belt and braces: the worker also re-scans Postgres for due-but-unfired transitions at boot - the lazy state validation SDD-001 already requires.</li>
+    <li><strong>Firewall:</strong> only 80/443 open to the world (and Cloudflare IPs at that), SSH on a non-standard port with key-only auth. Postgres and Redis are never exposed; they live on the Compose network.</li>
+  </ul>
+</section>
+
+<!-- ============ 7. CI/CD ============ -->
+<section id="pipeline">
+  <p class="eyebrow">Section 07</p>
+  <h2>CI/CD on free minutes</h2>
+  <ol class="doc">
+    <li><strong>On pull request:</strong> lint, typecheck, unit + integration tests (Postgres/Redis as GitHub Actions services). Public repos get unlimited free minutes; private repos get 2,000/month - enough for this pipeline many times daily.</li>
+    <li><strong>On merge to main:</strong> build the ARM64 image (Actions ARM runners are free for public repos; otherwise <code>buildx</code> cross-compile), push to GHCR, then SSH to the VM: <code>TAG=sha docker compose pull app worker &amp;&amp; docker compose up -d app worker</code>.</li>
+    <li><strong>Migrations</strong> run in the app's entrypoint before it accepts traffic, and deploys are refused by a pre-deploy check while any quiz is <code>live</code> - a self-imposed deploy window, which costs nothing and prevents the worst incident this platform could have.</li>
+    <li><strong>Frontend:</strong> Cloudflare Pages builds from the same repo on push; preview deployments per PR are free.</li>
+  </ol>
+</section>
+
+<!-- ============ 8. OPS ============ -->
+<section id="ops">
+  <p class="eyebrow">Section 08</p>
+  <h2>Backups, monitoring, ops</h2>
+  <h3>Backups - the non-negotiable part of self-hosted Postgres</h3>
+  <ul class="doc">
+    <li><strong>Nightly <code>pg_dump</code></strong> (custom format, compressed) from a cron container, uploaded to a versioned R2 bucket. Attempt data for a whole academic year fits in single-digit GB - well under the free 10 GB.</li>
+    <li><strong>Retention:</strong> 7 daily + 8 weekly dumps, pruned by the same job. R2 object versioning protects against a bad prune.</li>
+    <li><strong>Restore drill once per term:</strong> pull the latest dump into a scratch container and run the smoke tests against it. An untested backup is a hope, not a backup.</li>
+    <li><strong>Extra belt during exams:</strong> a pre-quiz-window dump is triggered automatically by the scheduler when any quiz enters <code>scheduled</code> for the same day.</li>
+  </ul>
+  <h3>Monitoring on $0</h3>
+  <ul class="doc">
+    <li><strong>UptimeRobot</strong> pings <code>/healthz</code> (checks DB + Redis + queue depth) every 5 min from outside, alerting by email/Telegram - catches the "VM died" class of failure that self-hosted monitoring cannot see.</li>
+    <li><strong>Grafana Cloud free tier</strong> receives OpenTelemetry metrics and logs from the app: autosave p95, WS connection count, queue lag, violation/kick event rates. The SDD-001 observability intent survives at $0, just with 14-day retention.</li>
+    <li><strong>Watchtower is deliberately absent:</strong> images update only via the deploy pipeline, never automatically under a live quiz.</li>
+  </ul>
+</section>
+
+<!-- ============ 9. CAPACITY ============ -->
+<section id="capacity">
+  <p class="eyebrow">Section 09</p>
+  <h2>Does free actually fit?</h2>
+  <p>
+    Re-running SDD-001's capacity model against the free VM:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Load driver</th><th>Peak estimate</th><th>Free VM headroom</th></tr></thead>
+      <tbody>
+        <tr><td>Autosave writes</td><td>2,000 students × 1/10 s ≈ 200 writes/s, single-row PK upserts</td><td>Postgres on 4 ARM cores + NVMe-backed volume handles thousands/s</td></tr>
+        <tr><td>WebSocket connections</td><td>~2,000 student sockets + dashboards</td><td>~0.5-1 GB RAM in Node; VM has 24 GB</td></tr>
+        <tr><td>Event fan-out</td><td>~250 coalesced events/s through Redis pub/sub</td><td>Redis pub/sub is comfortable to ~100k msg/s on one core</td></tr>
+        <tr><td>Go-live herd</td><td>1,000 attempt-starts in ~60 s; snapshot served from Redis cache</td><td>~17 starts/s of small transactions - negligible</td></tr>
+        <tr><td>Grading spike at close</td><td>2,000 attempts × ~30 questions</td><td>Queue-absorbed; minutes of one worker core, latency-insensitive</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    The free tier is not the compromise in this plan - it is over-provisioned roughly 10× for the
+    stated load. The genuine compromises are operational: single-region, single-node, self-managed
+    backups, and a deploy freeze during live windows instead of zero-downtime rollouts.
+  </p>
+</section>
+
+<!-- ============ 10. COST ============ -->
+<section id="cost">
+  <p class="eyebrow">Section 10</p>
+  <h2>Cost summary</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tier</th><th>Compute</th><th>Everything else</th><th>Monthly total</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Tier 0 - target</td>
+          <td>Oracle Always Free ARM VM</td>
+          <td>Cloudflare free + Pages + R2, GHCR, Actions, Brevo, UptimeRobot, Grafana Cloud - all free tiers</td>
+          <td><span class="free">$0</span> (+ ~$10/yr domain, or $0 on a college subdomain)</td>
+        </tr>
+        <tr>
+          <td>Tier 1 - fallback</td>
+          <td>Hetzner CX22 (~€3.8 ≈ ₹390) if Oracle capacity is unobtainable</td>
+          <td>Identical free stack</td>
+          <td><span class="paid">~$5 / ₹390</span></td>
+        </tr>
+        <tr>
+          <td>Tier 2 - comfort</td>
+          <td>Hetzner CX32 + a second small VM as warm standby with streaming replica</td>
+          <td>Identical free stack + paid backup redundancy (B2)</td>
+          <td><span class="paid">~$15-20</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">
+    <span class="co-label">Recommendation</span>
+    <p>
+      Provision Tier 0 now (Oracle sign-up and ARM capacity hunting can run in the background),
+      launch on Tier 1 if the VM is not secured by launch week, and treat Tier 2 as the first
+      spend once real exams depend on the platform. The stack is byte-identical across all three.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 11. TRIGGERS ============ -->
+<section id="triggers">
+  <p class="eyebrow">Section 11</p>
+  <h2>When to start paying</h2>
+  <p>
+    "Free" is the right choice until a specific, observable trigger fires. Spending before a trigger
+    is waste; spending after ignoring one is an incident report.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Trigger</th><th>Observed as</th><th>First paid move</th></tr></thead>
+      <tbody>
+        <tr><td>Real exams with consequences</td><td>Stakeholders would call downtime an emergency</td><td>Tier 2: warm standby + replica (~$15/mo) and a status page</td></tr>
+        <tr><td>Sustained &gt; 3-4k concurrent</td><td>WS memory or autosave p95 trending up during windows</td><td>Split gateway to its own container/VM (the Compose edit SDD-001 planned for)</td></tr>
+        <tr><td>Storage growth</td><td>R2 &gt; 10 GB (images, exports, backups)</td><td>R2 paid: $0.015/GB-month, still no egress fees</td></tr>
+        <tr><td>Backup anxiety</td><td>RPO of 24 h no longer acceptable</td><td>WAL archiving to R2 (pgBackRest) for point-in-time recovery - ~$0, only effort</td></tr>
+        <tr><td>Email volume</td><td>&gt; 300 notifications/day</td><td>Brevo/Resend first paid rung (~$10-15/mo), or notification digests to stay free</td></tr>
+        <tr><td>Ops time exceeds bills</td><td>VM babysitting costs more attention than ~$25/mo is worth</td><td>Managed Postgres + two app VMs behind a load balancer; the monolith moves unchanged</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <span>MacQuiz DEP-001 · v1.0 · 2026-07-04 · companion to SDD-001 v2.0</span>
+  <span>Sections 1-11 · Ready for review</span>
+</footer>
+
+</main>
+</div>
+</div>
+
+</body>
+</html>
