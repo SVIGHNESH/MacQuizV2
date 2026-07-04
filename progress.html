@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz v2 - Build Log</title>
+<style>
+  :root {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F181D; --panel: #16232A; --panel-2: #1C2C34;
+      --ink: #E4ECEC; --ink-2: #AFC2C4; --muted: #8AA0A4;
+      --line: #24363E; --line-strong: #33484F;
+      --accent: #3FC2A8; --accent-ink: #0B1A17; --accent-soft: #14332F;
+      --amber: #E0A44A; --amber-soft: #33290F;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 96px; }
+  header h1 { font-size: 1.9rem; margin: 0 0 4px; }
+  header p { color: var(--muted); margin: 0 0 40px; }
+  .entry {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 24px 28px; margin-bottom: 28px;
+  }
+  .entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .entry-head h2 { font-size: 1.2rem; margin: 0; }
+  .tag {
+    font-family: var(--mono); font-size: 0.72rem; padding: 2px 8px;
+    border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--line);
+  }
+  .tag.plan { background: var(--amber-soft); color: var(--amber); }
+  .meta { color: var(--muted); font-size: 0.82rem; font-family: var(--mono); margin-bottom: 14px; }
+  .entry ul { margin: 10px 0 0; padding-left: 22px; }
+  .entry li { margin-bottom: 6px; color: var(--ink-2); }
+  .entry li strong { color: var(--ink); }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+  .exit {
+    margin-top: 14px; padding: 10px 14px; border-left: 3px solid var(--accent);
+    background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: 0.92rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MacQuiz v2 - Build Log</h1>
+    <p>High-level record of what was built between commits, newest first. Milestones follow <code>docs/12-implementation-plan.md</code>.</p>
+  </header>
+
+  <!-- New entries go directly below this line, newest first. -->
+
+  <section class="entry">
+    <div class="entry-head">
+      <h2>Milestone 0 - Backend skeleton and dev stack</h2>
+      <span class="tag">milestone 0</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after cfe22fa</div>
+    <ul>
+      <li><strong>Go monorepo scaffolded</strong> under <code>server/</code>: single <code>macquiz</code> binary with <code>serve</code> (API) and <code>worker</code> (jobs) modes, matching the two-container Compose topology from the deployment plan.</li>
+      <li><strong>Module boundaries laid down</strong> as packages with documented responsibilities: <code>authusers</code>, <code>quiz</code>, <code>attempt</code>, <code>analytics</code>, <code>realtime</code>, <code>worker</code> - each doc.go states what the module owns and what it must never do, straight from the architecture doc.</li>
+      <li><strong>HTTP layer</strong>: chi router with request ID, real IP, logging, panic recovery, and timeout middleware; <code>GET /healthz</code> liveness endpoint reporting version/commit; graceful shutdown on SIGTERM with a 10 s drain.</li>
+      <li><strong>Docker Compose dev stack</strong>: Postgres 16, Redis 7 (AOF on), app, and worker; healthcheck-gated startup; non-default host ports (5433/6380) so it coexists with host-local databases.</li>
+      <li><strong>Distroless production image</strong>: multi-stage Dockerfile producing a static ~15 MB binary image shared by app and worker.</li>
+      <li><strong>Contract and CI seeded</strong>: <code>api/openapi.yaml</code> (spec-first, oapi-codegen-ready) covering <code>/healthz</code>; GitHub Actions running gofmt, vet, tests, and build; Makefile for the common loops.</li>
+    </ul>
+    <div class="exit">Exit criterion met: <code>docker compose up</code> serves the health check; unit tests green.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
+      <h2>Backend language decision: Go</h2>
+      <span class="tag plan">decision</span>
+    </div>
+    <div class="meta">commit cfe22fa &middot; "Choosen the GO over the nodejs"</div>
+    <ul>
+      <li>Chose Go over Node.js for the backend: tens of MB of resident memory on the free-tier VM, true multi-core concurrency for WebSockets and grading, and one static binary that runs as both app and worker.</li>
+      <li>Stack locked in across the docs: chi router, coder/websocket, pgx, River (Postgres-backed job queue), PostgreSQL 16, Redis 7.</li>
+    </ul>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
+      <h2>Documentation layout</h2>
+      <span class="tag plan">docs</span>
+    </div>
+    <div class="meta">commit 558f623 &middot; "Created the layout"</div>
+    <ul>
+      <li>Distilled the three source HTML documents (system design, deployment plan, design system) into twelve working docs under <code>docs/</code>: requirements, architecture, data model, API, realtime events, attempt lifecycle, authoring/imports/analytics, security, deployment, operations, frontend design system, and the milestone implementation plan.</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

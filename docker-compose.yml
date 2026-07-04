@@ -1,0 +1,69 @@
+# MacQuiz v2 development stack (docs/09-deployment.md section 4).
+# Production adds Caddy in front; in development the app is hit directly.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: macquiz
+      POSTGRES_PASSWORD: macquiz
+      POSTGRES_DB: macquiz
+    # Non-default host ports so the stack coexists with host-local
+    # Postgres/Redis installs; in-network services still use 5432/6379.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U macquiz -d macquiz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # AOF on for session durability (docs/09-deployment.md section 4).
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: ./server
+    command: ["serve"]
+    environment:
+      MACQUIZ_ADDR: ":8080"
+      MACQUIZ_DATABASE_URL: postgres://macquiz:macquiz@postgres:5432/macquiz?sslmode=disable
+      MACQUIZ_REDIS_URL: redis://redis:6379/0
+      MACQUIZ_ENV: development
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./server
+    command: ["worker"]
+    environment:
+      MACQUIZ_DATABASE_URL: postgres://macquiz:macquiz@postgres:5432/macquiz?sslmode=disable
+      MACQUIZ_REDIS_URL: redis://redis:6379/0
+      MACQUIZ_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
