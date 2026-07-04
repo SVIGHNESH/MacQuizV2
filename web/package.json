@@ -1,0 +1,30 @@
+{
+  "name": "macquiz-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "typecheck": "tsc -b",
+    "generate:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "openapi-typescript": "^7.13.0",
+    "oxlint": "^1.71.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.1.1"
+  }
+}

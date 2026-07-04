@@ -73,6 +73,23 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 0 - Frontend scaffold and shared contract wiring</h2>
+      <span class="tag">milestone 0</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after b3a7640</div>
+    <ul>
+      <li><strong>React + TypeScript SPA scaffolded</strong> under <code>web/</code> (Vite 8, React 19, strict TypeScript), completing the monorepo layout from the implementation plan: <code>web/</code> + <code>server/</code> + <code>api/openapi.yaml</code>.</li>
+      <li><strong>Contract-driven client</strong>: <code>npm run generate:api</code> generates <code>src/api/schema.d.ts</code> from <code>api/openapi.yaml</code> (openapi-typescript), consumed by a typed <code>openapi-fetch</code> client - the frontend cannot drift from the spec, and CI fails if the generated file is stale.</li>
+      <li><strong>Design system implemented as tokens</strong>: every color, type level, radius, elevation, focus ring, and motion value from <code>docs/11-frontend-design-system.md</code> lives as CSS custom properties in <code>src/styles/tokens.css</code>; components consume tokens, never raw hex. Inter is genuinely self-hosted (variable woff2 bundled into the build) and <code>prefers-reduced-motion</code> is respected globally.</li>
+      <li><strong>First screen from the recipes</strong>: a system-status card (brand mark, eyebrow, page title, tint-background status chip, tabular-numeral metadata) that calls <code>GET /healthz</code> through the typed client.</li>
+      <li><strong>Dev topology matches production</strong>: the Vite dev server proxies <code>/api</code> and <code>/healthz</code> to the Go API on :8080, keeping requests same-origin exactly as Caddy will in production, so the httpOnly auth cookies of Milestone 1 need no CORS.</li>
+      <li><strong>CI grew a <code>web</code> job</strong>: npm ci, generated-client drift check, oxlint, and <code>tsc -b</code> + production build; Makefile gained <code>web-dev</code>, <code>web-build</code>, <code>web-lint</code>, and <code>generate-api</code> targets.</li>
+    </ul>
+    <div class="exit">Milestone 0 exit fully met: Go API + SPA verified live end-to-end (health card renders real version/commit/time through the dev proxy, screenshot-checked in headless Chromium); lint, typecheck, and build green.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 0 - Database schema and migrations</h2>
       <span class="tag">milestone 0</span>
     </div>

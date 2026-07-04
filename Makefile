@@ -1,7 +1,7 @@
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 
-.PHONY: build test vet fmt run-server run-worker migrate up down
+.PHONY: build test vet fmt run-server run-worker migrate up down web-dev web-build web-lint generate-api
 
 build:
 	cd server && go build -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)" -o bin/macquiz ./cmd/macquiz
@@ -29,3 +29,15 @@ up:
 
 down:
 	docker compose down
+
+web-dev:
+	cd web && npm run dev
+
+web-build:
+	cd web && npm run build
+
+web-lint:
+	cd web && npm run lint
+
+generate-api:
+	cd web && npm run generate:api

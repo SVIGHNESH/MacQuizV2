@@ -1,0 +1,88 @@
+/*
+ * MacQuiz design tokens - the single source of truth from
+ * docs/11-frontend-design-system.md. Components consume these custom
+ * properties and never raw hex values.
+ */
+:root {
+  /* Neutral ramp */
+  --color-ink: #131a26;
+  --color-text-strong: #344054;
+  --color-text-secondary: #667085;
+  --color-text-muted: #98a2b3;
+  --color-border-input: #d0d5dd;
+  --color-border-hairline: #e9ebef;
+  --color-well: #f2f4f7;
+  --color-page: #f4f5f7;
+  --color-table-header: #fafbfc;
+  --color-surface: #ffffff;
+
+  /* Primary / interactive (blue is spent only on interaction) */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-tint: #eff4ff;
+  --color-primary-on-tint: #1849a9;
+  --color-primary-selection-wash: #f5f8ff;
+
+  /* Success / submitted */
+  --color-success: #079455;
+  --color-success-dot: #12b76a;
+  --color-success-tint: #ecfdf3;
+  --color-success-on-tint: #067647;
+
+  /* Warning / integrity (evidence, not judgment) */
+  --color-warning: #dc6803;
+  --color-warning-dot: #f79009;
+  --color-warning-tint: #fffaeb;
+  --color-warning-on-tint: #93370d;
+
+  /* Danger / live / kick */
+  --color-danger: #d92d20;
+  --color-danger-hover: #b42318;
+  --color-danger-tint: #fef3f2;
+  --color-danger-on-tint: #b42318;
+
+  /* Chart fills: primary plus its 40% tints; semantic only with meaning */
+  --color-chart-tint-1: #b3ccf9;
+  --color-chart-tint-2: #c7d7fe;
+
+  /* Dark slate ramp - reserved for the leaderboard dark island only */
+  --color-slate-950: #020617;
+  --color-slate-900: #0f172a;
+  --color-slate-800: #1e293b;
+  --color-slate-400: #94a3b8;
+
+  /* Typography (Inter Variable, self-hosted; hierarchy via weight) */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --text-display: 750 34px/1.15 var(--font-sans);
+  --text-page-title: 750 22px/1.2 var(--font-sans);
+  --text-card-title: 650 15px/1.35 var(--font-sans);
+  --text-body: 450 13.5px/1.5 var(--font-sans);
+  --text-secondary: 450 12.5px/1.45 var(--font-sans);
+  --text-eyebrow: 650 11px/1.3 var(--font-sans);
+  --tracking-display: -0.025em;
+  --tracking-page-title: -0.02em;
+  --tracking-card-title: -0.008em;
+  --tracking-eyebrow: 0.1em;
+
+  /* Radius tier - grows with element size */
+  --radius-control: 8px;
+  --radius-button: 10px;
+  --radius-option-row: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Two elevations only */
+  --shadow-resting: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-floating: 0 24px 64px -16px rgba(16, 24, 40, 0.4);
+  --shadow-primary-lift: 0 1px 2px rgba(37, 99, 235, 0.4);
+
+  /* Focus and overlays */
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  --overlay-modal: rgba(13, 18, 28, 0.52);
+
+  /* Motion */
+  --motion-micro: 0.15s ease;
+  --motion-entrance: 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-pulse-period: 2s;
+  --motion-progress: width 0.4s ease;
+}

@@ -1,6 +1,5 @@
 # CI per docs/09-deployment.md section 5: on pull request run lint and tests.
-# Redis service container and the frontend job are added when the milestones
-# that need them land.
+# The Redis service container is added when the milestone that needs it lands.
 name: CI
 
 on:
@@ -43,3 +42,26 @@ jobs:
         run: go test ./...
       - name: go build
         run: go build ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install
+        run: npm ci
+      - name: generated API client is in sync with api/openapi.yaml
+        run: |
+          npm run generate:api
+          git diff --exit-code -- src/api/schema.d.ts
+      - name: lint
+        run: npm run lint
+      - name: typecheck and build
+        run: npm run build
