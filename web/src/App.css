@@ -5,6 +5,12 @@
   padding: 24px;
 }
 
+.boot-note {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
 .card {
   width: min(420px, 100%);
   background: var(--color-surface);
@@ -60,18 +66,6 @@
   color: var(--color-ink);
 }
 
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 0;
-}
-
-.status-label {
-  font: 600 13.5px/1.5 var(--font-sans);
-  color: var(--color-text-strong);
-}
-
 .chip {
   font: var(--text-eyebrow);
   letter-spacing: var(--tracking-eyebrow);
@@ -80,61 +74,173 @@
   border-radius: var(--radius-pill);
 }
 
-.chip-neutral {
-  background: var(--color-well);
-  color: var(--color-text-secondary);
+.chip-role {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
 }
 
-.chip-up {
-  background: var(--color-success-tint);
-  color: var(--color-success-on-tint);
-}
+/* Forms (login, forced password reset) */
 
-.chip-down {
-  background: var(--color-danger-tint);
-  color: var(--color-danger-on-tint);
-}
-
-.meta {
-  margin: 0;
-  padding: 14px 16px;
+.form {
   display: grid;
-  gap: 10px;
-  background: var(--color-table-header);
-  border: 1px solid var(--color-border-hairline);
+  gap: 16px;
+  padding-top: 18px;
+}
+
+.form-intro {
+  margin: 0;
+  padding-top: 14px;
+  font: var(--text-body);
+  color: var(--color-text-strong);
+}
+
+.form-intro strong {
+  font-weight: 650;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field-label {
+  font: 600 12.5px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.input {
+  appearance: none;
+  width: 100%;
+  padding: 9px 12px;
+  font: var(--text-body);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-control);
+  transition:
+    border-color var(--motion-micro),
+    box-shadow var(--motion-micro);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.field-hint {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 14px;
+  font: var(--text-secondary);
+  color: var(--color-danger-on-tint);
+  background: var(--color-danger-tint);
   border-radius: var(--radius-option-row);
 }
 
-.meta div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.form-footnote {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
-.meta dt {
+/* Buttons */
+
+.button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  padding: 10px 16px;
+  font: 600 13.5px/1.4 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-micro),
+    border-color var(--motion-micro),
+    box-shadow var(--motion-micro);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.button:disabled {
+  cursor: default;
+  background: var(--color-well);
+  border-color: var(--color-well);
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+
+.button-primary {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  box-shadow: var(--shadow-primary-lift);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.button-quiet {
+  background: var(--color-surface);
+  border-color: var(--color-border-input);
+  color: var(--color-text-strong);
+}
+
+.button-quiet:hover:not(:disabled) {
+  background: var(--color-well);
+}
+
+/* Signed-in identity */
+
+.identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+  font: 650 13px/1 var(--font-sans);
+}
+
+.identity-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.identity-name {
+  margin: 0;
+  font: 600 13.5px/1.4 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.identity-email {
+  margin: 0;
   font: var(--text-secondary);
   color: var(--color-text-secondary);
-}
-
-.meta dd {
-  margin: 0;
-  font: 550 12.5px/1.45 var(--font-sans);
-  color: var(--color-text-strong);
   overflow-wrap: anywhere;
-  text-align: right;
 }
 
 .hint {
-  margin: 0;
+  margin: 0 0 18px;
   padding: 12px 14px;
   font: var(--text-secondary);
   color: var(--color-text-secondary);
   background: var(--color-well);
   border-radius: var(--radius-option-row);
-}
-
-.hint code {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--color-text-strong);
 }

@@ -73,6 +73,23 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 1 - Web sign-in and the forced first-login password reset</h2>
+      <span class="tag">milestone 1</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after 58f31ab</div>
+    <ul>
+      <li><strong>The SPA now has real auth state</strong>: an <code>AuthProvider</code> bootstraps the session on load (<code>GET /me</code>, then one silent refresh if the 15-minute access cookie has lapsed), so a signed-in user survives a full page reload without seeing the login screen flash. All calls go through the typed <code>openapi-fetch</code> client - no hand-written fetch shapes.</li>
+      <li><strong>Sign-in screen</strong> built from the design-system recipes: token-driven inputs with the single brand focus ring, a primary button with the lift shadow, and error copy mapped from the API's stable codes - <code>INVALID_CREDENTIALS</code>, <code>RATE_LIMITED</code> (with the server's Retry-After seconds), and validation failures each read like a sentence, not a status code.</li>
+      <li><strong>Forced first-login reset screen</strong>: an account still on its admin-issued one-time password is routed to <code>Set your password</code> and nowhere else. Client-side checks (10-character minimum mirroring the server rule, confirmation match, must differ from the one-time password) catch the cheap mistakes before the round-trip; the server stays the authority.</li>
+      <li><strong>No dead end after the reset</strong>: a password change revokes every session by design, so the app immediately signs the user back in with their new credential and lands them on Home - the provisioned-teacher first-run is one continuous flow from one-time password to working session.</li>
+      <li><strong>Signed-in Home shell</strong>: identity card with avatar initials, role chip (Administrator / Teacher / Student), and sign-out - the mount point the milestone-2 workspaces will replace.</li>
+      <li><strong>Browser-level E2E harness</strong> (<code>web/e2e/auth.e2e.mjs</code>): puppeteer-core drives system Chromium through the full matrix - bad password rejected, admin signs in, session survives reload, sign-out, admin provisions a teacher over the API, teacher's first sign-in hits the forced reset, mismatch is caught, the change auto-signs-in, and the one-time password is verified dead. Eleven checks, all green, with screenshots.</li>
+    </ul>
+    <div class="exit">Milestone 1 exit criterion met end-to-end in a real browser: the admin provisions a teacher; the teacher signs in with the one-time credential, is forced through the password reset, and lands signed in - while curl-side audit rows and session revocation were already proven in the Go integration tests. Milestone 1 is complete.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 1 - Admin provisioning, groups, and the central policy</h2>
       <span class="tag">milestone 1</span>
     </div>
