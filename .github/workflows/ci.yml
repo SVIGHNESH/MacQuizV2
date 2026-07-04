@@ -1,6 +1,6 @@
 # CI per docs/09-deployment.md section 5: on pull request run lint and tests.
-# Postgres/Redis service containers and the frontend job are added when the
-# milestones that need them land.
+# Redis service container and the frontend job are added when the milestones
+# that need them land.
 name: CI
 
 on:
@@ -14,6 +14,22 @@ jobs:
     defaults:
       run:
         working-directory: server
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: macquiz
+          POSTGRES_PASSWORD: macquiz
+          POSTGRES_DB: macquiz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U macquiz -d macquiz"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      MACQUIZ_TEST_DATABASE_URL: postgres://macquiz:macquiz@localhost:5432/macquiz?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

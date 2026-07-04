@@ -73,6 +73,22 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 0 - Database schema and migrations</h2>
+      <span class="tag">milestone 0</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after 2e7dffd</div>
+    <ul>
+      <li><strong>Initial schema landed</strong>, transcribed 1:1 from <code>docs/03-data-model.md</code>: all 13 tables (users, groups, group_members, quizzes, questions, quiz_assignments, attempts, attempt_answers, imports, attempt_events, audit_log, quiz_stats, student_stats), 8 enum types, and every index from the indexing checklist.</li>
+      <li><strong>Migrations tooling</strong>: goose SQL migrations embedded into the <code>macquiz</code> binary via a new <code>migrate</code> mode, guarded by a Postgres advisory session lock so concurrent migrators at deploy time cannot interleave DDL. <code>pgx</code> joins the dependency tree as the database driver.</li>
+      <li><strong>Append-only enforced in the database</strong>: triggers reject any UPDATE or DELETE on <code>audit_log</code> and <code>attempt_events</code> (data safety invariant 5), so the rule holds even for the table owner.</li>
+      <li><strong>Compose gating</strong>: a one-shot <code>migrate</code> service runs before <code>app</code> and <code>worker</code> start (<code>service_completed_successfully</code>), so the API never takes traffic on a stale schema.</li>
+      <li><strong>Migration lifecycle test</strong>: up from zero &rarr; schema spot checks &rarr; append-only trigger checks &rarr; case-insensitive <code>citext</code> email lookup &rarr; down to zero &rarr; re-up, running against a real Postgres 16 service container in CI and the Compose database locally.</li>
+    </ul>
+    <div class="exit">Verified end-to-end: from clean volumes, <code>docker compose up --build</code> migrates then serves; <code>psql \dt</code> shows the full schema; migration test green.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 0 - Backend skeleton and dev stack</h2>
       <span class="tag">milestone 0</span>
     </div>

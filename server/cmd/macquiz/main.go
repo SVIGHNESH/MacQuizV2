@@ -3,10 +3,11 @@
 // It runs in two modes, matching the two containers of the Compose stack
 // (docs/09-deployment.md):
 //
-//	macquiz serve   - HTTP API + realtime gateway
-//	macquiz worker  - River job consumers (scheduler, grading, imports, rollups)
+//	macquiz serve    - HTTP API + realtime gateway
+//	macquiz worker   - River job consumers (scheduler, grading, imports, rollups)
+//	macquiz migrate  - apply pending schema migrations, then exit
 //
-// Both modes read the same environment configuration (internal/config).
+// All modes read the same environment configuration (internal/config).
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"syscall"
 
 	"macquiz/server/internal/config"
+	"macquiz/server/internal/db"
 	"macquiz/server/internal/httpserver"
 	"macquiz/server/internal/worker"
 )
@@ -39,7 +41,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: macquiz <serve|worker>")
+		return errors.New("usage: macquiz <serve|worker|migrate>")
 	}
 
 	cfg := config.Load()
@@ -55,9 +57,26 @@ func run() error {
 		return serve(ctx, cfg, log)
 	case "worker":
 		return worker.Run(ctx, cfg, log)
+	case "migrate":
+		return migrate(ctx, cfg, log)
 	default:
-		return fmt.Errorf("unknown mode %q (want serve or worker)", os.Args[1])
+		return fmt.Errorf("unknown mode %q (want serve, worker, or migrate)", os.Args[1])
 	}
+}
+
+func migrate(ctx context.Context, cfg config.Config, log *slog.Logger) error {
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	applied, err := db.MigrateUp(ctx, sqlDB)
+	if err != nil {
+		return err
+	}
+	log.Info("migrations applied", "count", applied)
+	return nil
 }
 
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
