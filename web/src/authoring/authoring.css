@@ -1,0 +1,589 @@
+/* Teacher authoring workspace: sidebar rail + quiz list + editor.
+   Everything consumes tokens.css custom properties; recipes follow
+   docs/11-frontend-design-system.md (rail, data table, option rows). */
+
+.workspace {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  min-height: 100vh;
+}
+
+/* Sidebar rail: white on hairline, active item = tint pill + square dot */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 18px 14px;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border-hairline);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px;
+}
+
+.brand-mark-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font: 750 16px/1 var(--font-sans);
+}
+
+.rail-brand-name {
+  font: 650 15px/1.2 var(--font-sans);
+  letter-spacing: var(--tracking-card-title);
+  color: var(--color-ink);
+}
+
+.rail-nav {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  flex: 1;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  font: 600 13.5px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-micro);
+}
+
+.rail-item:hover {
+  background: var(--color-well);
+}
+
+.rail-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.rail-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-muted);
+  transition:
+    background-color var(--motion-micro),
+    border-radius var(--motion-micro);
+}
+
+.rail-item-active {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+}
+
+.rail-item-active .rail-dot {
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+
+.rail-user {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.rail-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.avatar-small {
+  width: 32px;
+  height: 32px;
+  font: 650 11px/1 var(--font-sans);
+}
+
+.rail-identity-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  justify-items: start;
+}
+
+.rail-user-name {
+  font: 600 12.5px/1.3 var(--font-sans);
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.rail-signout {
+  width: 100%;
+}
+
+/* Main content */
+
+.workspace-main {
+  padding: 28px 32px 64px;
+  max-width: 880px;
+  width: 100%;
+  justify-self: start;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-resting);
+  padding: 20px;
+  animation: rise var(--motion-entrance) both;
+}
+
+.card-title {
+  margin: 0 0 6px;
+  font: var(--text-card-title);
+  letter-spacing: var(--tracking-card-title);
+  color: var(--color-ink);
+}
+
+/* Quiz list */
+
+.quiz-list {
+  display: grid;
+  gap: 16px;
+}
+
+.create-form {
+  display: grid;
+  gap: 14px;
+}
+
+.create-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.table-panel {
+  padding: 6px 0 0;
+  overflow: hidden;
+}
+
+.quiz-table {
+  display: grid;
+}
+
+.qt-head,
+.qt-row {
+  display: grid;
+  grid-template-columns: 1fr 110px 90px 110px 170px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+}
+
+.qt-head {
+  background: var(--color-table-header);
+  border-bottom: 1px solid var(--color-border-hairline);
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.qt-row {
+  min-height: 56px;
+  border-bottom: 1px solid var(--color-well);
+}
+
+.qt-row:last-child {
+  border-bottom: 0;
+}
+
+.qt-title {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font: 600 13.5px/1.4 var(--font-sans);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: color var(--motion-micro);
+}
+
+.qt-title:hover {
+  color: var(--color-primary);
+}
+
+.qt-title:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
+}
+
+.qt-num {
+  text-align: right;
+}
+
+.qt-date {
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.qt-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  text-align: left;
+}
+
+.empty-state .hint {
+  margin: 0;
+}
+
+/* Lifecycle chips: tint background + dark text (docs/11) */
+
+.chip-status-draft {
+  background: var(--color-well);
+  color: var(--color-text-strong);
+}
+
+.chip-status-scheduled {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+}
+
+.chip-status-live {
+  background: var(--color-danger-tint);
+  color: var(--color-danger-on-tint);
+}
+
+.chip-status-closed {
+  background: var(--color-success-tint);
+  color: var(--color-success-on-tint);
+}
+
+.chip-status-archived {
+  background: var(--color-well);
+  color: var(--color-text-muted);
+}
+
+/* Editor */
+
+.editor {
+  display: grid;
+  gap: 16px;
+}
+
+.editor-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.save-badge {
+  font: 600 12px/1.3 var(--font-sans);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+
+.save-badge-ok {
+  color: var(--color-success-on-tint);
+  background: var(--color-success-tint);
+}
+
+.save-badge-busy {
+  color: var(--color-text-secondary);
+  background: var(--color-well);
+}
+
+.save-badge-bad {
+  color: var(--color-warning-on-tint);
+  background: var(--color-warning-tint);
+}
+
+.editor-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.editor-title-field {
+  flex: 1;
+}
+
+.editor-title-input {
+  font: 650 16px/1.4 var(--font-sans);
+  letter-spacing: var(--tracking-card-title);
+}
+
+.editor-title-row .chip-status {
+  margin-top: 26px;
+}
+
+.editor-settings {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+/* Doubled class beats .input's width: 100% regardless of import order. */
+.input.input-points {
+  width: 92px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--text-body);
+  color: var(--color-text-strong);
+  min-height: 37px;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-primary);
+}
+
+/* Question cards */
+
+.question-list {
+  display: grid;
+  gap: 14px;
+}
+
+.question-card {
+  display: grid;
+  gap: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-resting);
+  padding: 18px 20px;
+  animation: rise var(--motion-entrance) both;
+}
+
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.question-index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--color-well);
+  font: 650 12px/1 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.chip-type {
+  background: var(--color-well);
+  color: var(--color-text-strong);
+}
+
+.question-head-spacer {
+  flex: 1;
+}
+
+.icon-button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  font: 600 14px/1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-micro),
+    border-color var(--motion-micro);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--color-well);
+}
+
+.icon-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.icon-button:disabled {
+  color: var(--color-text-muted);
+  border-color: var(--color-border-hairline);
+  cursor: default;
+}
+
+.button-small {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+.button-quiet-danger {
+  background: var(--color-surface);
+  border-color: var(--color-border-input);
+  color: var(--color-danger);
+}
+
+.button-quiet-danger:hover:not(:disabled) {
+  background: var(--color-danger-tint);
+  border-color: var(--color-danger);
+}
+
+.button-danger {
+  background: var(--color-danger);
+  color: var(--color-surface);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.question-text {
+  resize: vertical;
+  min-height: 44px;
+}
+
+.field-label-note {
+  font-weight: 450;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text-muted);
+}
+
+.field-error {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-danger-on-tint);
+}
+
+/* Answer option rows: selection = brand border + wash + filled marker */
+
+.option-list {
+  display: grid;
+  gap: 8px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-option-row);
+  background: var(--color-surface);
+  transition:
+    border-color var(--motion-micro),
+    background-color var(--motion-micro);
+}
+
+.option-row-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-selection-wash);
+}
+
+.option-row input[type='radio'],
+.option-row input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.option-key {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--color-well);
+  font: 650 11px/1 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.option-row-selected .option-key {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.option-text {
+  flex: 1;
+  border-color: transparent;
+  background: transparent;
+  padding: 4px 6px;
+}
+
+.option-text:hover {
+  border-color: var(--color-border-input);
+}
+
+.option-static {
+  font: var(--text-body);
+  color: var(--color-ink);
+}
+
+.add-option {
+  justify-self: start;
+}
+
+.field-points {
+  justify-items: start;
+}
+
+/* Add-question panel */
+
+.add-question-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.add-question-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.back-button {
+  padding: 8px 14px;
+}

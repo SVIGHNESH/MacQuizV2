@@ -73,6 +73,25 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 2 - The teacher authoring workspace: quiz list, editor, autosave</h2>
+      <span class="tag">milestone 2</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after 575730e</div>
+    <ul>
+      <li><strong>Teachers now land in a real workspace</strong>: after sign-in the teacher role gets the docs/11 sidebar-rail shell (brand mark, active-pill navigation with the morphing square dot, identity block with role chip and sign-out) instead of the placeholder Home card. Admin and student keep the placeholder until their milestones.</li>
+      <li><strong>Quiz list</strong> built on the design-system data-table recipe: caps header on the table-header tint, hairline dividers, lifecycle chips (Draft/Scheduled/Live/Closed/Archived as tint + dark text), tabular question counts, and created dates. A fresh teacher sees an empty state; <code>New quiz</code> opens an inline create form that lands straight in the editor. Deleting a draft is the two-step destructive pattern - a quiet outline that only turns solid red on the confirm step.</li>
+      <li><strong>The quiz editor autosaves everything</strong>: title and settings (attempts allowed 1-10, shuffle toggle) and every question are debounced 700 ms behind a shared <code>useAutosave</code> hook that discards stale responses, so the newest edit always wins and the indicator never lies. A single aggregate badge reports <code>Saving&hellip;</code> / <code>All changes saved</code> / <code>Some changes are not saved</code> across the whole screen.</li>
+      <li><strong>All four question types are editable</strong> with the option-row recipe (brand border + selection wash + filled key marker): single choice with radio markers, multi select with checkboxes, true/false rows, and short answer with an accepted-answers list. Options respect the 2-8 rule in the UI (add disabled at 8, remove disabled at 2), removing the marked option moves the single-choice marker instead of losing it, and points are validated client-side with the server's own vocabulary before a request is even made.</li>
+      <li><strong>Server field errors render inline</strong>: a 422 from the API maps onto the exact field (question text, options, correct answer, points) in the card that caused it; the card keeps the teacher's unsaved state rather than clobbering it.</li>
+      <li><strong>Reorder and delete</strong>: move up/down controls per card call the full-permutation reorder endpoint and roll back visually if the server refuses; question delete is the same two-step control and re-densifies positions server-side.</li>
+      <li><strong>New questions are born valid</strong>: each type is created with the smallest sensible complete question (server validates every save, so nothing half-broken is ever stored), then edited in place - a teacher never loses work to a failed create.</li>
+      <li><strong>Browser E2E harness for authoring</strong> (<code>web/e2e/authoring.e2e.mjs</code>): puppeteer-core drives Chromium through the whole journey - empty list, create draft, add all four types, rewrite a question (text, options, correct answer, points), watch autosave settle, reorder, two-step delete, then a full page reload proving every change persisted server-side, and back to the list showing the final question count. Nineteen checks, all green, with screenshots; the auth suite was updated for the new teacher landing and stays green (eleven checks).</li>
+    </ul>
+    <div class="exit">Milestone 2 exit criterion met in a real browser: a freshly provisioned teacher created a draft quiz and authored questions of all four types through the editor, with autosave proven by a cold reload. Milestone 2 is complete; next is Milestone 3 - publish snapshot/versioning, assignments, and the scheduler.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 2 - Quiz authoring API and the answer-key serializer boundary</h2>
       <span class="tag">milestone 2</span>
     </div>

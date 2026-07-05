@@ -6,7 +6,8 @@
 //   2. admin sign-in -> Home, session survives a reload, sign out
 //   3. admin provisions a teacher over the API (one-time credential)
 //   4. teacher first sign-in -> forced password reset (mismatch error, then
-//      success) -> auto re-login -> Home, and the one-time password is dead
+//      success) -> auto re-login -> the teacher quizzes workspace, and the
+//      one-time password is dead
 //
 // Run:  node e2e/auth.e2e.mjs
 // Env:  E2E_BASE_URL (default http://localhost:5173)
@@ -179,14 +180,14 @@ async function teacherFlow(browser, oneTimePassword) {
   await type(page, '#confirm-password', teacherFinalPassword)
   await page.click('button[type=submit]')
   check(
-    await waitForText(page, '.page-title', 'Home'),
-    'password change auto re-signs the teacher in and lands on Home',
+    await waitForText(page, '.page-title', 'Quizzes'),
+    'password change auto re-signs the teacher in and lands on the quizzes workspace',
   )
   check(
     await waitForText(page, '.chip-role', 'Teacher'),
     'teacher role chip reads Teacher',
   )
-  await shot(page, '06-teacher-home.png')
+  await shot(page, '06-teacher-workspace.png')
   await page.close()
 
   const stale = await fetch(`${BASE}/api/v1/auth/login`, {

@@ -3,6 +3,7 @@ import { useAuth } from './auth/context'
 import LoginScreen from './screens/LoginScreen'
 import ChangePasswordScreen from './screens/ChangePasswordScreen'
 import HomeScreen from './screens/HomeScreen'
+import AuthoringWorkspace from './authoring/AuthoringWorkspace'
 import './App.css'
 
 function Screens() {
@@ -24,6 +25,10 @@ function Screens() {
 
   if (state.user.must_change_password) {
     return <ChangePasswordScreen user={state.user} />
+  }
+
+  if (state.user.role === 'teacher') {
+    return <AuthoringWorkspace user={state.user} />
   }
 
   return <HomeScreen user={state.user} />

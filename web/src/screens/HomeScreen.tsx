@@ -46,8 +46,7 @@ export default function HomeScreen({ user }: { user: SessionUser }) {
 
         <p className="hint">
           You are signed in. The {ROLE_LABEL[user.role].toLowerCase()} workspace
-          arrives with the next milestone
-          {user.role === 'teacher' && ' (quiz authoring)'}
+          arrives with a later milestone
           {user.role === 'student' && ' (your assigned quizzes)'}
           {user.role === 'admin' && ' (user and group management)'}.
         </p>
