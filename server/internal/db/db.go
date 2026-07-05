@@ -16,6 +16,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver used by goose
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
+	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
+	"github.com/riverqueue/river/rivermigrate"
 )
 
 //go:embed migrations/*.sql
@@ -55,7 +57,10 @@ func newProvider(sqlDB *sql.DB) (*goose.Provider, error) {
 	return provider, nil
 }
 
-// MigrateUp applies all pending migrations and returns how many were applied.
+// MigrateUp applies all pending migrations and returns how many were
+// applied. River's queue tables (river_job and friends) are versioned by
+// River itself, not by goose, so its migrator runs alongside - the one
+// `macquiz migrate` entrypoint keeps every schema at head.
 func MigrateUp(ctx context.Context, sqlDB *sql.DB) (int, error) {
 	provider, err := newProvider(sqlDB)
 	if err != nil {
@@ -65,7 +70,16 @@ func MigrateUp(ctx context.Context, sqlDB *sql.DB) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("migrate up: %w", err)
 	}
-	return len(results), nil
+
+	riverMigrator, err := rivermigrate.New(riverdatabasesql.New(sqlDB), nil)
+	if err != nil {
+		return 0, fmt.Errorf("new river migrator: %w", err)
+	}
+	riverResults, err := riverMigrator.Migrate(ctx, rivermigrate.DirectionUp, &rivermigrate.MigrateOpts{})
+	if err != nil {
+		return 0, fmt.Errorf("migrate river up: %w", err)
+	}
+	return len(results) + len(riverResults.Versions), nil
 }
 
 // MigrateDownTo rolls back migrations down to (and not including) version.

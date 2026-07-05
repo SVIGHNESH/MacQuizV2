@@ -110,10 +110,14 @@ func TestMigrations(t *testing.T) {
 	if _, err := MigrateDownTo(ctx, sqlDB, 0); err != nil {
 		t.Fatalf("down to zero: %v", err)
 	}
+	// River's queue tables (river_*) are versioned by River's own migrator,
+	// not by goose, so goose-down-to-zero rightly leaves them standing; the
+	// reversibility invariant under test covers only our schema.
 	var tables int
 	if err := sqlDB.QueryRowContext(ctx,
 		`SELECT count(*) FROM information_schema.tables
-		 WHERE table_schema = 'public' AND table_name <> 'goose_db_version'`,
+		 WHERE table_schema = 'public' AND table_name <> 'goose_db_version'
+		   AND table_name NOT LIKE 'river\_%'`,
 	).Scan(&tables); err != nil {
 		t.Fatalf("count tables after down: %v", err)
 	}

@@ -160,6 +160,14 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	}
 	q.QuestionCount = questionCount
 
+	// The exact-timestamp transitions ride the same transaction: a quiz is
+	// never scheduled without its open/close jobs, and a failed publish
+	// leaves no orphan jobs (docs/06: "open_quiz job enqueued at the exact
+	// timestamp").
+	if err := s.enqueueWindowJobs(ctx, tx, id, in.StartsAt, in.EndsAt); err != nil {
+		return Quiz{}, err
+	}
+
 	if err := audit.Write(ctx, tx, actor.ID, "quizzes.published", "quiz", id, map[string]any{
 		"version":      newVersion,
 		"starts_at":    in.StartsAt,

@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
+
 	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
@@ -75,11 +78,21 @@ type QuizPatch struct {
 type Service struct {
 	db  *sql.DB
 	log *slog.Logger
+	// jobs is an insert-only River client (no queues, no workers): publish
+	// uses it to enqueue the open_quiz/close_quiz transitions inside its own
+	// transaction. The worker process consumes them (internal/worker).
+	jobs *river.Client[*sql.Tx]
 }
 
 // NewService wires the quiz authoring service.
 func NewService(db *sql.DB, log *slog.Logger) *Service {
-	return &Service{db: db, log: log}
+	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
+	if err != nil {
+		// The empty config is statically valid; NewClient has nothing left
+		// to reject, so this cannot happen at runtime.
+		panic(fmt.Sprintf("build insert-only river client: %v", err))
+	}
+	return &Service{db: db, log: log, jobs: jobs}
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,

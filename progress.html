@@ -73,6 +73,24 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 3 - The scheduler: River jobs flip quizzes live and closed on time</h2>
+      <span class="tag">milestone 3</span>
+    </div>
+    <div class="meta">2026-07-06 &middot; after 2cdd57a</div>
+    <ul>
+      <li><strong>River is wired in</strong> (v0.40, the Postgres-backed job queue the architecture locked in): the <code>worker</code> Compose container is no longer a no-op - it runs a real River client consuming <code>open_quiz</code>, <code>close_quiz</code>, and a periodic <code>sweep_quizzes</code> backstop. River&rsquo;s own queue tables migrate inside the same <code>macquiz migrate</code> entrypoint (goose for our schema, River&rsquo;s migrator for its own), so the one-shot Compose <code>migrate</code> service still brings a clean volume all the way to head.</li>
+      <li><strong>Publish now enqueues its transitions transactionally</strong>: the <code>open_quiz</code>/<code>close_quiz</code> jobs are inserted in the same transaction as the snapshot and status flip, scheduled at exactly <code>starts_at</code>/<code>ends_at</code> - a scheduled quiz can never exist without its jobs, and a refused publish leaves no orphans (proven in the new integration test). The quiz service carries an insert-only River client over the same <code>*sql.DB</code>; only the worker process ever works jobs.</li>
+      <li><strong>Every trigger funnels into one idempotent sweep</strong>: <code>SweepDueQuizzes</code> closes scheduled/live quizzes past <code>ends_at</code>, then opens scheduled quizzes past <code>starts_at</code>, purely from the row&rsquo;s own window. Jobs carry only the quiz id, so a job firing for a rescheduled quiz, firing twice, or firing a day late is a harmless no-op or a repair - never a wrong flip. A quiz whose whole window elapsed while the worker was down goes straight to closed, never momentarily live.</li>
+      <li><strong>The docs/02 section 4.6 backstop is real</strong>: the worker re-scans for due-but-unfired transitions at boot (an outage can never leave a quiz stuck) and repeats the sweep every minute as a periodic River job, while readers keep the lazy status derivation from the last entry - three independent layers agreeing on one state machine.</li>
+      <li><strong>Republish stays safe</strong>: rescheduling writes a fresh job pair for the new window; the stale pair stays queued and no-ops against the sweep predicates when it fires - pinned by the integration test alongside the straight-to-closed path and sweep idempotency.</li>
+      <li><strong>Tested at the process boundary too</strong>: a new worker integration test (own database, <code>macquiz_workertest</code>) publishes a quiz with a seconds-long window through the real service, runs the real <code>worker.Run</code>, and watches the <em>stored</em> row - not a derived read - flip scheduled &rarr; live &rarr; closed, then shuts the worker down cleanly. The migration lifecycle test now exempts River&rsquo;s self-versioned <code>river_*</code> tables from the goose down-to-zero check.</li>
+      <li><strong>Force-submit on close is deliberately absent</strong>: no attempts exist until Milestone 4; the submit funnel will hang off the same closed transition when it lands.</li>
+    </ul>
+    <div class="exit">Milestone 3 exit criterion verified live against the Compose stack from clean volumes: a provisioned teacher published a quiz with a 40-second-away window over curl, and the stored row flipped to <code>live</code> one second after <code>starts_at</code> and to <code>closed</code> at <code>ends_at</code> exactly, with no request touching the API - worker logs show both flips fired from their exact-timestamp jobs. The Milestone 3 backend is complete; the remaining item is the web publish/assign UI.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 3 - Publish with immutable snapshots, assignments, and the student quiz list</h2>
       <span class="tag">milestone 3</span>
     </div>
