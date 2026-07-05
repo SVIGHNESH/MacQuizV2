@@ -58,6 +58,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 			r.Mount("/auth", deps.Auth.Routes())
 			r.Mount("/users", deps.Auth.UserRoutes())
 			r.Mount("/groups", deps.Auth.GroupRoutes())
+			r.Mount("/directory", deps.Auth.DirectoryRoutes())
 			if deps.Quiz != nil {
 				r.Mount("/quizzes", deps.Quiz.QuizRoutes())
 				r.Mount("/questions", deps.Quiz.QuestionRoutes())

@@ -247,10 +247,84 @@ func TestAdminProvisioningE2E(t *testing.T) {
 		}
 	})
 
+	t.Run("directory for the audience picker", func(t *testing.T) {
+		// Terry was disabled above, so provision a fresh teacher: the
+		// directory is the teacher-readable surface the assign UI needs.
+		status, body, _ := call(t, server, "POST", "/api/v1/users",
+			map[string]string{"role": "teacher", "email": "dora@school.test", "full_name": "Dora Director"}, admin)
+		if status != 201 {
+			t.Fatalf("provision directory teacher = %d %v, want 201", status, body)
+		}
+		oneTime := body["initial_password"].(string)
+		_, _, cookies := call(t, server, "POST", "/api/v1/auth/login",
+			map[string]string{"email": "dora@school.test", "password": oneTime}, nil)
+		status, _, _ = call(t, server, "POST", "/api/v1/auth/password",
+			map[string]string{"current_password": oneTime, "new_password": "dora-owns-this-1"}, cookies)
+		if status != 204 {
+			t.Fatalf("directory teacher reset = %d, want 204", status)
+		}
+		_, _, cookies = call(t, server, "POST", "/api/v1/auth/login",
+			map[string]string{"email": "dora@school.test", "password": "dora-owns-this-1"}, nil)
+
+		// A disabled student cannot take a quiz, so the picker drops them.
+		status, _, _ = call(t, server, "PATCH", "/api/v1/users/"+studentB,
+			map[string]any{"status": "disabled"}, admin)
+		if status != 200 {
+			t.Fatalf("disable student = %d, want 200", status)
+		}
+
+		status, body, _ = call(t, server, "GET", "/api/v1/directory", nil, cookies)
+		if status != 200 {
+			t.Fatalf("teacher GET /directory = %d %v, want 200", status, body)
+		}
+		students := body["students"].([]any)
+		if len(students) != 1 {
+			t.Fatalf("directory students = %v, want only the active Ada", students)
+		}
+		ada := students[0].(map[string]any)
+		if ada["id"] != studentA || ada["full_name"] != "Ada Student" {
+			t.Fatalf("directory student = %v, want Ada (%s)", ada, studentA)
+		}
+		// The picker view carries no account-management facts.
+		for _, secret := range []string{"status", "must_change_password", "role"} {
+			if _, leaked := ada[secret]; leaked {
+				t.Fatalf("directory student leaks %q: %v", secret, ada)
+			}
+		}
+		if groups := body["groups"].([]any); len(groups) != 1 {
+			t.Fatalf("directory groups = %v, want the one cohort", groups)
+		}
+
+		// Admins read it too; students never do.
+		status, _, _ = call(t, server, "GET", "/api/v1/directory", nil, admin)
+		if status != 200 {
+			t.Fatalf("admin GET /directory = %d, want 200", status)
+		}
+		status, body, _ = call(t, server, "PATCH", "/api/v1/users/"+studentA,
+			map[string]any{"reset_password": true}, admin)
+		if status != 200 {
+			t.Fatalf("reset Ada for directory check = %d %v, want 200", status, body)
+		}
+		adaOneTime := body["initial_password"].(string)
+		_, _, adaCookies := call(t, server, "POST", "/api/v1/auth/login",
+			map[string]string{"email": "ada@school.test", "password": adaOneTime}, nil)
+		status, _, _ = call(t, server, "POST", "/api/v1/auth/password",
+			map[string]string{"current_password": adaOneTime, "new_password": "ada-owns-this-1"}, adaCookies)
+		if status != 204 {
+			t.Fatalf("ada reset = %d, want 204", status)
+		}
+		_, _, adaCookies = call(t, server, "POST", "/api/v1/auth/login",
+			map[string]string{"email": "ada@school.test", "password": "ada-owns-this-1"}, nil)
+		status, body, _ = call(t, server, "GET", "/api/v1/directory", nil, adaCookies)
+		if status != 403 || body["code"] != "FORBIDDEN" {
+			t.Fatalf("student GET /directory = %d %v, want 403 FORBIDDEN", status, body)
+		}
+	})
+
 	t.Run("audit trail", func(t *testing.T) {
 		for action, want := range map[string]int{
-			"users.created":      3, // teacher + two students
-			"users.updated":      3, // rename, disable, reset
+			"users.created":      4, // two teachers + two students
+			"users.updated":      5, // rename, disable, reset, disable Ben, reset Ada
 			"groups.created":     1,
 			"groups.members_set": 2, // set two, clear (failed swap rolled back)
 		} {

@@ -27,6 +27,12 @@ func TestCan(t *testing.T) {
 		{"admin reads audit log", admin, ActionAuditRead, Resource{}, true},
 		{"teacher cannot read audit log", teacher, ActionAuditRead, Resource{}, false},
 
+		// The audience-picker directory is readable by quiz authors and
+		// admins, never by students.
+		{"teacher reads directory", teacher, ActionDirectoryRead, Resource{}, true},
+		{"admin reads directory", admin, ActionDirectoryRead, Resource{}, true},
+		{"student cannot read directory", student, ActionDirectoryRead, Resource{}, false},
+
 		// Admin cannot author quizzes (docs/08-security.md section 2).
 		{"teacher creates quiz", teacher, ActionQuizCreate, Resource{}, true},
 		{"admin cannot create quiz", admin, ActionQuizCreate, Resource{}, false},

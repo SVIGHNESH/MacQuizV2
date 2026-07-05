@@ -8,6 +8,7 @@ import {
   type QuestionType,
   type TeacherQuestion,
 } from './model'
+import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
 
@@ -81,7 +82,7 @@ interface QuizSettingsDraft {
 }
 
 function LoadedEditor({
-  quiz,
+  quiz: initialQuiz,
   initialQuestions,
   onBack,
 }: {
@@ -89,6 +90,7 @@ function LoadedEditor({
   initialQuestions: TeacherQuestion[]
   onBack: () => void
 }) {
+  const [quiz, setQuiz] = useState(initialQuiz)
   const [questions, setQuestions] = useState(initialQuestions)
   const [settings, setSettings] = useState<QuizSettingsDraft>({
     title: quiz.title,
@@ -321,6 +323,7 @@ function LoadedEditor({
             question={question}
             index={index}
             count={questions.length}
+            editable={editable}
             onMove={moveQuestion}
             onDelete={deleteQuestion}
             onSaveState={onQuestionSaveState}
@@ -349,6 +352,14 @@ function LoadedEditor({
             ))}
           </div>
         </section>
+      )}
+
+      {(quiz.status === 'draft' || quiz.status === 'scheduled') && (
+        <PublishPanel
+          quiz={quiz}
+          questionCount={questions.length}
+          onPublished={setQuiz}
+        />
       )}
     </div>
   )

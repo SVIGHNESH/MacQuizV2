@@ -25,13 +25,15 @@ export function useAutosave<T>(
 ): SaveState {
   const [state, setState] = useState<SaveState>({ phase: 'saved' })
   const seq = useRef(0)
-  const mounted = useRef(false)
+  const lastValue = useRef(value)
 
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true
-      return
-    }
+    // Only a genuinely new value schedules a save. A mount-count guard is
+    // not enough: StrictMode re-runs effects on mount, and a ghost save of
+    // the loaded value would 409 on published quizzes (and write audit
+    // noise on drafts).
+    if (Object.is(lastValue.current, value)) return
+    lastValue.current = value
     const mySeq = ++seq.current
     setState({ phase: 'pending' })
     const timer = setTimeout(() => {

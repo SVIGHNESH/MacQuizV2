@@ -14,6 +14,8 @@ interface QuestionCardProps {
   question: TeacherQuestion
   index: number
   count: number
+  /** False once the quiz left draft: the content is a frozen snapshot. */
+  editable: boolean
   onMove: (id: string, direction: -1 | 1) => void
   onDelete: (id: string) => Promise<void>
   onSaveState: (id: string, state: SaveState) => void
@@ -35,6 +37,7 @@ export default function QuestionCard({
   question,
   index,
   count,
+  editable,
   onMove,
   onDelete,
   onSaveState,
@@ -126,57 +129,61 @@ export default function QuestionCard({
           {badge.text}
         </span>
         <span className="question-head-spacer" />
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="Move question up"
-          disabled={index === 0}
-          onClick={() => onMove(question.id, -1)}
-        >
-          ↑
-        </button>
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="Move question down"
-          disabled={index === count - 1}
-          onClick={() => onMove(question.id, 1)}
-        >
-          ↓
-        </button>
-        {confirmingDelete ? (
+        {editable && (
           <>
             <button
-              className="button button-small button-danger"
+              className="icon-button"
               type="button"
-              disabled={deleting}
-              onClick={() => {
-                setDeleting(true)
-                void onDelete(question.id).finally(() => {
-                  setDeleting(false)
-                  setConfirmingDelete(false)
-                })
-              }}
+              aria-label="Move question up"
+              disabled={index === 0}
+              onClick={() => onMove(question.id, -1)}
             >
-              {deleting ? 'Removing…' : 'Remove question'}
+              ↑
             </button>
             <button
-              className="button button-small button-quiet"
+              className="icon-button"
               type="button"
-              disabled={deleting}
-              onClick={() => setConfirmingDelete(false)}
+              aria-label="Move question down"
+              disabled={index === count - 1}
+              onClick={() => onMove(question.id, 1)}
             >
-              Keep
+              ↓
             </button>
+            {confirmingDelete ? (
+              <>
+                <button
+                  className="button button-small button-danger"
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    setDeleting(true)
+                    void onDelete(question.id).finally(() => {
+                      setDeleting(false)
+                      setConfirmingDelete(false)
+                    })
+                  }}
+                >
+                  {deleting ? 'Removing…' : 'Remove question'}
+                </button>
+                <button
+                  className="button button-small button-quiet"
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Keep
+                </button>
+              </>
+            ) : (
+              <button
+                className="button button-small button-quiet-danger"
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                Delete
+              </button>
+            )}
           </>
-        ) : (
-          <button
-            className="button button-small button-quiet-danger"
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-          >
-            Delete
-          </button>
         )}
       </header>
 
@@ -186,6 +193,7 @@ export default function QuestionCard({
           className="input question-text"
           rows={2}
           value={draft.text}
+          disabled={!editable}
           onChange={(e) => edit({ text: e.target.value })}
         />
         {fields.body && <p className="field-error">{fields.body}</p>}
@@ -214,6 +222,7 @@ export default function QuestionCard({
                     name={`correct-${question.id}`}
                     aria-label={`Option ${option.key.toUpperCase()} is correct`}
                     checked={marked}
+                    disabled={!editable}
                     onChange={() => toggleCorrect(option.key)}
                   />
                   <span className="option-key">{option.key.toUpperCase()}</span>
@@ -222,17 +231,20 @@ export default function QuestionCard({
                     type="text"
                     placeholder="Option text"
                     value={option.text}
+                    disabled={!editable}
                     onChange={(e) => setOptionText(option.key, e.target.value)}
                   />
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label={`Remove option ${option.key.toUpperCase()}`}
-                    disabled={draft.options.length <= 2}
-                    onClick={() => removeOption(option.key)}
-                  >
-                    ×
-                  </button>
+                  {editable && (
+                    <button
+                      className="icon-button"
+                      type="button"
+                      aria-label={`Remove option ${option.key.toUpperCase()}`}
+                      disabled={draft.options.length <= 2}
+                      onClick={() => removeOption(option.key)}
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -240,14 +252,16 @@ export default function QuestionCard({
           {(fields.options || fields.correct) && (
             <p className="field-error">{fields.options ?? fields.correct}</p>
           )}
-          <button
-            className="button button-small button-quiet add-option"
-            type="button"
-            disabled={draft.options.length >= 8}
-            onClick={addOption}
-          >
-            Add option
-          </button>
+          {editable && (
+            <button
+              className="button button-small button-quiet add-option"
+              type="button"
+              disabled={draft.options.length >= 8}
+              onClick={addOption}
+            >
+              Add option
+            </button>
+          )}
         </div>
       )}
 
@@ -266,6 +280,7 @@ export default function QuestionCard({
                   type="radio"
                   name={`correct-${question.id}`}
                   checked={draft.correctBool === value}
+                  disabled={!editable}
                   onChange={() => edit({ correctBool: value })}
                 />
                 <span className="option-key">{value ? 'T' : 'F'}</span>
@@ -296,30 +311,35 @@ export default function QuestionCard({
                   type="text"
                   placeholder="Accepted answer"
                   value={answer}
+                  disabled={!editable}
                   onChange={(e) => setAccepted(i, e.target.value)}
                 />
-                <button
-                  className="icon-button"
-                  type="button"
-                  aria-label={`Remove accepted answer ${i + 1}`}
-                  disabled={draft.accepted.length <= 1}
-                  onClick={() =>
-                    edit({ accepted: draft.accepted.filter((_, j) => j !== i) })
-                  }
-                >
-                  ×
-                </button>
+                {editable && (
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label={`Remove accepted answer ${i + 1}`}
+                    disabled={draft.accepted.length <= 1}
+                    onClick={() =>
+                      edit({ accepted: draft.accepted.filter((_, j) => j !== i) })
+                    }
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             ))}
           </div>
           {fields.correct && <p className="field-error">{fields.correct}</p>}
-          <button
-            className="button button-small button-quiet add-option"
-            type="button"
-            onClick={() => edit({ accepted: [...draft.accepted, ''] })}
-          >
-            Add accepted answer
-          </button>
+          {editable && (
+            <button
+              className="button button-small button-quiet add-option"
+              type="button"
+              onClick={() => edit({ accepted: [...draft.accepted, ''] })}
+            >
+              Add accepted answer
+            </button>
+          )}
         </div>
       )}
 
@@ -332,6 +352,7 @@ export default function QuestionCard({
           max={1000}
           step={0.5}
           value={Number.isFinite(draft.points) ? draft.points : ''}
+          disabled={!editable}
           onChange={(e) => edit({ points: e.target.valueAsNumber })}
         />
         {fields.points && <p className="field-error">{fields.points}</p>}

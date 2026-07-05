@@ -217,6 +217,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Students and cohorts for the audience picker (teacher, admin)
+         * @description The minimal directory a teacher needs to assign a quiz - every active student and every cohort, name-sorted. No account status, credential facts, or teacher rows; students cannot read it.
+         */
+        get: operations["getDirectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes": {
         parameters: {
             query?: never;
@@ -552,6 +572,11 @@ export interface components {
         };
         GroupResponse: {
             group: components["schemas"]["Group"];
+        };
+        /** @description The audience picker's world - active students plus cohorts. Students share the AssignedStudent shape, so the picker and the assigned audience list render from one type. */
+        DirectoryResponse: {
+            students: components["schemas"]["AssignedStudent"][];
+            groups: components["schemas"]["Group"][];
         };
         /** @description Per-quiz anti-cheat config, snapshotted with the question set at publish so rules cannot change under a student mid-window. */
         Guardrails: {
@@ -1007,6 +1032,28 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getDirectory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The assignable audience. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listQuizzes: {

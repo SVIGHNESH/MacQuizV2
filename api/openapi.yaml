@@ -4,12 +4,13 @@
 # Endpoints are added milestone by milestone; today it covers Milestone 0,
 # Milestone 1 (auth flow, admin user provisioning, groups), Milestone 2
 # (quiz authoring: draft quiz CRUD, question CRUD, reorder), and Milestone 3
-# (publish with snapshot + versioning, assignments, student quiz list).
+# (publish with snapshot + versioning, assignments, the teacher-readable
+# audience directory, student quiz list).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.5.0
+  version: 0.6.0
 servers:
   - url: /
 paths:
@@ -319,6 +320,25 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/directory:
+    get:
+      operationId: getDirectory
+      summary: Students and cohorts for the audience picker (teacher, admin)
+      description: >-
+        The minimal directory a teacher needs to assign a quiz - every
+        active student and every cohort, name-sorted. No account status,
+        credential facts, or teacher rows; students cannot read it.
+      responses:
+        "200":
+          description: The assignable audience.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/quizzes:
     get:
       operationId: listQuizzes
@@ -1062,6 +1082,22 @@ components:
       properties:
         group:
           $ref: "#/components/schemas/Group"
+    DirectoryResponse:
+      type: object
+      description: >-
+        The audience picker's world - active students plus cohorts. Students
+        share the AssignedStudent shape, so the picker and the assigned
+        audience list render from one type.
+      required: [students, groups]
+      properties:
+        students:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignedStudent"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
     Guardrails:
       type: object
       description: >-

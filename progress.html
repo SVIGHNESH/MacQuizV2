@@ -73,6 +73,23 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 3 - The web publish workspace: audience, schedule, guardrails</h2>
+      <span class="tag">milestone 3</span>
+    </div>
+    <div class="meta">2026-07-06 &middot; after 05f3095</div>
+    <ul>
+      <li><strong>Teachers needed a directory first</strong>: the user and group lists are admin-only by policy, so the assign UI had no way to offer students. A new <code>GET /api/v1/directory</code> (policy action <code>directory.read</code>, teacher and admin, never students) answers with exactly the audience-picker facts - active students as id/name/email and cohorts with member counts - and structurally nothing else: no account status, no credential flags, no teacher rows. Pinned by new policy-table rows and an integration subtest that also proves a disabled student drops out of the picker.</li>
+      <li><strong>The editor grew an Audience panel</strong>: a checkbox roster of every active student plus one-click cohort chips. Saving replaces the audience atomically over <code>PUT /assignments</code>; the server's group-expanded answer is what renders back, so the teacher sees the real resulting audience (cohort chips reset to individual checkmarks once expanded - later cohort edits never silently change a quiz audience, exactly the backend rule).</li>
+      <li><strong>Schedule &amp; publish panel</strong>: open/close window, per-attempt time limit, and the full guardrail vocabulary (fullscreen and focus tracking as off/warn/count, clipboard blocking, and the "after N violations, do X" ladder) with the documented flag-at-3 default. Cheap mistakes - empty window, past open time, absurd duration - are caught client-side in the server's own field vocabulary before any request; everything else renders the server's 422s inline, and preconditions like "assign at least one student before publishing" read as sentences next to the button.</li>
+      <li><strong>Publishing flips the whole editor</strong>: the chip goes Scheduled, a summary reads "Version n goes live ... and closes ...", the settings and every question card freeze into a read-only view (controls disappear, not just disable), and the one button becomes <code>Reschedule &amp; republish</code>, which writes version n+1. The audience stays editable while scheduled, matching the API.</li>
+      <li><strong>A real bug found by being picky about pixels</strong>: opening a published quiz showed a phantom "Not saved". React StrictMode re-runs mount effects, so <code>useAutosave</code>'s mount-count guard let a ghost save of the just-loaded value fire - a 409 against frozen quizzes and silent audit noise on drafts. The hook now schedules a save only when the value genuinely changed, and the E2E pins "opening a scheduled quiz fires no ghost autosave".</li>
+      <li><strong>Browser E2E for the whole journey</strong> (<code>web/e2e/publish.e2e.mjs</code>): a provisioned teacher, two students, and a cohort; refusal before scheduling, refusal without an audience, mixed direct + cohort assignment with the expanded count, past-window rejection, publish to Scheduled v1, cold-reload persistence, republish to v2, the Scheduled chip in the list, and the cohort student's <code>GET /quizzes/assigned</code> carrying the quiz - twenty-four checks green, with the auth (11) and authoring (19) suites still green beside it. OpenAPI is at v0.6.0 with the directory operation, regenerated into the typed client.</li>
+    </ul>
+    <div class="exit">Milestone 3 is now complete end to end: the scheduler backend went live in the previous entry, and this entry closes the remaining item - a teacher assigned an audience and published a scheduled quiz entirely in a real browser, and the assigned student's list showed it. Next is Milestone 4 - the attempt player: start transaction, autosave, deadline timer, and the submit funnel.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 3 - The scheduler: River jobs flip quizzes live and closed on time</h2>
       <span class="tag">milestone 3</span>
     </div>

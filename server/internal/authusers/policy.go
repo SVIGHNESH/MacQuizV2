@@ -16,6 +16,11 @@ const (
 	ActionGroupsManage Action = "groups.manage" // cohorts and membership
 	ActionAuditRead    Action = "audit.read"
 
+	// The minimal student-and-group directory teachers read to pick a
+	// quiz audience (docs/04-api.md: assignments take student and group
+	// ids). It exposes no account status, credentials, or teacher rows.
+	ActionDirectoryRead Action = "directory.read"
+
 	// Quiz authoring. Admin cannot author quizzes (docs/08-security.md
 	// section 2): authoring is teacher-only, and edit-shaped actions
 	// additionally require ownership.
@@ -62,6 +67,8 @@ func Can(actor User, action Action, res Resource) bool {
 	switch action {
 	case ActionUsersManage, ActionGroupsManage, ActionAuditRead:
 		return actor.Role == "admin"
+	case ActionDirectoryRead:
+		return actor.Role == "admin" || actor.Role == "teacher"
 	case ActionQuizCreate:
 		return actor.Role == "teacher"
 	case ActionQuizEdit:
