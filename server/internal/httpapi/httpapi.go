@@ -18,6 +18,7 @@ const (
 	CodeUnauthenticated        = "UNAUTHENTICATED"
 	CodeForbidden              = "FORBIDDEN"
 	CodePasswordChangeRequired = "PASSWORD_CHANGE_REQUIRED"
+	CodeQuizNotEditable        = "QUIZ_NOT_EDITABLE"
 )
 
 // ErrorBody is the wire shape of every non-2xx response.

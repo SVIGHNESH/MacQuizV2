@@ -6,11 +6,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"macquiz/server/internal/audit"
 )
 
 // Sentinel errors the HTTP layer maps onto the docs/04-api.md vocabulary.
@@ -293,21 +294,7 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context, email, password, ful
 // mutation and its audit trail commit or roll back together
 // (docs/08-security.md section 7).
 func writeAudit(ctx context.Context, tx *sql.Tx, actorID, action, resourceType, resourceID string, detail map[string]any) error {
-	var detailJSON any
-	if detail != nil {
-		b, err := json.Marshal(detail)
-		if err != nil {
-			return fmt.Errorf("marshal audit detail: %w", err)
-		}
-		detailJSON = b
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO audit_log (actor_id, action, resource_type, resource_id, detail)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		actorID, action, resourceType, resourceID, detailJSON); err != nil {
-		return fmt.Errorf("write audit row: %w", err)
-	}
-	return nil
+	return audit.Write(ctx, tx, actorID, action, resourceType, resourceID, detail)
 }
 
 // newRefreshToken returns (token, sha256(token)). The token is 256 bits of

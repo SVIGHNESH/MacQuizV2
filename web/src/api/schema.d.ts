@@ -217,6 +217,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's own quizzes (teacher)
+         * @description Newest first, with question counts. Authoring is teacher-only.
+         */
+        get: operations["listQuizzes"];
+        put?: never;
+        /** Create a draft quiz (teacher) */
+        post: operations["createQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quizzes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One quiz with its full question list (owner)
+         * @description Owner-only; the questions include the answer keys. Non-owners get 404, never 403, so quiz existence is not leaked.
+         */
+        get: operations["getQuiz"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a draft quiz and its questions (owner)
+         * @description Drafts only. Quizzes that ever left draft are never deleted - attempts may reference them; archiving is their retirement path.
+         */
+        delete: operations["deleteQuiz"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit draft settings (owner)
+         * @description Title, max_attempts, and shuffle_questions are editable while the quiz is a draft. Windows, duration, and guardrails are set at publish time.
+         */
+        patch: operations["updateQuiz"];
+        trace?: never;
+    };
+    "/api/v1/quizzes/{id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a question to a draft quiz (owner)
+         * @description Validated per type - a correct answer must exist among the options, points > 0, choice types need 2-8 options. The question is appended at the end of the running order.
+         */
+        post: operations["addQuestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quizzes/{id}/questions/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder a draft quiz's questions (owner)
+         * @description question_ids must list every question of the quiz exactly once; the API rewrites dense positions to match and returns the questions in the new order.
+         */
+        put: operations["reorderQuestions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/questions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a question from a draft quiz (owner)
+         * @description Remaining positions are re-densified.
+         */
+        delete: operations["deleteQuestion"];
+        options?: never;
+        head?: never;
+        /**
+         * Replace a question's content while its quiz is a draft (owner)
+         * @description The full question content arrives every time (the editor autosaves whole-question state), so validation always sees a complete question.
+         */
+        patch: operations["updateQuestion"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -287,6 +404,81 @@ export interface components {
             /** @description The generated one-time credential. Returned exactly once, never stored in the clear, never retrievable again. */
             initial_password?: string;
         };
+        Quiz: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            owner_id: string;
+            title: string;
+            /** @enum {string} */
+            status: "draft" | "scheduled" | "live" | "closed" | "archived";
+            /** Format: date-time */
+            starts_at: string | null;
+            /** Format: date-time */
+            ends_at: string | null;
+            duration_sec: number | null;
+            max_attempts: number;
+            shuffle_questions: boolean;
+            /** Format: date-time */
+            published_at: string | null;
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            question_count: number;
+        };
+        QuestionBody: {
+            text: string;
+            image_ref?: string;
+        };
+        QuestionOption: {
+            key: string;
+            text: string;
+        };
+        /** @description A question as any client may see it. The answer key is NOT part of this schema; only the owner-facing TeacherQuestion carries it, and the student serializer strips it structurally. */
+        Question: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            quiz_id: string;
+            position: number;
+            /** @enum {string} */
+            type: "single" | "multi" | "truefalse" | "short";
+            body: components["schemas"]["QuestionBody"];
+            options?: components["schemas"]["QuestionOption"][];
+            points: number;
+            /** @enum {string} */
+            source: "manual" | "import";
+        };
+        TeacherQuestion: components["schemas"]["Question"] & {
+            /** @description The answer key. The option key (single), option keys (multi), a boolean (truefalse), or {accepted: [...]} (short). Owner-facing responses only. */
+            correct: unknown;
+        };
+        QuestionInput: {
+            /** @enum {string} */
+            type: "single" | "multi" | "truefalse" | "short";
+            body: components["schemas"]["QuestionBody"];
+            /** @description Required for single/multi (2-8 entries); omitted otherwise. */
+            options?: components["schemas"]["QuestionOption"][];
+            /** @description The answer key; shape depends on type. Must reference existing option keys for choice types. */
+            correct: unknown;
+            /** @description Defaults to 1; must be positive. */
+            points?: number;
+        };
+        UpdateQuizRequest: {
+            title?: string;
+            max_attempts?: number;
+            shuffle_questions?: boolean;
+        };
+        QuizResponse: {
+            quiz: components["schemas"]["Quiz"];
+        };
+        QuizDetail: {
+            quiz: components["schemas"]["Quiz"];
+            questions: components["schemas"]["TeacherQuestion"][];
+        };
+        QuestionResponse: {
+            question: components["schemas"]["TeacherQuestion"];
+        };
         Group: {
             /** Format: uuid */
             id: string;
@@ -329,6 +521,15 @@ export interface components {
         };
         /** @description No such resource. Also the answer for resources the caller is not assigned to, so existence is never leaked. */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description QUIZ_NOT_EDITABLE - the quiz has been published; its question set is an immutable snapshot and drafts-only operations are refused. */
+        NotEditable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -682,6 +883,260 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listQuizzes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's quizzes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        quizzes: components["schemas"]["Quiz"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Draft created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz and its questions in position order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Draft deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+        };
+    };
+    updateQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateQuizRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated quiz. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    addQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionInput"];
+            };
+        };
+        responses: {
+            /** @description Question added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    reorderQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    question_ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Questions in the new order with rewritten positions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        questions: components["schemas"]["TeacherQuestion"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Question removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+        };
+    };
+    updateQuestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionInput"];
+            };
+        };
+        responses: {
+            /** @description The updated question. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
             422: components["responses"]["ValidationFailed"];
         };
     };

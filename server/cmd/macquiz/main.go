@@ -25,6 +25,7 @@ import (
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/httpserver"
+	"macquiz/server/internal/quiz"
 	"macquiz/server/internal/worker"
 )
 
@@ -109,12 +110,14 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
+	quizSvc := quiz.NewService(sqlDB, log)
+	quizHandler := quiz.NewHandler(quizSvc, authSvc)
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpserver.New(
 			httpserver.BuildInfo{Version: version, Commit: commit},
-			httpserver.Deps{DB: sqlDB, Auth: authHandler},
+			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler},
 		),
 	}
 

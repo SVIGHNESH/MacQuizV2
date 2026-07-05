@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"macquiz/server/internal/authusers"
+	"macquiz/server/internal/quiz"
 )
 
 // BuildInfo identifies the running binary in health responses and logs.
@@ -30,6 +31,7 @@ type BuildInfo struct {
 type Deps struct {
 	DB   *sql.DB
 	Auth *authusers.Handler
+	Quiz *quiz.Handler
 }
 
 // New returns the root HTTP handler for the API process.
@@ -56,6 +58,10 @@ func New(build BuildInfo, deps Deps) http.Handler {
 			r.Mount("/auth", deps.Auth.Routes())
 			r.Mount("/users", deps.Auth.UserRoutes())
 			r.Mount("/groups", deps.Auth.GroupRoutes())
+			if deps.Quiz != nil {
+				r.Mount("/quizzes", deps.Quiz.QuizRoutes())
+				r.Mount("/questions", deps.Quiz.QuestionRoutes())
+			}
 		})
 	}
 

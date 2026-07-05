@@ -1,13 +1,14 @@
 # MacQuiz v2 API contract (docs/04-api.md).
 # Spec-first: oapi-codegen generates the Go server interfaces and the
 # TypeScript client from this file, so frontend and backend cannot drift.
-# Endpoints are added milestone by milestone; today it covers Milestone 0
-# plus Milestone 1 (auth flow, admin user provisioning, groups).
+# Endpoints are added milestone by milestone; today it covers Milestone 0,
+# Milestone 1 (auth flow, admin user provisioning, groups), and Milestone 2
+# (quiz authoring: draft quiz CRUD, question CRUD, reorder).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.3.0
+  version: 0.4.0
 servers:
   - url: /
 paths:
@@ -317,6 +318,269 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes:
+    get:
+      operationId: listQuizzes
+      summary: List the caller's own quizzes (teacher)
+      description: Newest first, with question counts. Authoring is teacher-only.
+      responses:
+        "200":
+          description: The caller's quizzes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quizzes]
+                properties:
+                  quizzes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Quiz"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createQuiz
+      summary: Create a draft quiz (teacher)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+      responses:
+        "201":
+          description: Draft created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getQuiz
+      summary: One quiz with its full question list (owner)
+      description: >-
+        Owner-only; the questions include the answer keys. Non-owners get
+        404, never 403, so quiz existence is not leaked.
+      responses:
+        "200":
+          description: The quiz and its questions in position order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateQuiz
+      summary: Edit draft settings (owner)
+      description: >-
+        Title, max_attempts, and shuffle_questions are editable while the
+        quiz is a draft. Windows, duration, and guardrails are set at
+        publish time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuizRequest"
+      responses:
+        "200":
+          description: The updated quiz.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      operationId: deleteQuiz
+      summary: Delete a draft quiz and its questions (owner)
+      description: >-
+        Drafts only. Quizzes that ever left draft are never deleted -
+        attempts may reference them; archiving is their retirement path.
+      responses:
+        "204":
+          description: Draft deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+  /api/v1/quizzes/{id}/questions:
+    post:
+      operationId: addQuestion
+      summary: Add a question to a draft quiz (owner)
+      description: >-
+        Validated per type - a correct answer must exist among the options,
+        points > 0, choice types need 2-8 options. The question is appended
+        at the end of the running order.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionInput"
+      responses:
+        "201":
+          description: Question added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/questions/order:
+    put:
+      operationId: reorderQuestions
+      summary: Reorder a draft quiz's questions (owner)
+      description: >-
+        question_ids must list every question of the quiz exactly once; the
+        API rewrites dense positions to match and returns the questions in
+        the new order.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_ids]
+              properties:
+                question_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Questions in the new order with rewritten positions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [questions]
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeacherQuestion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/questions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateQuestion
+      summary: Replace a question's content while its quiz is a draft (owner)
+      description: >-
+        The full question content arrives every time (the editor autosaves
+        whole-question state), so validation always sees a complete question.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionInput"
+      responses:
+        "200":
+          description: The updated question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      operationId: deleteQuestion
+      summary: Remove a question from a draft quiz (owner)
+      description: Remaining positions are re-densified.
+      responses:
+        "204":
+          description: Question removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
 components:
   responses:
     Unauthorized:
@@ -341,6 +605,14 @@ components:
       description: >-
         No such resource. Also the answer for resources the caller is not
         assigned to, so existence is never leaked.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotEditable:
+      description: >-
+        QUIZ_NOT_EDITABLE - the quiz has been published; its question set is
+        an immutable snapshot and drafts-only operations are refused.
       content:
         application/json:
           schema:
@@ -480,6 +752,173 @@ components:
           description: >-
             The generated one-time credential. Returned exactly once, never
             stored in the clear, never retrievable again.
+    Quiz:
+      type: object
+      required:
+        [
+          id,
+          owner_id,
+          title,
+          status,
+          starts_at,
+          ends_at,
+          duration_sec,
+          max_attempts,
+          shuffle_questions,
+          published_at,
+          version,
+          created_at,
+          question_count,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [draft, scheduled, live, closed, archived]
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_sec:
+          type: integer
+          nullable: true
+        max_attempts:
+          type: integer
+        shuffle_questions:
+          type: boolean
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        question_count:
+          type: integer
+    QuestionBody:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+        image_ref:
+          type: string
+    QuestionOption:
+      type: object
+      required: [key, text]
+      properties:
+        key:
+          type: string
+        text:
+          type: string
+    Question:
+      type: object
+      description: >-
+        A question as any client may see it. The answer key is NOT part of
+        this schema; only the owner-facing TeacherQuestion carries it, and
+        the student serializer strips it structurally.
+      required: [id, quiz_id, position, type, body, points, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        quiz_id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        type:
+          type: string
+          enum: [single, multi, truefalse, short]
+        body:
+          $ref: "#/components/schemas/QuestionBody"
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionOption"
+        points:
+          type: number
+        source:
+          type: string
+          enum: [manual, import]
+    TeacherQuestion:
+      allOf:
+        - $ref: "#/components/schemas/Question"
+        - type: object
+          required: [correct]
+          properties:
+            correct:
+              description: >-
+                The answer key. The option key (single), option keys
+                (multi), a boolean (truefalse), or {accepted: [...]}
+                (short). Owner-facing responses only.
+    QuestionInput:
+      type: object
+      required: [type, body, correct]
+      properties:
+        type:
+          type: string
+          enum: [single, multi, truefalse, short]
+        body:
+          $ref: "#/components/schemas/QuestionBody"
+        options:
+          type: array
+          description: Required for single/multi (2-8 entries); omitted otherwise.
+          items:
+            $ref: "#/components/schemas/QuestionOption"
+        correct:
+          description: >-
+            The answer key; shape depends on type. Must reference existing
+            option keys for choice types.
+        points:
+          type: number
+          description: Defaults to 1; must be positive.
+    UpdateQuizRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 10
+        shuffle_questions:
+          type: boolean
+    QuizResponse:
+      type: object
+      required: [quiz]
+      properties:
+        quiz:
+          $ref: "#/components/schemas/Quiz"
+    QuizDetail:
+      type: object
+      required: [quiz, questions]
+      properties:
+        quiz:
+          $ref: "#/components/schemas/Quiz"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeacherQuestion"
+    QuestionResponse:
+      type: object
+      required: [question]
+      properties:
+        question:
+          $ref: "#/components/schemas/TeacherQuestion"
     Group:
       type: object
       required: [id, name, member_count, created_at]

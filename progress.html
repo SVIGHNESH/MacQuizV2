@@ -73,6 +73,24 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 2 - Quiz authoring API and the answer-key serializer boundary</h2>
+      <span class="tag">milestone 2</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after bdc047e</div>
+    <ul>
+      <li><strong>Draft quiz CRUD</strong>: <code>POST /api/v1/quizzes</code> opens a draft owned by the acting teacher; <code>GET /quizzes</code> lists the caller's own quizzes with question counts; <code>PATCH /quizzes/:id</code> edits title, max attempts, and shuffle while the quiz is a draft; <code>DELETE /quizzes/:id</code> removes a draft and its questions. Quizzes that ever left draft answer <code>409 QUIZ_NOT_EDITABLE</code> to every mutation - published question sets are immutable snapshots by design.</li>
+      <li><strong>Question CRUD with per-type validation</strong> (<code>POST /quizzes/:id/questions</code>, <code>PATCH</code>/<code>DELETE /questions/:id</code>): the docs/07 rules are enforced as field errors - a correct answer must exist among the options, points &gt; 0, choice types need 2-8 options with unique keys, true/false takes a boolean, and short answers need at least one accepted string. All four question types work end to end.</li>
+      <li><strong>Reorder with dense positions</strong>: <code>PUT /quizzes/:id/questions/order</code> accepts only a full permutation of the quiz's question ids (anything else changes nothing) and rewrites positions 1..n in one statement; deleting a question re-densifies the survivors in the same transaction, so position is always a clean dense integer.</li>
+      <li><strong>The serializer boundary, tested from day one</strong>: the internal <code>Question</code> type tags the answer key <code>json:"-"</code>, so the default serialization structurally cannot leak it; handlers must opt in via the owner-facing <code>TeacherQuestion</code> view, and the student view drops the key from the value itself. Unit tests pin all three facts before any student can even see a quiz.</li>
+      <li><strong>Authorization through the central policy</strong>: the authoring surface is teacher-only (admin and student get 403 - admins cannot author, per the security doc), and every per-quiz operation checks ownership via <code>Can</code>, answering 404 - never 403 - to non-owners so quiz existence is not leaked. Every mutation writes its audit row (<code>quizzes.created/updated/deleted</code>, <code>questions.created/updated/deleted/reordered</code>) in the same transaction, via a new shared <code>audit</code> package.</li>
+      <li><strong>Contract updated to v0.4.0</strong>: nine new operations plus the Quiz, Question, TeacherQuestion, and QuestionInput schemas in <code>api/openapi.yaml</code>, regenerated into the typed web client (drift check green).</li>
+      <li><strong>Tested at three levels</strong>: table-driven validation tests, the serializer-invariant tests, and an HTTP-level integration test in its own database driving the full authoring flow - creation, all four types, rule breakers, cross-teacher 404s, reorder, delete re-densify, the published-quiz gate, cascade delete, and exact audit-row counts.</li>
+    </ul>
+    <div class="exit">Milestone 2's API exit criterion verified live against the Compose stack: a freshly provisioned teacher created a draft quiz with questions of all four types over curl, an invalid answer key was rejected with a field error, the admin was refused authoring, reorder rewrote dense positions, and <code>audit_log</code> held one row per mutation. The web authoring workspace is the remaining Milestone 2 item.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 1 - Web sign-in and the forced first-login password reset</h2>
       <span class="tag">milestone 1</span>
     </div>
