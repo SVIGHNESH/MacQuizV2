@@ -308,6 +308,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a quiz - snapshot, version, window, guardrails (owner)
+         * @description Transitions Draft to Scheduled. Snapshots the question set and the guardrail config into an immutable version and stamps the live window. Preconditions - at least one question, starts_at < ends_at and in the future, a duration, at least one assigned student. Publishing an already-scheduled quiz reschedules it and writes version n+1; live and later states answer 409.
+         */
+        post: operations["publishQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quizzes/{id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The quiz's current audience (owner) */
+        get: operations["listAssignments"];
+        /**
+         * Replace the quiz's audience (owner)
+         * @description Group ids are expanded to individual student rows at assignment time, so later group edits never silently revoke an already-assigned quiz. Atomic - one bad id changes nothing. Allowed while draft or scheduled; a live quiz's audience is frozen.
+         */
+        put: operations["setAssignments"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quizzes/assigned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming, live, and past quizzes for the caller (student)
+         * @description Visibility is the assignment row itself; drafts and archived quizzes never appear. Status is derived from the window on read, so a quiz whose starts_at has passed reads live even before the scheduler job flips the row.
+         */
+        get: operations["listAssignedQuizzes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/questions/{id}": {
         parameters: {
             query?: never;
@@ -489,6 +552,66 @@ export interface components {
         };
         GroupResponse: {
             group: components["schemas"]["Group"];
+        };
+        /** @description Per-quiz anti-cheat config, snapshotted with the question set at publish so rules cannot change under a student mid-window. */
+        Guardrails: {
+            /** @enum {string} */
+            fullscreen: "off" | "warn" | "count";
+            /** @enum {string} */
+            focus_tracking: "off" | "warn" | "count";
+            block_clipboard: boolean;
+            max_violations: number;
+            /** @enum {string} */
+            violation_action: "flag" | "auto_submit" | "notify";
+        };
+        PublishQuizRequest: {
+            /**
+             * Format: date-time
+             * @description Go-live moment; must be in the future.
+             */
+            starts_at: string;
+            /**
+             * Format: date-time
+             * @description Hard close; must be after starts_at.
+             */
+            ends_at: string;
+            /** @description Per-attempt time budget; a student starting late gets min(duration, time-to-close). */
+            duration_sec: number;
+            guardrails?: components["schemas"]["Guardrails"];
+        };
+        SetAssignmentsRequest: {
+            student_ids?: string[];
+            /** @description Expanded to individual student rows at assignment time. */
+            group_ids?: string[];
+        };
+        AssignedStudent: {
+            /** Format: uuid */
+            id: string;
+            full_name: string;
+            /** Format: email */
+            email: string;
+        };
+        AssignmentsResponse: {
+            students: components["schemas"]["AssignedStudent"][];
+        };
+        /** @description The student-facing quiz shape - window, budget, and size. Never the owner, the guardrail internals, or (structurally) a question. */
+        AssignedQuiz: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /**
+             * @description Derived from the window on read.
+             * @enum {string}
+             */
+            status: "scheduled" | "live" | "closed";
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            ends_at: string;
+            duration_sec: number;
+            max_attempts: number;
+            version: number;
+            question_count: number;
         };
     };
     responses: {
@@ -1083,6 +1206,117 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["NotEditable"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    publishQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishQuizRequest"];
+            };
+        };
+        responses: {
+            /** @description The quiz, now scheduled at its new version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The assigned students. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAssignmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description The resulting audience, group-expanded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listAssignedQuizzes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's assigned quizzes, soonest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        quizzes: components["schemas"]["AssignedQuiz"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     deleteQuestion: {

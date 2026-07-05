@@ -131,6 +131,7 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 	}
 	defer rows.Close()
 
+	now := time.Now()
 	quizzes := []Quiz{}
 	for rows.Next() {
 		var q Quiz
@@ -139,6 +140,7 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.QuestionCount); err != nil {
 			return nil, fmt.Errorf("scan quiz: %w", err)
 		}
+		q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now)
 		quizzes = append(quizzes, q)
 	}
 	return quizzes, rows.Err()
@@ -176,6 +178,7 @@ func (s *Service) GetQuiz(ctx context.Context, actor authusers.User, id string) 
 		questions = append(questions, qu)
 	}
 	q.QuestionCount = len(questions)
+	q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, time.Now())
 	return q, questions, rows.Err()
 }
 
@@ -450,16 +453,9 @@ func (s *Service) ReorderQuestions(ctx context.Context, actor authusers.User, qu
 // that it is still a draft. Ownership failures read as ErrNotFound so quiz
 // existence never leaks to non-owners.
 func (s *Service) draftForUpdate(ctx context.Context, tx *sql.Tx, actor authusers.User, id string) (Quiz, error) {
-	q, err := scanQuiz(tx.QueryRowContext(ctx,
-		`SELECT `+quizColumns+` FROM quizzes WHERE id = $1 FOR UPDATE`, id).Scan)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Quiz{}, ErrNotFound
-	}
+	q, err := s.ownedForUpdate(ctx, tx, actor, id)
 	if err != nil {
-		return Quiz{}, fmt.Errorf("load quiz: %w", err)
-	}
-	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerID}) {
-		return Quiz{}, ErrNotFound
+		return Quiz{}, err
 	}
 	if q.Status != "draft" {
 		return Quiz{}, ErrNotEditable

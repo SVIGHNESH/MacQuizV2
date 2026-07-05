@@ -2,13 +2,14 @@
 # Spec-first: oapi-codegen generates the Go server interfaces and the
 # TypeScript client from this file, so frontend and backend cannot drift.
 # Endpoints are added milestone by milestone; today it covers Milestone 0,
-# Milestone 1 (auth flow, admin user provisioning, groups), and Milestone 2
-# (quiz authoring: draft quiz CRUD, question CRUD, reorder).
+# Milestone 1 (auth flow, admin user provisioning, groups), Milestone 2
+# (quiz authoring: draft quiz CRUD, question CRUD, reorder), and Milestone 3
+# (publish with snapshot + versioning, assignments, student quiz list).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.4.0
+  version: 0.5.0
 servers:
   - url: /
 paths:
@@ -529,6 +530,128 @@ paths:
           $ref: "#/components/responses/NotEditable"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/publish:
+    post:
+      operationId: publishQuiz
+      summary: Publish a quiz - snapshot, version, window, guardrails (owner)
+      description: >-
+        Transitions Draft to Scheduled. Snapshots the question set and the
+        guardrail config into an immutable version and stamps the live
+        window. Preconditions - at least one question, starts_at < ends_at
+        and in the future, a duration, at least one assigned student.
+        Publishing an already-scheduled quiz reschedules it and writes
+        version n+1; live and later states answer 409.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishQuizRequest"
+      responses:
+        "200":
+          description: The quiz, now scheduled at its new version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/assignments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listAssignments
+      summary: The quiz's current audience (owner)
+      responses:
+        "200":
+          description: The assigned students.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setAssignments
+      summary: Replace the quiz's audience (owner)
+      description: >-
+        Group ids are expanded to individual student rows at assignment
+        time, so later group edits never silently revoke an already-assigned
+        quiz. Atomic - one bad id changes nothing. Allowed while draft or
+        scheduled; a live quiz's audience is frozen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAssignmentsRequest"
+      responses:
+        "200":
+          description: The resulting audience, group-expanded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/assigned:
+    get:
+      operationId: listAssignedQuizzes
+      summary: Upcoming, live, and past quizzes for the caller (student)
+      description: >-
+        Visibility is the assignment row itself; drafts and archived quizzes
+        never appear. Status is derived from the window on read, so a quiz
+        whose starts_at has passed reads live even before the scheduler job
+        flips the row.
+      responses:
+        "200":
+          description: The caller's assigned quizzes, soonest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quizzes]
+                properties:
+                  quizzes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AssignedQuiz"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/questions/{id}:
     parameters:
       - name: id
@@ -939,3 +1062,114 @@ components:
       properties:
         group:
           $ref: "#/components/schemas/Group"
+    Guardrails:
+      type: object
+      description: >-
+        Per-quiz anti-cheat config, snapshotted with the question set at
+        publish so rules cannot change under a student mid-window.
+      required:
+        [fullscreen, focus_tracking, block_clipboard, max_violations,
+         violation_action]
+      properties:
+        fullscreen:
+          type: string
+          enum: [off, warn, count]
+        focus_tracking:
+          type: string
+          enum: [off, warn, count]
+        block_clipboard:
+          type: boolean
+        max_violations:
+          type: integer
+          minimum: 1
+          maximum: 100
+        violation_action:
+          type: string
+          enum: [flag, auto_submit, notify]
+    PublishQuizRequest:
+      type: object
+      required: [starts_at, ends_at, duration_sec]
+      properties:
+        starts_at:
+          type: string
+          format: date-time
+          description: Go-live moment; must be in the future.
+        ends_at:
+          type: string
+          format: date-time
+          description: Hard close; must be after starts_at.
+        duration_sec:
+          type: integer
+          minimum: 30
+          maximum: 86400
+          description: >-
+            Per-attempt time budget; a student starting late gets
+            min(duration, time-to-close).
+        guardrails:
+          $ref: "#/components/schemas/Guardrails"
+    SetAssignmentsRequest:
+      type: object
+      properties:
+        student_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        group_ids:
+          type: array
+          description: Expanded to individual student rows at assignment time.
+          items:
+            type: string
+            format: uuid
+    AssignedStudent:
+      type: object
+      required: [id, full_name, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+    AssignmentsResponse:
+      type: object
+      required: [students]
+      properties:
+        students:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignedStudent"
+    AssignedQuiz:
+      type: object
+      description: >-
+        The student-facing quiz shape - window, budget, and size. Never the
+        owner, the guardrail internals, or (structurally) a question.
+      required:
+        [id, title, status, starts_at, ends_at, duration_sec, max_attempts,
+         version, question_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, live, closed]
+          description: Derived from the window on read.
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        duration_sec:
+          type: integer
+        max_attempts:
+          type: integer
+        version:
+          type: integer
+        question_count:
+          type: integer

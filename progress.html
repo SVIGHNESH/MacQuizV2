@@ -73,6 +73,25 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 3 - Publish with immutable snapshots, assignments, and the student quiz list</h2>
+      <span class="tag">milestone 3</span>
+    </div>
+    <div class="meta">2026-07-05 &middot; after a543d20</div>
+    <ul>
+      <li><strong>Publishing is now real</strong>: <code>POST /api/v1/quizzes/:id/publish</code> takes the live window, the per-attempt duration, and the guardrail config, and transitions Draft to Scheduled in one transaction. The docs/04 preconditions are enforced as field errors - at least one question, <code>starts_at &lt; ends_at</code> and in the future, a sane duration (30 s to 24 h), and at least one assigned student.</li>
+      <li><strong>Immutable version snapshots</strong> (new <code>quiz_versions</code> table, migration <code>00003</code>): publish copies the full question rows - including the answer key - plus the guardrails into a write-once version row, so a mid-window edit or republish can never change what a student who already started sees. The copy happens in SQL on purpose: the Go <code>Question</code> type structurally drops the answer key when serialized, which is exactly right for clients and exactly wrong for the grader. The table rejects UPDATE and DELETE by trigger; republishing while scheduled reschedules and writes version n+1.</li>
+      <li><strong>Assignments with group expansion</strong>: <code>PUT /quizzes/:id/assignments</code> replaces the audience atomically from direct student ids and/or group ids. Groups are expanded to individual rows at assignment time, so removing a student from a group later never silently revokes an already-assigned quiz - proven in the integration test by emptying the group and watching the audience stay intact. Non-student ids or unknown groups change nothing; a live quiz's audience is frozen (<code>409</code>); <code>GET /quizzes/:id/assignments</code> lists the current audience for the editor UI.</li>
+      <li><strong>The student flow begins</strong>: <code>GET /api/v1/quizzes/assigned</code> lists the caller's upcoming, live, and past quizzes - visibility is the assignment row itself, drafts and archived quizzes never appear, and the question count comes from the published snapshot. The response shape carries no owner, no guardrail internals, and structurally no questions.</li>
+      <li><strong>Lazy state validation</strong>: readers derive the effective status from the window, so a scheduled quiz whose <code>starts_at</code> has passed reads <code>live</code> (and past <code>ends_at</code> reads <code>closed</code>) on both the student list and the teacher's own screens, before any scheduler job flips the row - the docs/06 rule that no reader ever sees a stale state. The River <code>open_quiz</code>/<code>close_quiz</code> jobs that flip the stored row (and force-submit attempts at close) are the next unit.</li>
+      <li><strong>Guardrails vocabulary pinned</strong>: fullscreen and focus tracking as off/warn/count, clipboard blocking, and the violation ladder (1-100 counted violations, then flag / auto_submit / notify) validate at the boundary and default to the documented flag-at-3; the config is snapshotted with the questions.</li>
+      <li><strong>Audited and contract-first as always</strong>: <code>quizzes.published</code> (with version and window) and <code>quizzes.assignments_set</code> rows commit with their mutations; <code>api/openapi.yaml</code> is at v0.5.0 with the four new operations and the Guardrails/AssignedQuiz schemas, regenerated into the typed web client (drift check green).</li>
+      <li><strong>Tested at three levels</strong>: unit tests pin the status derivation table and the guardrail vocabulary; a new integration test in its own database (<code>macquiz_lifecycletest</code>) drives audience-first publishing, group expansion, window rule breakers, snapshot immutability (the UPDATE is rejected by Postgres), republish version bumps, student visibility vs. the unassigned outsider, the lazy live transition, and audit counts.</li>
+    </ul>
+    <div class="exit">Verified live against the Compose stack over curl: a provisioned teacher authored a quiz, was refused publish until a student was assigned, published with guardrails, and the snapshot row held the answer key; the assigned student's <code>GET /quizzes/assigned</code> showed the quiz as scheduled, then as <code>live</code> the moment <code>starts_at</code> passed - with no scheduler running at all. The scheduler jobs and the web publish/assign UI are the remaining Milestone 3 items.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 2 - The teacher authoring workspace: quiz list, editor, autosave</h2>
       <span class="tag">milestone 2</span>
     </div>

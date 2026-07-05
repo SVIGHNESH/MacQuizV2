@@ -26,19 +26,30 @@ func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 	return &Handler{svc: svc, auth: auth}
 }
 
-// QuizRoutes returns the /api/v1/quizzes route group. The whole authoring
-// surface is teacher-only (docs/08-security.md: admins cannot author);
-// per-quiz ownership then decides 404 in the service.
+// QuizRoutes returns the /api/v1/quizzes route group. The authoring surface
+// is teacher-only (docs/08-security.md: admins cannot author) with per-quiz
+// ownership deciding 404 in the service; the student flow's assigned-quiz
+// list shares the mount but carries its own role gate.
 func (h *Handler) QuizRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireTeacher)
-	r.Get("/", h.handleListQuizzes)
-	r.Post("/", h.handleCreateQuiz)
-	r.Get("/{id}", h.handleGetQuiz)
-	r.Patch("/{id}", h.handleUpdateQuiz)
-	r.Delete("/{id}", h.handleDeleteQuiz)
-	r.Post("/{id}/questions", h.handleAddQuestion)
-	r.Put("/{id}/questions/order", h.handleReorderQuestions)
+	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged)
+	r.Group(func(r chi.Router) {
+		r.Use(requireTeacher)
+		r.Get("/", h.handleListQuizzes)
+		r.Post("/", h.handleCreateQuiz)
+		r.Get("/{id}", h.handleGetQuiz)
+		r.Patch("/{id}", h.handleUpdateQuiz)
+		r.Delete("/{id}", h.handleDeleteQuiz)
+		r.Post("/{id}/questions", h.handleAddQuestion)
+		r.Put("/{id}/questions/order", h.handleReorderQuestions)
+		r.Post("/{id}/publish", h.handlePublishQuiz)
+		r.Get("/{id}/assignments", h.handleListAssignments)
+		r.Put("/{id}/assignments", h.handleSetAssignments)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(requireStudent)
+		r.Get("/assigned", h.handleAssignedQuizzes)
+	})
 	return r
 }
 
