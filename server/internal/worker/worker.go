@@ -18,6 +18,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 
+	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/quiz"
@@ -42,8 +43,9 @@ func (w *openQuizWorker) Work(ctx context.Context, job *river.Job[quiz.OpenQuizA
 	return sweepDue(ctx, w.db, w.log, "open_quiz job", job.Args.QuizID)
 }
 
-// closeQuizWorker fires at ends_at and flips Scheduled/Live -> Closed.
-// Force-submitting open attempts hangs off this transition in Milestone 4.
+// closeQuizWorker fires at ends_at and flips Scheduled/Live -> Closed. The
+// shared sweep then force-submits the closed quiz's open attempts in the
+// same pass (docs/06 section 1).
 type closeQuizWorker struct {
 	river.WorkerDefaults[quiz.CloseQuizArgs]
 	db  *sql.DB
@@ -52,6 +54,21 @@ type closeQuizWorker struct {
 
 func (w *closeQuizWorker) Work(ctx context.Context, job *river.Job[quiz.CloseQuizArgs]) error {
 	return sweepDue(ctx, w.db, w.log, "close_quiz job", job.Args.QuizID)
+}
+
+// attemptDeadlineWorker fires once an attempt's deadline (plus the autosave
+// grace) has passed and auto-submits it - "the disappearing student"
+// (docs/06 section 2). It runs the shared sweep rather than a per-attempt
+// statement: the predicates make that idempotent, and a late job repairs
+// every overdue attempt, not just its own.
+type attemptDeadlineWorker struct {
+	river.WorkerDefaults[attempt.DeadlineArgs]
+	db  *sql.DB
+	log *slog.Logger
+}
+
+func (w *attemptDeadlineWorker) Work(ctx context.Context, job *river.Job[attempt.DeadlineArgs]) error {
+	return sweepDue(ctx, w.db, w.log, "attempt_deadline job", job.Args.AttemptID)
 }
 
 // sweepQuizzesWorker is the periodic backstop behind the exact-timestamp
@@ -66,14 +83,24 @@ func (w *sweepQuizzesWorker) Work(ctx context.Context, _ *river.Job[quiz.SweepQu
 	return sweepDue(ctx, w.db, w.log, "periodic sweep", "")
 }
 
-func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, quizID string) error {
+// sweepDue applies every due transition: quiz flips first, then the attempt
+// sweep, so a quiz closed in this pass has its open attempts force-submitted
+// in the same pass. subject is the id the triggering job carried (a quiz or
+// an attempt), for the log line only - the sweeps repair everything due.
+func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, subject string) error {
 	opened, closed, err := quiz.SweepDueQuizzes(ctx, sqlDB)
 	if err != nil {
 		return err
 	}
-	if opened > 0 || closed > 0 {
-		log.Info("quiz transitions applied",
-			"trigger", trigger, "quiz_id", quizID, "opened", opened, "closed", closed)
+	auto, forced, err := attempt.SweepDueAttempts(ctx, sqlDB)
+	if err != nil {
+		return err
+	}
+	if opened > 0 || closed > 0 || auto > 0 || forced > 0 {
+		log.Info("due transitions applied",
+			"trigger", trigger, "subject", subject,
+			"quizzes_opened", opened, "quizzes_closed", closed,
+			"attempts_auto_submitted", auto, "attempts_force_submitted", forced)
 	}
 	return nil
 }
@@ -90,6 +117,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log})
 	river.AddWorker(workers, &closeQuizWorker{db: sqlDB, log: log})
 	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log})
+	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log})
 
 	client, err := river.NewClient(riverdatabasesql.New(sqlDB), &river.Config{
 		Logger:  log,

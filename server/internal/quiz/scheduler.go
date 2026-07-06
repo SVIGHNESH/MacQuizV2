@@ -52,8 +52,9 @@ func (SweepQuizzesArgs) Kind() string { return "sweep_quizzes" }
 // any quiz - the exact-timestamp jobs, the worker's boot re-scan, and the
 // periodic backstop all funnel through here.
 //
-// Closing does not yet force-submit open attempts; the submit funnel arrives
-// with Milestone 4 and will hang off the closed transition.
+// Closing does not itself touch attempts: the worker runs
+// attempt.SweepDueAttempts right after this sweep, so a quiz closed here has
+// its open attempts force-submitted in the same pass.
 func SweepDueQuizzes(ctx context.Context, db *sql.DB) (opened, closed int64, err error) {
 	res, err := db.ExecContext(ctx,
 		`UPDATE quizzes SET status = 'closed'

@@ -11,6 +11,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
+
 	"macquiz/server/internal/authusers"
 )
 
@@ -96,11 +99,21 @@ type Detail struct {
 type Service struct {
 	db  *sql.DB
 	log *slog.Logger
+	// jobs is an insert-only River client (no queues, no workers): start
+	// uses it to enqueue the attempt's deadline timer inside its own
+	// transaction. The worker process consumes it (internal/worker).
+	jobs *river.Client[*sql.Tx]
 }
 
 // NewService wires the attempt service.
 func NewService(db *sql.DB, log *slog.Logger) *Service {
-	return &Service{db: db, log: log}
+	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
+	if err != nil {
+		// The empty config is statically valid; NewClient has nothing left
+		// to reject, so this cannot happen at runtime.
+		panic(fmt.Sprintf("build insert-only river client: %v", err))
+	}
+	return &Service{db: db, log: log, jobs: jobs}
 }
 
 const attemptColumns = `id, quiz_id, student_id, attempt_no, quiz_version,
@@ -199,6 +212,11 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 			quizID, actor.ID, lastNo+1, version, durationSec, endsAt).Scan)
 		if err != nil {
 			return Detail{}, false, fmt.Errorf("insert attempt: %w", err)
+		}
+		// The disappearing student (docs/06 section 2): the timer that will
+		// auto-submit this attempt commits with the attempt itself.
+		if err := s.enqueueDeadlineJob(ctx, tx, a.ID, a.DeadlineAt); err != nil {
+			return Detail{}, false, err
 		}
 	}
 
@@ -303,12 +321,15 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 	return a, nil
 }
 
-// submit is the single idempotent termination funnel (docs/04 section 4):
-// manual, auto, forced, and kicked all pass through here. The caller holds
-// the attempt row lock. A repeat submit of an already-terminated attempt
-// returns it unchanged, so a manual submit racing the deadline job resolves
-// cleanly to whichever committed first. Grading enqueue joins this funnel
-// when the grading job lands (docs/12 Milestone 4).
+// submit is the idempotent per-request termination funnel (docs/04 section
+// 4) for the student-driven kinds: manual now, kicked when the kick endpoint
+// lands. The batch kinds - auto and forced - are applied by SweepDueAttempts
+// (scheduler.go) behind the same status = 'in_progress' guard this UPDATE
+// uses, so the two paths can never double-terminate. The caller holds the
+// attempt row lock. A repeat submit of an already-terminated attempt returns
+// it unchanged, so a manual submit racing the deadline job resolves cleanly
+// to whichever committed first. Grading enqueue joins both paths when the
+// grading job lands (docs/12 Milestone 4).
 func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, error) {
 	switch a.Status {
 	case "kicked":

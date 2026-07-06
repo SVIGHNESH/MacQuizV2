@@ -73,6 +73,22 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 4 - The disappearing student: deadline timer and force-submit on close</h2>
+      <span class="tag">milestone 4</span>
+    </div>
+    <div class="meta">2026-07-06 &middot; after 69cb199</div>
+    <ul>
+      <li><strong>Every attempt now carries its own alarm clock</strong>: the start transaction enqueues an <code>attempt_deadline</code> River job scheduled at <code>deadline_at + 5s grace</code>, committing with the attempt row itself - an attempt is never created without its auto-submit, a failed start leaves no orphan job, and an idempotent resume enqueues nothing (one timer per attempt, pinned by test). The job fires after the grace window on purpose: the write gate already refuses everything past that moment, so the last in-flight autosave lands before the terminal flip.</li>
+      <li><strong>The attempt sweep mirrors the quiz sweep</strong> (<code>attempt.SweepDueAttempts</code>): two idempotent statements behind the funnel's own <code>status = 'in_progress'</code> guard, so the sweep and a racing manual submit can never double-terminate. First <code>auto</code> - attempts past their personal <code>deadline_at</code> plus grace - then <code>forced</code> - attempts still open on a closed quiz (docs/06: "close_quiz force-submits all open attempts"). Auto runs first so an attempt that expired before its quiz closed keeps the kind its own timer would have written; the autosaved answers survive untouched for the grader.</li>
+      <li><strong>One shared sweep pass in the worker</strong>: the deadline job, the <code>close_quiz</code> transition, the boot re-scan, and the minutely backstop all run quiz flips then attempt terminations in the same pass - a quiz closed in a pass has its open attempts force-submitted in that pass, and a job firing late or twice repairs everything due, never wrong-flips. The jobs still carry nothing but an id; state is always re-derived from the rows.</li>
+      <li><strong>No contract change</strong>: <code>submit_kind</code> already enumerated <code>auto</code> and <code>forced</code> in OpenAPI v0.7.0, and no new endpoints exist - the whole feature is server-side time authority.</li>
+      <li><strong>Proven at two boundaries</strong>: a new integration suite (<code>deadlineflow_test.go</code>, own database) pins the timer job's exact <code>scheduled_at</code>, resume-enqueues-nothing, the no-op sweep inside the budget, auto-submit past deadline+grace with the neighbor attempt untouched, force-submit on close with the auto kind preserved, and terminal idempotence - plus a 12-check live Compose E2E where a student autosaved an answer and "closed the laptop": the worker's <code>attempt_deadline</code> job flipped the row to <code>submitted/auto</code> with no API call, a second attempt was flipped to <code>submitted/forced</code> by the <code>close_quiz</code> job at <code>ends_at</code>, the stale tab's next autosave read <code>ATTEMPT_ALREADY_SUBMITTED</code>, and the saved answer survived for the grader.</li>
+    </ul>
+    <div class="exit">The Milestone 4 exit criterion's middle act is live: a student took a quiz, closed the laptop, and was auto-submitted at the deadline by the server alone - and a quiz closing mid-attempt force-submitted what was still open, both witnessed in worker logs against the Compose stack. Remaining Milestone 4 items: the grading job with results per release policy, and the web attempt player.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 4 - The attempt player backend: start, autosave, resume, submit</h2>
       <span class="tag">milestone 4</span>
     </div>
