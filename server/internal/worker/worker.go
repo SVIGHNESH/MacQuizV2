@@ -71,6 +71,21 @@ func (w *attemptDeadlineWorker) Work(ctx context.Context, job *river.Job[attempt
 	return sweepDue(ctx, w.db, w.log, "attempt_deadline job", job.Args.AttemptID)
 }
 
+// gradeAttemptWorker fires when a submit transaction commits and grades the
+// attempt (docs/04 section 4: "submission enqueues a grading job"). It runs
+// the shared sweep rather than a per-attempt statement: grading is
+// idempotent, and a late job repairs every ungraded attempt, not just its
+// own.
+type gradeAttemptWorker struct {
+	river.WorkerDefaults[attempt.GradeArgs]
+	db  *sql.DB
+	log *slog.Logger
+}
+
+func (w *gradeAttemptWorker) Work(ctx context.Context, job *river.Job[attempt.GradeArgs]) error {
+	return sweepDue(ctx, w.db, w.log, "grade_attempt job", job.Args.AttemptID)
+}
+
 // sweepQuizzesWorker is the periodic backstop behind the exact-timestamp
 // jobs (docs/02 section 4.6).
 type sweepQuizzesWorker struct {
@@ -84,9 +99,10 @@ func (w *sweepQuizzesWorker) Work(ctx context.Context, _ *river.Job[quiz.SweepQu
 }
 
 // sweepDue applies every due transition: quiz flips first, then the attempt
-// sweep, so a quiz closed in this pass has its open attempts force-submitted
-// in the same pass. subject is the id the triggering job carried (a quiz or
-// an attempt), for the log line only - the sweeps repair everything due.
+// sweep, then grading - so a quiz closed in this pass has its open attempts
+// force-submitted and graded in the same pass. subject is the id the
+// triggering job carried (a quiz or an attempt), for the log line only - the
+// sweeps repair everything due.
 func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, subject string) error {
 	opened, closed, err := quiz.SweepDueQuizzes(ctx, sqlDB)
 	if err != nil {
@@ -96,11 +112,16 @@ func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, sub
 	if err != nil {
 		return err
 	}
-	if opened > 0 || closed > 0 || auto > 0 || forced > 0 {
+	graded, err := attempt.GradeSubmitted(ctx, sqlDB)
+	if err != nil {
+		return err
+	}
+	if opened > 0 || closed > 0 || auto > 0 || forced > 0 || graded > 0 {
 		log.Info("due transitions applied",
 			"trigger", trigger, "subject", subject,
 			"quizzes_opened", opened, "quizzes_closed", closed,
-			"attempts_auto_submitted", auto, "attempts_force_submitted", forced)
+			"attempts_auto_submitted", auto, "attempts_force_submitted", forced,
+			"attempts_graded", graded)
 	}
 	return nil
 }
@@ -118,6 +139,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	river.AddWorker(workers, &closeQuizWorker{db: sqlDB, log: log})
 	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log})
 	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log})
+	river.AddWorker(workers, &gradeAttemptWorker{db: sqlDB, log: log})
 
 	client, err := river.NewClient(riverdatabasesql.New(sqlDB), &river.Config{
 		Logger:  log,

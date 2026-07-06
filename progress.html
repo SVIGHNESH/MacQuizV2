@@ -73,6 +73,22 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 4 - The grading job: deterministic scores from the snapshot key</h2>
+      <span class="tag">milestone 4</span>
+    </div>
+    <div class="meta">2026-07-06 &middot; after 1d87b43</div>
+    <ul>
+      <li><strong>Grading is a pure function of (snapshot, answers)</strong> - docs/03 invariant 4, verbatim. The grader (<code>attempt/grade.go</code>) locks a <code>submitted</code> attempt, reads the answer key from the <code>quiz_versions</code> row the attempt pinned - never the live quiz, so a republish after submission cannot change what work is graded against - writes <code>is_correct</code> and <code>points_awarded</code> per answer, sums the score, and flips the row to <code>graded</code> behind the funnel's own <code>status = 'submitted'</code> guard, so a job firing twice, late, or concurrently with the backstop can never double-grade.</li>
+      <li><strong>The docs/04 rules per type</strong>: choice questions compare keys (<code>multi</code> is all-or-nothing set equality - no silent partial credit), truefalse compares booleans, and short answers use normalized exact/numeric matching: case-insensitive, trimmed, inner whitespace collapsed, and <code>"5.0"</code> matches an accepted <code>"5"</code> whether the widget saved a string or a bare number. Autosave accepts opaque JSON, so the grader is where malformed input lands: a response that does not decode into its type's shape grades as wrong - it never errors an entire attempt.</li>
+      <li><strong>Two trigger paths, one funnel</strong>: the manual submit leg enqueues a <code>grade_attempt</code> job inside the submitting transaction (docs/04: "submission enqueues a grading job"; a repeat submit enqueues nothing), while the batch legs need no job at all - the worker's shared sweep pass now runs quiz flips, attempt terminations, then <code>GradeSubmitted</code>, so an auto- or force-submitted attempt is graded in the very pass that terminated it, and the boot re-scan plus minutely backstop heal any grading ever missed (the live run's boot re-scan promptly graded two attempts left <code>submitted</code> by the previous milestone's E2E).</li>
+      <li><strong>The score stays withheld</strong>: grading writes the column, but the player payload still carries no <code>score</code> and no answer key - results become visible when the release policy lands (docs/01: auto at close or explicit teacher release). No OpenAPI change: <code>graded</code> was already in the status enum, so the whole feature is contract-neutral.</li>
+      <li><strong>Proven at three boundaries</strong>: table-driven unit tests pin every per-type rule including the normalization and garbage cases; a new integration suite (<code>gradeflow_test.go</code>, own database) proves the grade job commits with the manual flip and only once, the 2+0+1+2 score across all four types with per-answer marks, regrade-is-a-no-op, the sweep pass grading the disappearing student it auto-submits with zero jobs, and the score/key withheld from the player; and a 17-check live Compose E2E where the worker graded a manual submit within seconds (<code>graded/5</code>) and a vanished student's attempt went <code>graded/auto/1</code> entirely server-side - both flips witnessed in worker logs.</li>
+    </ul>
+    <div class="exit">The Milestone 4 exit criterion now runs end to end: a student took a quiz, closed the laptop, was auto-submitted at the deadline, and got graded - by the server alone, against the Compose stack. Remaining Milestone 4 items: the results-release policy surface (teacher release + student results view) and the web attempt player.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 4 - The disappearing student: deadline timer and force-submit on close</h2>
       <span class="tag">milestone 4</span>
     </div>

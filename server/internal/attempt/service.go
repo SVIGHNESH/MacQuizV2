@@ -311,9 +311,17 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 	if err != nil {
 		return Attempt{}, err
 	}
+	freshlySubmitted := a.Status == "in_progress"
 	a, err = submit(ctx, tx, a, "manual")
 	if err != nil {
 		return Attempt{}, err
+	}
+	// Submission enqueues the grading job in the same transaction (docs/04
+	// section 4); a repeat submit of a terminal attempt enqueues nothing.
+	if freshlySubmitted {
+		if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+			return Attempt{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Attempt{}, fmt.Errorf("commit submit: %w", err)
@@ -328,8 +336,9 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 // uses, so the two paths can never double-terminate. The caller holds the
 // attempt row lock. A repeat submit of an already-terminated attempt returns
 // it unchanged, so a manual submit racing the deadline job resolves cleanly
-// to whichever committed first. Grading enqueue joins both paths when the
-// grading job lands (docs/12 Milestone 4).
+// to whichever committed first. The caller enqueues grading for a fresh
+// termination; the sweep-driven kinds are graded by the same worker pass
+// that applies them (GradeSubmitted, grade.go).
 func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, error) {
 	switch a.Status {
 	case "kicked":
