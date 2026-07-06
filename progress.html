@@ -73,6 +73,23 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 4 - The attempt player backend: start, autosave, resume, submit</h2>
+      <span class="tag">milestone 4</span>
+    </div>
+    <div class="meta">2026-07-06 &middot; after a4aa9cb</div>
+    <ul>
+      <li><strong>The start transaction is one atomic decision</strong> (<code>POST /quizzes/:id/attempts</code>): the assignment row doubles as the visibility check (unassigned students read 404, so quiz existence never leaks) and, locked <code>FOR UPDATE</code>, as the serialization point - concurrent starts by the same student queue up instead of racing <code>attempt_no</code>. Inside the same transaction: the live-window check on the database clock (answering <code>QUIZ_NOT_LIVE</code> before <code>starts_at</code> and after <code>ends_at</code>), the <code>max_attempts</code> budget (<code>ATTEMPT_LIMIT_REACHED</code>), and the deadline precompute <code>deadline_at = least(now() + duration, ends_at)</code> - computed once, the single column every later write validates against.</li>
+      <li><strong>Starting is idempotent</strong>: an unexpired in-progress attempt is returned (200) instead of duplicated, so a reloaded tab or a second device resumes rather than burning an attempt slot - the row count stays at one, pinned by test.</li>
+      <li><strong>The serializer boundary extends to the player</strong>: attempts pin <code>quiz_version</code> and serve questions from the immutable snapshot, decoded into a type whose answer key is tagged <code>json:"-"</code> - carried internally for the coming grader, structurally absent from every player payload. Shuffled quizzes get a deterministic per-attempt order (hash of attempt id + question id, positions re-densified), so every resume sees the same order with no order storage.</li>
+      <li><strong>Autosave is an idempotent upsert with one write gate</strong> (<code>PUT /attempts/:id/answers/:qid</code>): one row per question, last write wins, and every write passes the same checks - owner (404), in-progress status (<code>ATTEMPT_ALREADY_SUBMITTED</code> / <code>ATTEMPT_KICKED</code>), and the docs/06 deadline-plus-5s-grace judged on the database clock that set the deadline (<code>ATTEMPT_DEADLINE_PASSED</code>). The question must exist in the attempt's own snapshot version, so a mid-window republish can never make a stale player write outside what its student saw. Responses are size-capped; resume (<code>GET /attempts/:id</code>) returns the saved answers, the deadline, and the server clock for the cosmetic countdown.</li>
+      <li><strong>The submit funnel exists and manual rides it</strong> (<code>POST /attempts/:id/submit</code>): one <code>submit(attempt, kind)</code> routine holds the terminal-state rules - kicked refuses, submitted/graded returns unchanged (a double-click or a race against the future deadline job resolves to whichever committed first), and only the student-driven <code>manual</code> kind races the clock. Auto, forced, and kicked will enter through the same door; grading enqueue joins the funnel when the grading job lands.</li>
+      <li><strong>Proven at two boundaries</strong>: a new integration suite (<code>playerflow_test.go</code>, own database, eleven subtests over real HTTP) covers the early-start refusal, the outsider 404 and teacher 403, deadline precompute, key stripping, idempotent restart, upsert-not-duplicate autosave, garbage rejection, resume, the submit funnel, the expired-attempt write gates, limit exhaustion, and the kicked lockout codes - plus a 16-check live curl E2E against the Compose stack from clean volumes where the open_quiz job flipped the quiz and a student played an attempt end to end. OpenAPI is at v0.7.0 with the four player operations, regenerated into the typed client.</li>
+    </ul>
+    <div class="exit">The Milestone 4 attempt-player API surface is live: a student started, autosaved, resumed, and submitted a real attempt against the Compose stack, with every refusal code from docs/04 answering exactly as specified. Remaining Milestone 4 items: the per-attempt deadline timer job (auto-submit "the disappearing student") with the force-submit sweep on quiz close, the grading job with results per release policy, and the web attempt player.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 3 - The web publish workspace: audience, schedule, guardrails</h2>
       <span class="tag">milestone 3</span>
     </div>

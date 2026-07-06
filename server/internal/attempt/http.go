@@ -1,0 +1,190 @@
+package attempt
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"regexp"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"macquiz/server/internal/authusers"
+	"macquiz/server/internal/httpapi"
+)
+
+// Handler exposes the attempt player routes. Authentication and the
+// forced-reset gate come from authusers middleware; ownership checks live in
+// the service and read as 404.
+type Handler struct {
+	svc  *Service
+	auth *authusers.Service
+}
+
+// NewHandler wires the attempt routes.
+func NewHandler(svc *Service, auth *authusers.Service) *Handler {
+	return &Handler{svc: svc, auth: auth}
+}
+
+// Routes returns the /api/v1/attempts route group: resume, autosave, and
+// manual submit (docs/04-api.md student flow). Attempt start lives under
+// /quizzes/{id}/attempts and is attached to the quiz mount via HandleStart.
+func (h *Handler) Routes() http.Handler {
+	r := chi.NewRouter()
+	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireStudent)
+	r.Get("/{id}", h.handleGet)
+	r.Put("/{id}/answers/{questionID}", h.handleSaveAnswer)
+	r.Post("/{id}/submit", h.handleSubmit)
+	return r
+}
+
+// requireStudent gates the player surface on role; per-attempt ownership
+// stays in the service, where denials answer 404.
+func requireStudent(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := authusers.ActorFrom(r.Context()); !ok || u.Role != "student" {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"the attempt player is for students")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// HandleStart serves POST /quizzes/{id}/attempts. The quiz module mounts it
+// inside its student route group (which already enforces authentication and
+// the student role), keeping the attempt lifecycle logic in this package.
+func (h *Handler) HandleStart(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	quizID, ok := pathUUID(w, r, "id", "no such quiz")
+	if !ok {
+		return
+	}
+	detail, resumed, err := h.svc.Start(r.Context(), actor, quizID)
+	if h.writeAttemptError(w, "start attempt", err, "no such quiz") {
+		return
+	}
+	status := http.StatusCreated
+	if resumed {
+		status = http.StatusOK
+	}
+	httpapi.WriteJSON(w, status, detail)
+}
+
+func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	detail, err := h.svc.Get(r.Context(), actor, id)
+	if h.writeAttemptError(w, "resume attempt", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, detail)
+}
+
+// maxResponseBytes bounds one autosaved response body. Real answers are an
+// option key, a key list, a boolean, or a short text - a payload anywhere
+// near this size is not a quiz answer.
+const maxResponseBytes = 16 * 1024
+
+type saveAnswerRequest struct {
+	Response    json.RawMessage `json:"response"`
+	TimeSpentMs *int            `json:"time_spent_ms"`
+}
+
+func (h *Handler) handleSaveAnswer(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	questionID, ok := pathUUID(w, r, "questionID", "no such question in this attempt")
+	if !ok {
+		return
+	}
+	var req saveAnswerRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxResponseBytes)).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	if len(req.Response) == 0 {
+		httpapi.WriteFieldErrors(w, map[string]string{"response": "required"})
+		return
+	}
+	timeSpent := 0
+	if req.TimeSpentMs != nil {
+		if *req.TimeSpentMs < 0 {
+			httpapi.WriteFieldErrors(w, map[string]string{"time_spent_ms": "must not be negative"})
+			return
+		}
+		timeSpent = *req.TimeSpentMs
+	}
+
+	answer, deadline, err := h.svc.SaveAnswer(r.Context(), actor, id, questionID, req.Response, timeSpent)
+	if h.writeAttemptError(w, "save answer", err, "no such question in this attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{
+		"answer":      answer,
+		"deadline_at": deadline,
+		"now":         time.Now().UTC(),
+	})
+}
+
+func (h *Handler) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	attempt, err := h.svc.SubmitManual(r.Context(), actor, id)
+	if h.writeAttemptError(w, "submit attempt", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
+}
+
+// writeAttemptError maps service errors onto the docs/04 wire vocabulary; it
+// reports whether a response was written.
+func (h *Handler) writeAttemptError(w http.ResponseWriter, op string, err error, notFoundMsg string) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, ErrNotFound):
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, notFoundMsg)
+	case errors.Is(err, ErrQuizNotLive):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotLive,
+			"this quiz is not open right now")
+	case errors.Is(err, ErrAttemptLimit):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptLimitReached,
+			"every allowed attempt for this quiz has been used")
+	case errors.Is(err, ErrDeadlinePassed):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptDeadlinePassed,
+			"the attempt deadline has passed")
+	case errors.Is(err, ErrKicked):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptKicked,
+			"you were removed from this quiz")
+	case errors.Is(err, ErrAlreadySubmitted):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptAlreadySubmitted,
+			"this attempt has already been submitted")
+	default:
+		h.svc.log.Error(op, "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+	}
+	return true
+}
+
+// pathUUID pre-screens a path segment so garbage never reaches a Postgres
+// uuid cast; a non-uuid reads as 404, same as an unknown id.
+func pathUUID(w http.ResponseWriter, r *http.Request, param, notFoundMsg string) (string, bool) {
+	id := chi.URLParam(r, param)
+	if !uuidShape.MatchString(id) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, notFoundMsg)
+		return "", false
+	}
+	return id, true
+}
+
+var uuidShape = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)

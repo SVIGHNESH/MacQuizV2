@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
@@ -112,12 +113,14 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log)
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
+	attemptSvc := attempt.NewService(sqlDB, log)
+	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpserver.New(
 			httpserver.BuildInfo{Version: version, Commit: commit},
-			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler},
+			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler},
 		),
 	}
 

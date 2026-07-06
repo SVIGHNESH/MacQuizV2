@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/quiz"
 )
@@ -29,9 +30,10 @@ type BuildInfo struct {
 // Deps carries the wired modules into the router. Fields are nil in unit
 // tests that only exercise the router shell.
 type Deps struct {
-	DB   *sql.DB
-	Auth *authusers.Handler
-	Quiz *quiz.Handler
+	DB      *sql.DB
+	Auth    *authusers.Handler
+	Quiz    *quiz.Handler
+	Attempt *attempt.Handler
 }
 
 // New returns the root HTTP handler for the API process.
@@ -60,8 +62,16 @@ func New(build BuildInfo, deps Deps) http.Handler {
 			r.Mount("/groups", deps.Auth.GroupRoutes())
 			r.Mount("/directory", deps.Auth.DirectoryRoutes())
 			if deps.Quiz != nil {
+				// POST /quizzes/{id}/attempts belongs to the quiz mount's
+				// subtree; the handler itself stays in the attempt module.
+				if deps.Attempt != nil {
+					deps.Quiz.AttachAttemptStart(deps.Attempt.HandleStart)
+				}
 				r.Mount("/quizzes", deps.Quiz.QuizRoutes())
 				r.Mount("/questions", deps.Quiz.QuestionRoutes())
+			}
+			if deps.Attempt != nil {
+				r.Mount("/attempts", deps.Attempt.Routes())
 			}
 		})
 	}

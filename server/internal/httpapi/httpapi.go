@@ -11,14 +11,19 @@ import (
 // Error codes from docs/04-api.md section 3 plus the auth-flow codes.
 // The vocabulary is deliberately small; clients switch on Code.
 const (
-	CodeNotFound               = "NOT_FOUND"
-	CodeValidationFailed       = "VALIDATION_FAILED"
-	CodeRateLimited            = "RATE_LIMITED"
-	CodeInvalidCredentials     = "INVALID_CREDENTIALS"
-	CodeUnauthenticated        = "UNAUTHENTICATED"
-	CodeForbidden              = "FORBIDDEN"
-	CodePasswordChangeRequired = "PASSWORD_CHANGE_REQUIRED"
-	CodeQuizNotEditable        = "QUIZ_NOT_EDITABLE"
+	CodeNotFound                = "NOT_FOUND"
+	CodeValidationFailed        = "VALIDATION_FAILED"
+	CodeRateLimited             = "RATE_LIMITED"
+	CodeInvalidCredentials      = "INVALID_CREDENTIALS"
+	CodeUnauthenticated         = "UNAUTHENTICATED"
+	CodeForbidden               = "FORBIDDEN"
+	CodePasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
+	CodeQuizNotEditable         = "QUIZ_NOT_EDITABLE"
+	CodeQuizNotLive             = "QUIZ_NOT_LIVE"
+	CodeAttemptLimitReached     = "ATTEMPT_LIMIT_REACHED"
+	CodeAttemptDeadlinePassed   = "ATTEMPT_DEADLINE_PASSED"
+	CodeAttemptKicked           = "ATTEMPT_KICKED"
+	CodeAttemptAlreadySubmitted = "ATTEMPT_ALREADY_SUBMITTED"
 )
 
 // ErrorBody is the wire shape of every non-2xx response.

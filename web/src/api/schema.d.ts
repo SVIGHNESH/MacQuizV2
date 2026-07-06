@@ -391,6 +391,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start (or resume) an attempt (student)
+         * @description One transaction checks assignment, the live window (server time), and attempts used against max_attempts, then precomputes deadline_at = least(now() + duration, ends_at). Returns the snapshot question set WITHOUT the answer key. If an unexpired attempt is already in progress it is returned with 200 instead of burning an attempt slot; unassigned callers read 404.
+         */
+        post: operations["startAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resume an attempt (owner)
+         * @description The saved answers, the deadline, and the current server time - the client countdown is cosmetic, driven by server deadline plus a clock-offset estimate. Owner-only; anyone else reads 404.
+         */
+        get: operations["resumeAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{id}/answers/{questionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Autosave one answer (owner)
+         * @description Idempotent upsert on (attempt_id, question_id); the question must belong to the snapshot version this attempt pinned. Refused with 409 once now() passes deadline_at + 5 s grace or the attempt has left in_progress - the same gate that guards submit.
+         */
+        put: operations["saveAnswer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit the attempt (owner)
+         * @description The manual leg of the idempotent submit funnel - whatever is autosaved becomes the submission. Submitting an already-submitted attempt answers 200 with the unchanged terminal state, so a retried request or a race against the deadline job resolves cleanly.
+         */
+        post: operations["submitAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/questions/{id}": {
         parameters: {
             query?: never;
@@ -619,6 +699,79 @@ export interface components {
         AssignmentsResponse: {
             students: components["schemas"]["AssignedStudent"][];
         };
+        /** @description The student-facing attempt shape. The owner is always the caller and the score is withheld until the results-release policy lands with grading, so neither appears here. */
+        Attempt: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            quiz_id: string;
+            attempt_no: number;
+            /** @description Pins the snapshot the student saw. */
+            quiz_version: number;
+            /** Format: date-time */
+            started_at: string;
+            /**
+             * Format: date-time
+             * @description least(started_at + duration, quiz.ends_at); precomputed once at start, the single column every write validates against.
+             */
+            deadline_at: string;
+            /** Format: date-time */
+            submitted_at: string | null;
+            /** @enum {string|null} */
+            submit_kind: "manual" | "auto" | "forced" | "kicked" | null;
+            /** @enum {string} */
+            status: "in_progress" | "submitted" | "graded" | "kicked";
+            violation_count: number;
+        };
+        /** @description One snapshot question as the player sees it. The answer key is structurally absent; when the quiz shuffles, positions are renumbered densely in the per-attempt order. */
+        AttemptQuestion: {
+            /** Format: uuid */
+            id: string;
+            position: number;
+            /** @enum {string} */
+            type: "single" | "multi" | "truefalse" | "short";
+            body: components["schemas"]["QuestionBody"];
+            options?: components["schemas"]["QuestionOption"][];
+            points: number;
+        };
+        AttemptAnswer: {
+            /** Format: uuid */
+            question_id: string;
+            /** @description The autosaved response; shape depends on question type - the option key (single), option keys (multi), a boolean (truefalse), or a string (short). */
+            response: unknown;
+            time_spent_ms: number;
+            /** Format: date-time */
+            saved_at: string;
+        };
+        /** @description The full player payload - attempt, quiz identity, snapshotted guardrails, questions without the answer key, saved answers, and the server clock for the cosmetic countdown. */
+        AttemptDetail: {
+            attempt: components["schemas"]["Attempt"];
+            quiz_title: string;
+            guardrails: components["schemas"]["Guardrails"];
+            questions: components["schemas"]["AttemptQuestion"][];
+            answers: components["schemas"]["AttemptAnswer"][];
+            /**
+             * Format: date-time
+             * @description Current server time, for the clock-offset estimate.
+             */
+            now: string;
+        };
+        SaveAnswerRequest: {
+            /** @description The response value; shape depends on question type. */
+            response: unknown;
+            /** @description Accumulated focus time on this question, for analytics. */
+            time_spent_ms?: number;
+        };
+        SaveAnswerResponse: {
+            answer: components["schemas"]["AttemptAnswer"];
+            /** Format: date-time */
+            deadline_at: string;
+            /** Format: date-time */
+            now: string;
+        };
+        AttemptResponse: {
+            attempt: components["schemas"]["Attempt"];
+        };
         /** @description The student-facing quiz shape - window, budget, and size. Never the owner, the guardrail internals, or (structurally) a question. */
         AssignedQuiz: {
             /** Format: uuid */
@@ -678,6 +831,15 @@ export interface components {
         };
         /** @description QUIZ_NOT_EDITABLE - the quiz has been published; its question set is an immutable snapshot and drafts-only operations are refused. */
         NotEditable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The attempt state refuses this action; the client switches on code - QUIZ_NOT_LIVE (start outside the window), ATTEMPT_LIMIT_REACHED (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a terminal attempt), or ATTEMPT_KICKED (show the lockout screen). */
+        AttemptConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1364,6 +1526,124 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    startAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The still-open attempt was resumed instead. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptDetail"];
+                };
+            };
+            /** @description A fresh attempt with its player payload. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AttemptConflict"];
+        };
+    };
+    resumeAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full player payload. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveAnswer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                questionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored answer plus the deadline and server clock. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveAnswerResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AttemptConflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    submitAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt in its terminal state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AttemptConflict"];
         };
     };
     deleteQuestion: {

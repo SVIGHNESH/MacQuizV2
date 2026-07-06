@@ -19,11 +19,21 @@ import (
 type Handler struct {
 	svc  *Service
 	auth *authusers.Service
+	// attemptStart serves POST /quizzes/{id}/attempts. The route lives here
+	// because chi owns the whole /quizzes subtree through one mount, but the
+	// handler belongs to the attempt module; httpserver attaches it.
+	attemptStart http.HandlerFunc
 }
 
 // NewHandler wires the quiz routes.
 func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 	return &Handler{svc: svc, auth: auth}
+}
+
+// AttachAttemptStart registers the attempt module's start handler on the
+// student route group. Must be called before QuizRoutes.
+func (h *Handler) AttachAttemptStart(fn http.HandlerFunc) {
+	h.attemptStart = fn
 }
 
 // QuizRoutes returns the /api/v1/quizzes route group. The authoring surface
@@ -49,6 +59,9 @@ func (h *Handler) QuizRoutes() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(requireStudent)
 		r.Get("/assigned", h.handleAssignedQuizzes)
+		if h.attemptStart != nil {
+			r.Post("/{id}/attempts", h.attemptStart)
+		}
 	})
 	return r
 }

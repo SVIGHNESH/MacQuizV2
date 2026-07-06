@@ -3,14 +3,15 @@
 # TypeScript client from this file, so frontend and backend cannot drift.
 # Endpoints are added milestone by milestone; today it covers Milestone 0,
 # Milestone 1 (auth flow, admin user provisioning, groups), Milestone 2
-# (quiz authoring: draft quiz CRUD, question CRUD, reorder), and Milestone 3
+# (quiz authoring: draft quiz CRUD, question CRUD, reorder), Milestone 3
 # (publish with snapshot + versioning, assignments, the teacher-readable
-# audience directory, student quiz list).
+# audience directory, student quiz list), and Milestone 4 (the attempt
+# player: start, resume, autosave, manual submit).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.6.0
+  version: 0.7.0
 servers:
   - url: /
 paths:
@@ -672,6 +673,149 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/v1/quizzes/{id}/attempts:
+    post:
+      operationId: startAttempt
+      summary: Start (or resume) an attempt (student)
+      description: >-
+        One transaction checks assignment, the live window (server time),
+        and attempts used against max_attempts, then precomputes
+        deadline_at = least(now() + duration, ends_at). Returns the snapshot
+        question set WITHOUT the answer key. If an unexpired attempt is
+        already in progress it is returned with 200 instead of burning an
+        attempt slot; unassigned callers read 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: A fresh attempt with its player payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptDetail"
+        "200":
+          description: The still-open attempt was resumed instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/AttemptConflict"
+  /api/v1/attempts/{id}:
+    get:
+      operationId: resumeAttempt
+      summary: Resume an attempt (owner)
+      description: >-
+        The saved answers, the deadline, and the current server time - the
+        client countdown is cosmetic, driven by server deadline plus a
+        clock-offset estimate. Owner-only; anyone else reads 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The full player payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/attempts/{id}/answers/{questionId}:
+    put:
+      operationId: saveAnswer
+      summary: Autosave one answer (owner)
+      description: >-
+        Idempotent upsert on (attempt_id, question_id); the question must
+        belong to the snapshot version this attempt pinned. Refused with 409
+        once now() passes deadline_at + 5 s grace or the attempt has left
+        in_progress - the same gate that guards submit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveAnswerRequest"
+      responses:
+        "200":
+          description: The stored answer plus the deadline and server clock.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveAnswerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/AttemptConflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/attempts/{id}/submit:
+    post:
+      operationId: submitAttempt
+      summary: Submit the attempt (owner)
+      description: >-
+        The manual leg of the idempotent submit funnel - whatever is
+        autosaved becomes the submission. Submitting an already-submitted
+        attempt answers 200 with the unchanged terminal state, so a retried
+        request or a race against the deadline job resolves cleanly.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The attempt in its terminal state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/AttemptConflict"
   /api/v1/questions/{id}:
     parameters:
       - name: id
@@ -756,6 +900,17 @@ components:
       description: >-
         QUIZ_NOT_EDITABLE - the quiz has been published; its question set is
         an immutable snapshot and drafts-only operations are refused.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    AttemptConflict:
+      description: >-
+        The attempt state refuses this action; the client switches on code -
+        QUIZ_NOT_LIVE (start outside the window), ATTEMPT_LIMIT_REACHED
+        (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after
+        deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a
+        terminal attempt), or ATTEMPT_KICKED (show the lockout screen).
       content:
         application/json:
           schema:
@@ -1177,6 +1332,144 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssignedStudent"
+    Attempt:
+      type: object
+      description: >-
+        The student-facing attempt shape. The owner is always the caller and
+        the score is withheld until the results-release policy lands with
+        grading, so neither appears here.
+      required:
+        [id, quiz_id, attempt_no, quiz_version, started_at, deadline_at,
+         submitted_at, submit_kind, status, violation_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        quiz_id:
+          type: string
+          format: uuid
+        attempt_no:
+          type: integer
+        quiz_version:
+          type: integer
+          description: Pins the snapshot the student saw.
+        started_at:
+          type: string
+          format: date-time
+        deadline_at:
+          type: string
+          format: date-time
+          description: >-
+            least(started_at + duration, quiz.ends_at); precomputed once at
+            start, the single column every write validates against.
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_kind:
+          type: string
+          enum: [manual, auto, forced, kicked]
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, submitted, graded, kicked]
+        violation_count:
+          type: integer
+    AttemptQuestion:
+      type: object
+      description: >-
+        One snapshot question as the player sees it. The answer key is
+        structurally absent; when the quiz shuffles, positions are
+        renumbered densely in the per-attempt order.
+      required: [id, position, type, body, points]
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        type:
+          type: string
+          enum: [single, multi, truefalse, short]
+        body:
+          $ref: "#/components/schemas/QuestionBody"
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionOption"
+        points:
+          type: number
+    AttemptAnswer:
+      type: object
+      required: [question_id, response, time_spent_ms, saved_at]
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        response:
+          description: >-
+            The autosaved response; shape depends on question type - the
+            option key (single), option keys (multi), a boolean (truefalse),
+            or a string (short).
+        time_spent_ms:
+          type: integer
+        saved_at:
+          type: string
+          format: date-time
+    AttemptDetail:
+      type: object
+      description: >-
+        The full player payload - attempt, quiz identity, snapshotted
+        guardrails, questions without the answer key, saved answers, and
+        the server clock for the cosmetic countdown.
+      required: [attempt, quiz_title, guardrails, questions, answers, now]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/Attempt"
+        quiz_title:
+          type: string
+        guardrails:
+          $ref: "#/components/schemas/Guardrails"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttemptQuestion"
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttemptAnswer"
+        now:
+          type: string
+          format: date-time
+          description: Current server time, for the clock-offset estimate.
+    SaveAnswerRequest:
+      type: object
+      required: [response]
+      properties:
+        response:
+          description: The response value; shape depends on question type.
+        time_spent_ms:
+          type: integer
+          minimum: 0
+          description: Accumulated focus time on this question, for analytics.
+    SaveAnswerResponse:
+      type: object
+      required: [answer, deadline_at, now]
+      properties:
+        answer:
+          $ref: "#/components/schemas/AttemptAnswer"
+        deadline_at:
+          type: string
+          format: date-time
+        now:
+          type: string
+          format: date-time
+    AttemptResponse:
+      type: object
+      required: [attempt]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/Attempt"
     AssignedQuiz:
       type: object
       description: >-
