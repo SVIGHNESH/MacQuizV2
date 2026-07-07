@@ -27,6 +27,7 @@ import (
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/httpserver"
 	"macquiz/server/internal/quiz"
+	"macquiz/server/internal/realtime"
 	"macquiz/server/internal/worker"
 )
 
@@ -109,11 +110,22 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer sqlDB.Close()
 
+	// The realtime relay is the "publish second" half of docs/05: the attempt
+	// service persists each event, then hands it here to fan out over Redis.
+	// A bad URL fails boot; an unreachable Redis does not - publishes degrade
+	// to best-effort, time-bounded drops (see realtime.publishTimeout) so a
+	// Redis outage cannot stall the REST write path (docs/05 section 5).
+	publisher, err := realtime.NewPublisher(cfg.RedisURL, log)
+	if err != nil {
+		return err
+	}
+	defer publisher.Close()
+
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log)
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
-	attemptSvc := attempt.NewService(sqlDB, log)
+	attemptSvc := attempt.NewService(sqlDB, log, publisher)
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
 
 	srv := &http.Server{

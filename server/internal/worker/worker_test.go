@@ -104,7 +104,11 @@ func TestWorkerOpensAndClosesQuiz(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- worker.Run(workerCtx, config.Config{
-			DatabaseURL:   u.String(),
+			DatabaseURL: u.String(),
+			// The realtime relay only parses this URL (it dials lazily), so a
+			// valid dev default lets Run build its publisher without a live
+			// Redis; the events it relays are asserted in the attempt suite.
+			RedisURL:      "redis://localhost:6380/0",
 			ShutdownGrace: 10 * time.Second,
 			Env:           "test",
 		}, log)

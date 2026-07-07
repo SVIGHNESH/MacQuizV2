@@ -68,6 +68,37 @@ type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// EventPublisher relays a committed attempt event to subscribers (docs/05
+// section 1: "persist first, publish second"). The attempt module owns the
+// persist - appendEvent writes the source-of-truth row inside the state
+// change's transaction - and hands the same delta to a publisher only after
+// that transaction commits. realtime.Publisher is the concrete relay onto
+// Redis pub/sub; the interface keeps this module from importing go-redis and
+// gives tests a capture seam. Publish is best-effort and returns nothing: the
+// row is already durable and the live snapshot reconciles any lost delta, so a
+// publish failure must never affect the request that triggered it.
+type EventPublisher interface {
+	Publish(ctx context.Context, quizID, attemptID, eventType string, payload any)
+}
+
+// noopPublisher is the default relay: every test that does not exercise the
+// socket, and any deploy that has not wired Redis, gets a publisher that
+// drops every event. Callers publish unconditionally against it.
+type noopPublisher struct{}
+
+func (noopPublisher) Publish(context.Context, string, string, string, any) {}
+
+// resolvePublisher picks the wired relay or the no-op fallback, so every emit
+// site can call Publish without a nil guard. The variadic keeps the many
+// existing NewService/SweepDueAttempts/GradeSubmitted callers - none of which
+// relay - compiling unchanged.
+func resolvePublisher(publishers []EventPublisher) EventPublisher {
+	if len(publishers) > 0 && publishers[0] != nil {
+		return publishers[0]
+	}
+	return noopPublisher{}
+}
+
 // appendEvent writes one attempt_events row inside the caller's transaction.
 // It marshals the typed payload rather than accepting raw JSON so the event
 // shape is checked at compile time, and it never updates or deletes: the

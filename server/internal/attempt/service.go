@@ -103,17 +103,24 @@ type Service struct {
 	// uses it to enqueue the attempt's deadline timer inside its own
 	// transaction. The worker process consumes it (internal/worker).
 	jobs *river.Client[*sql.Tx]
+	// events relays each committed lifecycle event to Redis pub/sub after its
+	// transaction commits (docs/05 section 1). It defaults to a no-op, so the
+	// service works with no realtime layer wired.
+	events EventPublisher
 }
 
-// NewService wires the attempt service.
-func NewService(db *sql.DB, log *slog.Logger) *Service {
+// NewService wires the attempt service. An optional EventPublisher relays
+// lifecycle events (started/progress/submitted) onto Redis pub/sub after they
+// commit; omitting it leaves realtime delivery a no-op (the attempt_events
+// rows are still written, so nothing is lost).
+func NewService(db *sql.DB, log *slog.Logger, publishers ...EventPublisher) *Service {
 	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
 	if err != nil {
 		// The empty config is statically valid; NewClient has nothing left
 		// to reject, so this cannot happen at runtime.
 		panic(fmt.Sprintf("build insert-only river client: %v", err))
 	}
-	return &Service{db: db, log: log, jobs: jobs}
+	return &Service{db: db, log: log, jobs: jobs, events: resolvePublisher(publishers)}
 }
 
 const attemptColumns = `id, quiz_id, student_id, attempt_no, quiz_version,
@@ -236,6 +243,14 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 	if err := tx.Commit(); err != nil {
 		return Detail{}, false, fmt.Errorf("commit start: %w", err)
 	}
+	// Publish second (docs/05 section 1): the started row is now durable, so
+	// relay the same delta to the live dashboard. A resume republishes nothing -
+	// the row it resumed is already on the roster from its original start.
+	if !resumed {
+		s.events.Publish(ctx, a.QuizID, a.ID, eventStarted, startedPayload{
+			StudentID: a.StudentID, AttemptID: a.ID, DeadlineAt: a.DeadlineAt,
+		})
+	}
 	return detail, resumed, nil
 }
 
@@ -315,6 +330,12 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 	if err := tx.Commit(); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("commit save: %w", err)
 	}
+	// Publish second: the progress row is durable, so relay the answered-count
+	// delta. current_question stays null for the same reason the row does - no
+	// server cursor over REST (see progressPayload).
+	s.events.Publish(ctx, a.QuizID, attemptID, eventProgress, progressPayload{
+		AnsweredCount: answered,
+	})
 	return ans, a.DeadlineAt, nil
 }
 
@@ -333,7 +354,7 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 		return Attempt{}, err
 	}
 	freshlySubmitted := a.Status == "in_progress"
-	a, err = submit(ctx, tx, a, "manual")
+	a, submitted, err := submit(ctx, tx, a, "manual")
 	if err != nil {
 		return Attempt{}, err
 	}
@@ -346,6 +367,12 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 	}
 	if err := tx.Commit(); err != nil {
 		return Attempt{}, fmt.Errorf("commit submit: %w", err)
+	}
+	// Publish second: only a real in_progress -> submitted flip returns a
+	// payload (a repeat submit returns nil), so the submitted delta relays
+	// exactly once per attempt, mirroring the single appendEvent it committed.
+	if submitted != nil {
+		s.events.Publish(ctx, a.QuizID, a.ID, eventSubmitted, *submitted)
 	}
 	return a, nil
 }
@@ -360,12 +387,15 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 // to whichever committed first. The caller enqueues grading for a fresh
 // termination; the sweep-driven kinds are graded by the same worker pass
 // that applies them (GradeSubmitted, grade.go).
-func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, error) {
+// It returns the submitted payload it appended when it actually flipped the
+// attempt, and nil for the idempotent terminal cases, so the caller can relay
+// the event to Redis after commit exactly when a row changed (docs/05).
+func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, *submittedPayload, error) {
 	switch a.Status {
 	case "kicked":
-		return Attempt{}, ErrKicked
+		return Attempt{}, nil, ErrKicked
 	case "submitted", "graded":
-		return a, nil
+		return a, nil, nil
 	}
 	// Only the student-driven kind races the clock; auto and forced ARE the
 	// deadline firing, and a kick is valid until the moment it commits.
@@ -374,10 +404,10 @@ func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, e
 		if err := tx.QueryRowContext(ctx,
 			`SELECT now() > $1::timestamptz + $2::interval`,
 			a.DeadlineAt, writeGrace.String()).Scan(&late); err != nil {
-			return Attempt{}, fmt.Errorf("check deadline: %w", err)
+			return Attempt{}, nil, fmt.Errorf("check deadline: %w", err)
 		}
 		if late {
-			return Attempt{}, ErrDeadlinePassed
+			return Attempt{}, nil, ErrDeadlinePassed
 		}
 	}
 	a, err := scanAttempt(tx.QueryRowContext(ctx,
@@ -386,21 +416,20 @@ func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, e
 		 WHERE id = $2 AND status = 'in_progress'
 		 RETURNING `+attemptColumns, kind, a.ID).Scan)
 	if err != nil {
-		return Attempt{}, fmt.Errorf("mark submitted: %w", err)
+		return Attempt{}, nil, fmt.Errorf("mark submitted: %w", err)
 	}
 	// Only a real in_progress -> submitted flip reaches here (the terminal
 	// cases returned above), so the submitted delta is emitted exactly once per
 	// attempt, in the same transaction as the flip.
 	answered, err := countAnswered(ctx, tx, a.ID)
 	if err != nil {
-		return Attempt{}, err
+		return Attempt{}, nil, err
 	}
-	if err := appendEvent(ctx, tx, a.ID, eventSubmitted, submittedPayload{
-		SubmitKind: kind, AnsweredCount: answered,
-	}); err != nil {
-		return Attempt{}, err
+	payload := submittedPayload{SubmitKind: kind, AnsweredCount: answered}
+	if err := appendEvent(ctx, tx, a.ID, eventSubmitted, payload); err != nil {
+		return Attempt{}, nil, err
 	}
-	return a, nil
+	return a, &payload, nil
 }
 
 // ownedForUpdate locks the attempt row and verifies the caller owns it;

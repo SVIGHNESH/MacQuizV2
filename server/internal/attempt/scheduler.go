@@ -46,7 +46,7 @@ func (DeadlineArgs) Kind() string { return "attempt_deadline" }
 // safe to run at any time, from any caller: the exact-timestamp deadline
 // jobs, the close_quiz transition, the worker's boot re-scan, and the
 // periodic backstop all funnel through here.
-func SweepDueAttempts(ctx context.Context, db *sql.DB) (auto, forced int64, err error) {
+func SweepDueAttempts(ctx context.Context, db *sql.DB, publishers ...EventPublisher) (auto, forced int64, err error) {
 	// The whole sweep runs in one transaction so each terminated attempt and
 	// its submitted event (docs/05: persist first) commit together. Auto still
 	// runs before forced within the transaction, so an attempt that expired
@@ -57,24 +57,24 @@ func SweepDueAttempts(ctx context.Context, db *sql.DB) (auto, forced int64, err 
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after commit
 
-	auto, err = sweepSubmit(ctx, tx, "auto",
+	autoEvents, err := sweepSubmit(ctx, tx, "auto",
 		`UPDATE attempts
 		 SET status = 'submitted', submit_kind = 'auto', submitted_at = now()
 		 WHERE status = 'in_progress' AND deadline_at + $1::interval <= now()
-		 RETURNING id, (SELECT count(*) FROM attempt_answers aa
+		 RETURNING id, quiz_id, (SELECT count(*) FROM attempt_answers aa
 		                WHERE aa.attempt_id = attempts.id AND aa.response IS NOT NULL)`,
 		writeGrace.String())
 	if err != nil {
 		return 0, 0, err
 	}
 
-	forced, err = sweepSubmit(ctx, tx, "forced",
+	forcedEvents, err := sweepSubmit(ctx, tx, "forced",
 		`UPDATE attempts a
 		 SET status = 'submitted', submit_kind = 'forced', submitted_at = now()
 		 FROM quizzes z
 		 WHERE a.quiz_id = z.id AND a.status = 'in_progress'
 		   AND z.status IN ('closed', 'archived')
-		 RETURNING a.id, (SELECT count(*) FROM attempt_answers aa
+		 RETURNING a.id, a.quiz_id, (SELECT count(*) FROM attempt_answers aa
 		                  WHERE aa.attempt_id = a.id AND aa.response IS NOT NULL)`)
 	if err != nil {
 		return 0, 0, err
@@ -83,7 +83,22 @@ func SweepDueAttempts(ctx context.Context, db *sql.DB) (auto, forced int64, err 
 	if err := tx.Commit(); err != nil {
 		return 0, 0, fmt.Errorf("commit sweep: %w", err)
 	}
-	return auto, forced, nil
+	// Publish second: only the rows this pass actually flipped are relayed, so
+	// a late job or the backstop re-publishes nothing, just as it re-appends
+	// nothing (docs/05 section 1).
+	pub := resolvePublisher(publishers)
+	for _, e := range append(autoEvents, forcedEvents...) {
+		pub.Publish(ctx, e.quizID, e.attemptID, eventSubmitted, e.payload)
+	}
+	return int64(len(autoEvents)), int64(len(forcedEvents)), nil
+}
+
+// sweptEvent is one attempt the sweep flipped: the durable submitted event,
+// held until the transaction commits so it can be relayed to Redis second.
+type sweptEvent struct {
+	quizID    string
+	attemptID string
+	payload   submittedPayload
 }
 
 // sweepSubmit runs one set-based termination UPDATE ... RETURNING and appends a
@@ -92,39 +107,42 @@ func SweepDueAttempts(ctx context.Context, db *sql.DB) (auto, forced int64, err 
 // terminated are returned, so a late job, the boot re-scan, or the periodic
 // backstop re-emit nothing - the events inherit the sweep's idempotence for
 // free. RETURNING rows are drained fully before the first appendEvent because a
-// transaction cannot interleave a new statement with an open result set.
-func sweepSubmit(ctx context.Context, tx *sql.Tx, kind, query string, args ...any) (int64, error) {
+// transaction cannot interleave a new statement with an open result set. The
+// flipped rows are returned so the caller can relay them after commit.
+func sweepSubmit(ctx context.Context, tx *sql.Tx, kind, query string, args ...any) ([]sweptEvent, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("%s-submit due attempts: %w", kind, err)
+		return nil, fmt.Errorf("%s-submit due attempts: %w", kind, err)
 	}
 	type flipped struct {
 		id       string
+		quizID   string
 		answered int
 	}
 	var swept []flipped
 	for rows.Next() {
 		var f flipped
-		if err := rows.Scan(&f.id, &f.answered); err != nil {
+		if err := rows.Scan(&f.id, &f.quizID, &f.answered); err != nil {
 			rows.Close()
-			return 0, fmt.Errorf("scan %s-submitted attempt: %w", kind, err)
+			return nil, fmt.Errorf("scan %s-submitted attempt: %w", kind, err)
 		}
 		swept = append(swept, f)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return 0, fmt.Errorf("%s-submit due attempts: %w", kind, err)
+		return nil, fmt.Errorf("%s-submit due attempts: %w", kind, err)
 	}
 	rows.Close()
 
+	events := make([]sweptEvent, 0, len(swept))
 	for _, f := range swept {
-		if err := appendEvent(ctx, tx, f.id, eventSubmitted, submittedPayload{
-			SubmitKind: kind, AnsweredCount: f.answered,
-		}); err != nil {
-			return 0, err
+		payload := submittedPayload{SubmitKind: kind, AnsweredCount: f.answered}
+		if err := appendEvent(ctx, tx, f.id, eventSubmitted, payload); err != nil {
+			return nil, err
 		}
+		events = append(events, sweptEvent{quizID: f.quizID, attemptID: f.id, payload: payload})
 	}
-	return int64(len(swept)), nil
+	return events, nil
 }
 
 // enqueueDeadlineJob inserts the attempt's timer job inside the start

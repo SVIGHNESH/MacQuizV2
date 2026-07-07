@@ -22,6 +22,7 @@ import (
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/quiz"
+	"macquiz/server/internal/realtime"
 )
 
 // sweepInterval paces the periodic backstop sweep. The exact-timestamp jobs
@@ -37,10 +38,11 @@ type openQuizWorker struct {
 	river.WorkerDefaults[quiz.OpenQuizArgs]
 	db  *sql.DB
 	log *slog.Logger
+	pub attempt.EventPublisher
 }
 
 func (w *openQuizWorker) Work(ctx context.Context, job *river.Job[quiz.OpenQuizArgs]) error {
-	return sweepDue(ctx, w.db, w.log, "open_quiz job", job.Args.QuizID)
+	return sweepDue(ctx, w.db, w.log, w.pub, "open_quiz job", job.Args.QuizID)
 }
 
 // closeQuizWorker fires at ends_at and flips Scheduled/Live -> Closed. The
@@ -50,10 +52,11 @@ type closeQuizWorker struct {
 	river.WorkerDefaults[quiz.CloseQuizArgs]
 	db  *sql.DB
 	log *slog.Logger
+	pub attempt.EventPublisher
 }
 
 func (w *closeQuizWorker) Work(ctx context.Context, job *river.Job[quiz.CloseQuizArgs]) error {
-	return sweepDue(ctx, w.db, w.log, "close_quiz job", job.Args.QuizID)
+	return sweepDue(ctx, w.db, w.log, w.pub, "close_quiz job", job.Args.QuizID)
 }
 
 // attemptDeadlineWorker fires once an attempt's deadline (plus the autosave
@@ -65,10 +68,11 @@ type attemptDeadlineWorker struct {
 	river.WorkerDefaults[attempt.DeadlineArgs]
 	db  *sql.DB
 	log *slog.Logger
+	pub attempt.EventPublisher
 }
 
 func (w *attemptDeadlineWorker) Work(ctx context.Context, job *river.Job[attempt.DeadlineArgs]) error {
-	return sweepDue(ctx, w.db, w.log, "attempt_deadline job", job.Args.AttemptID)
+	return sweepDue(ctx, w.db, w.log, w.pub, "attempt_deadline job", job.Args.AttemptID)
 }
 
 // gradeAttemptWorker fires when a submit transaction commits and grades the
@@ -80,10 +84,11 @@ type gradeAttemptWorker struct {
 	river.WorkerDefaults[attempt.GradeArgs]
 	db  *sql.DB
 	log *slog.Logger
+	pub attempt.EventPublisher
 }
 
 func (w *gradeAttemptWorker) Work(ctx context.Context, job *river.Job[attempt.GradeArgs]) error {
-	return sweepDue(ctx, w.db, w.log, "grade_attempt job", job.Args.AttemptID)
+	return sweepDue(ctx, w.db, w.log, w.pub, "grade_attempt job", job.Args.AttemptID)
 }
 
 // sweepQuizzesWorker is the periodic backstop behind the exact-timestamp
@@ -92,10 +97,11 @@ type sweepQuizzesWorker struct {
 	river.WorkerDefaults[quiz.SweepQuizzesArgs]
 	db  *sql.DB
 	log *slog.Logger
+	pub attempt.EventPublisher
 }
 
 func (w *sweepQuizzesWorker) Work(ctx context.Context, _ *river.Job[quiz.SweepQuizzesArgs]) error {
-	return sweepDue(ctx, w.db, w.log, "periodic sweep", "")
+	return sweepDue(ctx, w.db, w.log, w.pub, "periodic sweep", "")
 }
 
 // sweepDue applies every due transition: quiz flips first, then the attempt
@@ -103,16 +109,20 @@ func (w *sweepQuizzesWorker) Work(ctx context.Context, _ *river.Job[quiz.SweepQu
 // force-submitted and graded in the same pass. subject is the id the
 // triggering job carried (a quiz or an attempt), for the log line only - the
 // sweeps repair everything due.
-func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, subject string) error {
+func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, pub attempt.EventPublisher, trigger, subject string) error {
 	opened, closed, err := quiz.SweepDueQuizzes(ctx, sqlDB)
 	if err != nil {
 		return err
 	}
-	auto, forced, err := attempt.SweepDueAttempts(ctx, sqlDB)
+	// The batch submitted/graded events (docs/05) are emitted here in the
+	// worker, not the API, so the same relay must reach this process - a
+	// force-submit or auto-grade that never publishes would silently stall the
+	// dashboard until the next snapshot poll.
+	auto, forced, err := attempt.SweepDueAttempts(ctx, sqlDB, pub)
 	if err != nil {
 		return err
 	}
-	graded, err := attempt.GradeSubmitted(ctx, sqlDB)
+	graded, err := attempt.GradeSubmitted(ctx, sqlDB, pub)
 	if err != nil {
 		return err
 	}
@@ -140,12 +150,21 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer sqlDB.Close()
 
+	// The realtime relay is the "publish second" half of docs/05 for the
+	// worker-emitted events (batch submitted, graded). A bad URL fails boot;
+	// an unreachable Redis degrades to best-effort, time-bounded drops.
+	pub, err := realtime.NewPublisher(cfg.RedisURL, log)
+	if err != nil {
+		return err
+	}
+	defer pub.Close()
+
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log})
-	river.AddWorker(workers, &closeQuizWorker{db: sqlDB, log: log})
-	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log})
-	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log})
-	river.AddWorker(workers, &gradeAttemptWorker{db: sqlDB, log: log})
+	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log, pub: pub})
+	river.AddWorker(workers, &closeQuizWorker{db: sqlDB, log: log, pub: pub})
+	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log, pub: pub})
+	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log, pub: pub})
+	river.AddWorker(workers, &gradeAttemptWorker{db: sqlDB, log: log, pub: pub})
 
 	client, err := river.NewClient(riverdatabasesql.New(sqlDB), &river.Config{
 		Logger:  log,
@@ -169,7 +188,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	// Boot re-scan: apply every transition that came due while no worker was
 	// running, before the queue starts, so a restart heals the world first.
-	if err := sweepDue(ctx, sqlDB, log, "boot re-scan", ""); err != nil {
+	if err := sweepDue(ctx, sqlDB, log, pub, "boot re-scan", ""); err != nil {
 		return fmt.Errorf("boot re-scan: %w", err)
 	}
 

@@ -48,7 +48,7 @@ func (s *Service) enqueueGradeJob(ctx context.Context, tx *sql.Tx, attemptID str
 // sweeps, it re-derives what needs work from the rows themselves, so any
 // caller - the grade job, the close pass, the boot re-scan, the periodic
 // backstop - can run it at any time.
-func GradeSubmitted(ctx context.Context, db *sql.DB) (int64, error) {
+func GradeSubmitted(ctx context.Context, db *sql.DB, publishers ...EventPublisher) (int64, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id FROM attempts WHERE status = 'submitted' ORDER BY submitted_at, id`)
 	if err != nil {
@@ -67,9 +67,10 @@ func GradeSubmitted(ctx context.Context, db *sql.DB) (int64, error) {
 		return 0, fmt.Errorf("list submitted attempts: %w", err)
 	}
 
+	pub := resolvePublisher(publishers)
 	var graded int64
 	for _, id := range ids {
-		did, err := gradeOne(ctx, db, id)
+		did, err := gradeOne(ctx, db, id, pub)
 		if err != nil {
 			return graded, fmt.Errorf("grade attempt %s: %w", id, err)
 		}
@@ -83,7 +84,7 @@ func GradeSubmitted(ctx context.Context, db *sql.DB) (int64, error) {
 // gradeOne scores a single attempt. It reports false without error when the
 // attempt is no longer in status = 'submitted' - a concurrent grader got
 // there first, which is exactly the idempotence the funnel promises.
-func gradeOne(ctx context.Context, db *sql.DB, attemptID string) (bool, error) {
+func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublisher) (bool, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin grade tx: %w", err)
@@ -173,6 +174,11 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string) (bool, error) {
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit grade: %w", err)
+	}
+	// Publish second: only the grader that actually wrote the score relays the
+	// graded delta, so a concurrent or repeat grade publishes nothing (docs/05).
+	if n == 1 {
+		pub.Publish(ctx, quizID, attemptID, eventGraded, gradedPayload{Score: score})
 	}
 	return n == 1, nil
 }
