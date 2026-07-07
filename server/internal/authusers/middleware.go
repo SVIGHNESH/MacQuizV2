@@ -20,6 +20,14 @@ func ActorFrom(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
+// WithActor returns a copy of ctx carrying the authenticated actor - the
+// write-side counterpart to ActorFrom. RequireAuth uses it once it has loaded
+// the account; it is also the injection point for any authenticator that runs
+// outside the standard RequireAuth path (a WebSocket handshake, tests).
+func WithActor(ctx context.Context, u User) context.Context {
+	return context.WithValue(ctx, contextKey{}, u)
+}
+
 // RequireAuth authenticates the request from the access-token cookie (or an
 // Authorization: Bearer header for non-browser clients) and loads the account
 // fresh from the database, so disabling an account takes effect on the next
@@ -55,7 +63,7 @@ func (s *Service) RequireAuth(next http.Handler) http.Handler {
 			httpapi.WriteError(w, http.StatusUnauthorized, httpapi.CodeUnauthenticated, "account disabled")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, u)))
+		next.ServeHTTP(w, r.WithContext(WithActor(r.Context(), u)))
 	})
 }
 

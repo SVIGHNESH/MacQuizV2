@@ -119,6 +119,24 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 	return q, roster, now, rows.Err()
 }
 
+// OwnerOf resolves a quiz's owning teacher for the realtime gateway's
+// subscribe-time authorization (docs/05 section 3). It is deliberately
+// narrower than LiveRoster - the gateway needs only the owner id to run the
+// same ActionQuizWatchLive Can() check, not the whole roster. found is false
+// for an unknown quiz, which the gateway answers as 404 so existence is never
+// leaked to a non-owner.
+func (s *Service) OwnerOf(ctx context.Context, quizID string) (ownerID string, found bool, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT owner_id FROM quizzes WHERE id = $1`, quizID).Scan(&ownerID)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("load quiz owner: %w", err)
+	}
+	return ownerID, true, nil
+}
+
 // rosterState collapses the attempt status enum to the dashboard roster
 // vocabulary (docs/05 section 6). A null status is a student who never
 // started; graded folds into submitted because the dashboard cell is the

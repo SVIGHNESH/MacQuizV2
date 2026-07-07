@@ -3,10 +3,12 @@ module macquiz/server
 go 1.25.7
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pressly/goose/v3 v3.27.2
+	github.com/redis/go-redis/v9 v9.7.3
 	github.com/riverqueue/river v0.40.0
 	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.40.0
 	golang.org/x/crypto v0.53.0
@@ -22,7 +24,6 @@ require (
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.7.3 // indirect
 	github.com/riverqueue/river/riverdriver v0.40.0 // indirect
 	github.com/riverqueue/river/rivershared v0.40.0 // indirect
 	github.com/riverqueue/river/rivertype v0.40.0 // indirect

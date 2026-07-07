@@ -121,6 +121,16 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer publisher.Close()
 
+	// The subscribe side of docs/05: the gateway consumes the same
+	// quiz:{id}:events channel the publisher writes to and fans each event out
+	// to the authorized monitor sockets. A separate client from the publisher
+	// (its sub-second timeouts are wrong for a blocking pub/sub receive).
+	subscriber, err := realtime.NewRedisSubscriber(cfg.RedisURL)
+	if err != nil {
+		return err
+	}
+	defer subscriber.Close()
+
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log)
@@ -132,11 +142,16 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	attemptSvc := attempt.NewService(sqlDB, log, attempt.NewProgressCoalescer(publisher))
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
 
+	// The gateway's socket lifetime is bound to ctx (the SIGTERM signal
+	// context): when the process is asked to stop, every open monitor socket's
+	// pump returns, so graceful shutdown does not wait out the Timeout grace.
+	gateway := realtime.NewGateway(ctx, subscriber, authSvc, quizSvc.OwnerOf, cfg.WSAllowedOrigins, log)
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpserver.New(
 			httpserver.BuildInfo{Version: version, Commit: commit},
-			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler},
+			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler, Realtime: gateway},
 		),
 	}
 

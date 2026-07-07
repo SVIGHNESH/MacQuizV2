@@ -6,6 +6,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,11 @@ type Config struct {
 	DatabaseURL string
 	// RedisURL is the Redis connection string.
 	RedisURL string
+	// WSAllowedOrigins lists the browser Origin patterns permitted on the
+	// realtime WebSocket handshake (coder/websocket rejects cross-origin by
+	// default). Empty means same-origin only; a dashboard dev server served
+	// from a different port is added here in development.
+	WSAllowedOrigins []string
 	// ShutdownGrace is how long in-flight requests get to finish on SIGTERM.
 	ShutdownGrace time.Duration
 	// Env is "development" or "production"; controls log format and defaults.
@@ -36,16 +42,32 @@ func Load() Config {
 	return Config{
 		Addr: getenv("MACQUIZ_ADDR", ":8080"),
 		// Dev defaults match the host-port mappings in docker-compose.yml.
-		DatabaseURL:   getenv("MACQUIZ_DATABASE_URL", "postgres://macquiz:macquiz@localhost:5433/macquiz?sslmode=disable"),
-		RedisURL:      getenv("MACQUIZ_REDIS_URL", "redis://localhost:6380/0"),
-		ShutdownGrace: 10 * time.Second,
-		Env:           getenv("MACQUIZ_ENV", "development"),
-		AuthSecret:    getenv("MACQUIZ_AUTH_SECRET", "dev-only-insecure-secret"),
+		DatabaseURL:      getenv("MACQUIZ_DATABASE_URL", "postgres://macquiz:macquiz@localhost:5433/macquiz?sslmode=disable"),
+		RedisURL:         getenv("MACQUIZ_REDIS_URL", "redis://localhost:6380/0"),
+		WSAllowedOrigins: splitCSV(os.Getenv("MACQUIZ_WS_ALLOWED_ORIGINS")),
+		ShutdownGrace:    10 * time.Second,
+		Env:              getenv("MACQUIZ_ENV", "development"),
+		AuthSecret:       getenv("MACQUIZ_AUTH_SECRET", "dev-only-insecure-secret"),
 
 		BootstrapAdminEmail:    os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_EMAIL"),
 		BootstrapAdminPassword: os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD"),
 		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
 	}
+}
+
+// splitCSV parses a comma-separated env value into a trimmed, non-empty list.
+// An unset or blank value yields nil (same-origin only).
+func splitCSV(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getenv(key, fallback string) string {
