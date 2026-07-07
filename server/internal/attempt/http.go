@@ -48,6 +48,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(requireStaff)
 		r.Post("/{id}/kick", h.handleKick)
+		r.Post("/{id}/readmit", h.handleReadmit)
 	})
 	return r
 }
@@ -210,6 +211,33 @@ func (h *Handler) handleKick(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
 }
 
+// handleReadmit serves POST /attempts/{id}/readmit: the teacher/admin grants a
+// kicked student one fresh attempt slot (docs/06 section 4). The reason is
+// required and audited; the target must be a kicked attempt. It mirrors
+// handleKick's body handling.
+func (h *Handler) handleReadmit(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	var req kickRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReasonBytes)).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		httpapi.WriteFieldErrors(w, map[string]string{"reason": "required"})
+		return
+	}
+	attempt, err := h.svc.Readmit(r.Context(), actor, id, req.Reason)
+	if h.writeAttemptError(w, "readmit attempt", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
+}
+
 // handleResult serves GET /attempts/{id}/result: the released review with
 // the score, the answer key, and the per-question grading.
 func (h *Handler) handleResult(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +282,9 @@ func (h *Handler) writeAttemptError(w http.ResponseWriter, op string, err error,
 	case errors.Is(err, ErrAlreadySubmitted):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptAlreadySubmitted,
 			"this attempt has already been submitted")
+	case errors.Is(err, ErrNotKicked):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptNotKicked,
+			"this attempt was not kicked, so there is nothing to readmit")
 	default:
 		h.svc.log.Error(op, "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")

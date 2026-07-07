@@ -551,6 +551,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{id}/readmit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grant a kicked student one fresh attempt slot (owner or admin)
+         * @description Re-admission is a new attempt, not a resurrection: it grants the kicked student one extra attempt slot so they can start fresh with whatever time remains, while the kicked attempt stays terminal and immutable in the record. The target must be a kicked attempt (else 409 ATTEMPT_NOT_KICKED). Audited and idempotent - a repeat readmit of the same attempt answers 200 without granting a second slot or writing a second audit row. Policy: the quiz owner or any admin; a non-owning teacher reads 404, so an attempt's existence never leaks. The reason is required.
+         */
+        post: operations["readmitAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attempts/{id}/result": {
         parameters: {
             query?: never;
@@ -1998,6 +2018,48 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    readmitAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the student is being readmitted (canned phrase plus optional free text). */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The kicked attempt, unchanged; the extra slot is now granted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description ATTEMPT_NOT_KICKED - the target attempt was never kicked, so there is nothing to readmit. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             422: components["responses"]["ValidationFailed"];
         };
     };

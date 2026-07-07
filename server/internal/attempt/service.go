@@ -36,6 +36,9 @@ var (
 	// ErrAlreadySubmitted marks autosaves against a submitted or graded
 	// attempt; a stale tab learns its attempt is over.
 	ErrAlreadySubmitted = errors.New("attempt already submitted")
+	// ErrNotKicked marks a readmit whose target attempt was never kicked;
+	// re-admission is only for a kicked student (docs/06 section 4).
+	ErrNotKicked = errors.New("attempt was not kicked")
 )
 
 // writeGrace is the autosave slack after deadline_at (docs/06 section 2:
@@ -204,13 +207,18 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 	}
 
 	if !resumed {
-		var used, lastNo int
+		// Each readmit marks one kicked attempt (readmitted_at); count(readmitted_at)
+		// ignores nulls, so it is exactly the number of extra slots granted. The
+		// limit is max_attempts plus those grants, and the kicked rows still count
+		// toward used (they "stay in the record", docs/06:81), so a readmit nets
+		// the student exactly one fresh attempt.
+		var used, lastNo, granted int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT count(*), coalesce(max(attempt_no), 0) FROM attempts
-			 WHERE quiz_id = $1 AND student_id = $2`, quizID, actor.ID).Scan(&used, &lastNo); err != nil {
+			`SELECT count(*), coalesce(max(attempt_no), 0), count(readmitted_at) FROM attempts
+			 WHERE quiz_id = $1 AND student_id = $2`, quizID, actor.ID).Scan(&used, &lastNo, &granted); err != nil {
 			return Detail{}, false, fmt.Errorf("count attempts: %w", err)
 		}
-		if used >= maxAttempts {
+		if used >= maxAttempts+granted {
 			return Detail{}, false, ErrAttemptLimit
 		}
 		a, err = scanAttempt(tx.QueryRowContext(ctx,
@@ -515,6 +523,61 @@ func kick(ctx context.Context, tx *sql.Tx, a Attempt, kickedBy, reason string) (
 		return Attempt{}, nil, err
 	}
 	return a, &payload, nil
+}
+
+// Readmit grants a kicked student one fresh attempt slot (docs/06 section 4:81:
+// "Re-admission is a new attempt, not a resurrection ... grants one extra
+// attempt slot (audited)"). Authorization is the same ActionAttemptModerate the
+// kick uses, decided against the attempt's quiz owner, so a non-owning teacher
+// and an unknown attempt both read 404. The target must be a kicked attempt
+// (else ErrNotKicked); the kicked row is left untouched in the record - readmit
+// only marks it readmitted_at, which Start counts as one extra slot. It is
+// idempotent per attempt: the marker's WHERE ... readmitted_at IS NULL guard
+// means a repeat readmit (or a concurrent double click) grants no second slot
+// and writes no second audit row. There is no realtime event - the student's
+// eventual fresh Start publishes attempt.started, which moves the monitor row.
+func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, reason string) (Attempt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("begin readmit tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	a, err := s.moderatableForUpdate(ctx, tx, actor, attemptID)
+	if err != nil {
+		return Attempt{}, err
+	}
+	// Re-admission is only for a kicked student; an in_progress/submitted/graded
+	// attempt has nothing to readmit from.
+	if a.Status != "kicked" {
+		return Attempt{}, ErrNotKicked
+	}
+
+	// The marker is the grant: setting readmitted_at only where it is still null
+	// makes the extra slot idempotent per kicked attempt and race-safe against a
+	// concurrent double readmit (whichever UPDATE wins flips exactly one row).
+	res, err := tx.ExecContext(ctx,
+		`UPDATE attempts SET readmitted_at = now()
+		 WHERE id = $1 AND status = 'kicked' AND readmitted_at IS NULL`, a.ID)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("mark readmitted: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return Attempt{}, fmt.Errorf("readmit rows affected: %w", err)
+	}
+	// A real grant (one row flipped) is audited exactly once; a repeat readmit
+	// (already marked) touches nothing, so audit_log carries one row per slot.
+	if rows == 1 {
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.readmitted", "attempt", a.ID,
+			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+			return Attempt{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Attempt{}, fmt.Errorf("commit readmit: %w", err)
+	}
+	return a, nil
 }
 
 // moderatableForUpdate locks the attempt row and authorizes the caller to
