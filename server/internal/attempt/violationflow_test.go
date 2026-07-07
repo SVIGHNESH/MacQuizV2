@@ -249,6 +249,186 @@ func TestViolationFlowE2E(t *testing.T) {
 	})
 }
 
+// TestViolationAutoSubmitLadderE2E pins the Milestone 6 violation-ladder
+// terminal action (docs/06 section 3: "After max_violations counted violations,
+// the configured action fires ... flag / auto_submit / notify"). It proves the
+// one active action, auto_submit:
+//
+//   - Counted violations below the snapshotted max_violations only tally; the
+//     attempt stays in_progress.
+//   - The counted report that reaches max_violations auto-submits the attempt in
+//     the SAME transaction as the violation - status flips to 'submitted' with
+//     submit_kind='auto' (it rides the shared submit funnel, so it terminates
+//     and grades exactly like a deadline expiry), appends the attempt.submitted
+//     event AFTER the attempt.violation that triggered it, publishes both deltas
+//     in that causal order, and enqueues the grade job (the trap: submit() never
+//     enqueues grading - the caller must).
+//   - The ladder fires exactly once: the auto-submitted attempt is terminal, so
+//     a further report answers 409 ATTEMPT_ALREADY_SUBMITTED.
+//   - The auto-submitted work grades to 'graded' with submit_kind='auto' kept,
+//     so the results read (which gates on status='graded') is reachable.
+//
+// flag (the default) is covered by TestViolationFlowE2E, whose count reaches 2
+// under max_violations=3 and stays live; only auto_submit is exercised here.
+func TestViolationAutoSubmitLadderE2E(t *testing.T) {
+	baseURL := os.Getenv("MACQUIZ_TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("MACQUIZ_TEST_DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	sqlDB := itest.FreshDatabase(t, ctx, baseURL, "macquiz_laddertest")
+	if _, err := db.MigrateUp(ctx, sqlDB); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+
+	pub := &capturePublisher{}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := authusers.NewService(sqlDB, "test-secret", log)
+	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
+		DB:      sqlDB,
+		Auth:    authusers.NewHandler(authSvc, false),
+		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
+		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log, pub), authSvc),
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	if err := authSvc.EnsureBootstrapAdmin(ctx, "admin@school.test", "admin-password-1", "Root Admin"); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	provision(t, ctx, sqlDB, "teacher", "ladderowner@school.test")
+	provision(t, ctx, sqlDB, "student", "ladder@school.test")
+	teacher := login(t, server, "ladderowner@school.test", "account-password")
+	student := login(t, server, "ladder@school.test", "account-password")
+	studentID := userID(t, ctx, sqlDB, "ladder@school.test")
+
+	status, body, _ := itest.Call(t, server, "POST", "/api/v1/quizzes",
+		map[string]string{"title": "Auto-Submit Ladder"}, teacher)
+	if status != 201 {
+		t.Fatalf("create quiz = %d %v", status, body)
+	}
+	quizID := body["quiz"].(map[string]any)["id"].(string)
+	if status, b, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/questions", map[string]any{
+		"type": "single", "body": map[string]string{"text": "1 + 1 = ?"},
+		"options": []map[string]string{{"key": "a", "text": "2"}, {"key": "b", "text": "3"}},
+		"correct": "a", "points": 1,
+	}, teacher); status != 201 {
+		t.Fatalf("add question = %d %v", status, b)
+	}
+	if status, _, _ := itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
+		map[string]any{"student_ids": []string{studentID}}, teacher); status != 200 {
+		t.Fatalf("assign = %d", status)
+	}
+	// fullscreen=count with a low ladder (max 2, auto_submit) so the second
+	// counted report trips the terminal action.
+	if status, b, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/publish", map[string]any{
+		"starts_at":    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		"ends_at":      time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		"duration_sec": 120,
+		"guardrails": map[string]any{
+			"fullscreen": "count", "focus_tracking": "off", "block_clipboard": false,
+			"max_violations": 2, "violation_action": "auto_submit",
+		},
+	}, teacher); status != 200 {
+		t.Fatalf("publish = %d %v", status, b)
+	}
+	if _, err := sqlDB.ExecContext(ctx,
+		`UPDATE quizzes SET starts_at = now() - interval '1 minute' WHERE id = $1`, quizID); err != nil {
+		t.Fatalf("backdate starts_at: %v", err)
+	}
+
+	attemptID := start(t, server, quizID, student)
+	report := func(req map[string]any) (int, map[string]any) {
+		t.Helper()
+		s, b, _ := itest.Call(t, server, "POST", "/api/v1/attempts/"+attemptID+"/events", req, student)
+		return s, b
+	}
+	gradeJobs := func() int {
+		t.Helper()
+		var jobs int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT count(*) FROM river_job
+			 WHERE kind = 'grade_attempt' AND args->>'attempt_id' = $1`, attemptID).Scan(&jobs); err != nil {
+			t.Fatalf("count grade jobs: %v", err)
+		}
+		return jobs
+	}
+
+	t.Run("a counted report below the threshold only tallies; the attempt stays live", func(t *testing.T) {
+		s, b := report(map[string]any{"type": "fullscreen"})
+		att := b["attempt"].(map[string]any)
+		if s != 200 || b["counted"] != true || att["violation_count"] != float64(1) || att["status"] != "in_progress" {
+			t.Fatalf("first report = %d counted=%v count=%v status=%v, want 200/true/1/in_progress", s, b["counted"], att["violation_count"], att["status"])
+		}
+		if sub := filter(events(t, ctx, sqlDB, attemptID), "attempt.submitted"); len(sub) != 0 {
+			t.Fatalf("attempt submitted below threshold: %v", sub)
+		}
+		if n := gradeJobs(); n != 0 {
+			t.Fatalf("grade job enqueued below threshold: %d", n)
+		}
+	})
+
+	t.Run("the report that reaches max_violations auto-submits, enqueues grading, and orders the log", func(t *testing.T) {
+		s, b := report(map[string]any{"type": "fullscreen"})
+		att := b["attempt"].(map[string]any)
+		// Counted to 2, and the same request flipped the attempt via submit(kind='auto').
+		if s != 200 || b["counted"] != true || att["violation_count"] != float64(2) {
+			t.Fatalf("threshold report = %d counted=%v count=%v, want 200/true/2", s, b["counted"], att["violation_count"])
+		}
+		if att["status"] != "submitted" || att["submit_kind"] != "auto" {
+			t.Fatalf("threshold report attempt = status %v submit_kind %v, want submitted/auto", att["status"], att["submit_kind"])
+		}
+		// The append-only log reads in causal order: the triggering violation,
+		// then exactly one auto-submit it caused.
+		evs := events(t, ctx, sqlDB, attemptID)
+		last, prev := evs[len(evs)-1], evs[len(evs)-2]
+		if prev.typ != "attempt.violation" || prev.payload["violation_count"] != float64(2) {
+			t.Fatalf("second-to-last event = %v, want attempt.violation at count 2", prev)
+		}
+		if last.typ != "attempt.submitted" || last.payload["submit_kind"] != "auto" {
+			t.Fatalf("last event = %v, want attempt.submitted kind auto", last)
+		}
+		if sub := filter(evs, "attempt.submitted"); len(sub) != 1 {
+			t.Fatalf("auto-submit wrote %d submitted events, want 1", len(sub))
+		}
+		// Both deltas relayed, submitted after violation.
+		ps := filterCaptured(pub.forAttempt(attemptID), "attempt.submitted")
+		if len(ps) != 1 || ps[0].payload["submit_kind"] != "auto" {
+			t.Fatalf("published submitted = %v, want one kind auto", ps)
+		}
+		// The trap: the auto-submit must enqueue grading, or the attempt never grades.
+		if n := gradeJobs(); n != 1 {
+			t.Fatalf("auto-submit enqueued %d grade jobs, want 1", n)
+		}
+	})
+
+	t.Run("the ladder fires exactly once: a further report hits the terminal state", func(t *testing.T) {
+		if s, b := report(map[string]any{"type": "fullscreen"}); s != 409 || b["code"] != "ATTEMPT_ALREADY_SUBMITTED" {
+			t.Fatalf("report after auto-submit = %d %v, want 409 ATTEMPT_ALREADY_SUBMITTED", s, b)
+		}
+		if c := violationCount(t, ctx, sqlDB, attemptID); c != 2 {
+			t.Fatalf("violation_count after terminal report = %d, want 2 (untouched)", c)
+		}
+	})
+
+	t.Run("the auto-submitted work grades to graded with submit_kind auto kept", func(t *testing.T) {
+		if graded, err := attempt.GradeSubmitted(ctx, sqlDB); err != nil || graded != 1 {
+			t.Fatalf("grade = %d (err %v), want 1", graded, err)
+		}
+		var st, kind string
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT status, submit_kind FROM attempts WHERE id = $1`, attemptID).Scan(&st, &kind); err != nil {
+			t.Fatalf("read graded attempt: %v", err)
+		}
+		if st != "graded" || kind != "auto" {
+			t.Fatalf("graded auto-submit = status %q submit_kind %q, want graded/auto", st, kind)
+		}
+	})
+}
+
 // violationCount reads the accumulated violation_count for one attempt.
 func violationCount(t *testing.T, ctx context.Context, sqlDB *sql.DB, attemptID string) int {
 	t.Helper()

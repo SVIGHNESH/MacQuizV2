@@ -587,9 +587,12 @@ func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, 
 // ReportViolation records one guardrail violation the student's own client
 // reported (docs/06 section 3: "client reports over the attempt WebSocket -
 // REST fallback POST /attempts/:id/events"). It is the reporting layer of the
-// violation pipeline: the ladder's terminal action (auto_submit) is a separate
-// brick; the default action, flag, needs nothing beyond the counted tally this
-// records, which the live roster's amber badge already reads.
+// violation pipeline. It also fires the ladder's terminal action: once a
+// counted report brings the tally to the snapshotted max_violations and the
+// action is auto_submit, the same transaction auto-submits (kind='auto') and
+// enqueues grading. The default action, flag, needs nothing beyond the counted
+// tally this records, which the live roster's amber badge already reads; notify
+// awaits the user notification channel.
 //
 // Owner-only (a student reports only their own attempt; anyone else reads 404)
 // and in_progress-only (a terminated attempt accrues no violations - a kicked
@@ -648,17 +651,58 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 	a.ViolationCount = newCount
 
 	// Persist first: the violation row is evidence for the teacher and commits
-	// with the count it caused, so the two can never disagree.
+	// with the count it caused, so the two can never disagree. It is appended
+	// before any ladder-driven submitted event, so the append-only log reads in
+	// causal order (the violation, then the auto-submit it triggered).
 	payload := violationPayload{Type: vtype, DurationMs: durationMs, ViolationCount: newCount}
 	if err := appendEvent(ctx, tx, a.ID, eventViolation, payload); err != nil {
 		return Attempt{}, false, err
 	}
+
+	// The violation ladder's terminal action (docs/06 section 3): once the
+	// counted tally reaches this attempt's snapshotted max_violations, the
+	// configured action fires. Only auto_submit is active here - flag (the
+	// default) needs nothing beyond the tally the roster badge reads, and notify
+	// awaits the user notification channel. auto_submit rides the shared submit
+	// funnel with kind='auto', so it terminates and grades exactly like a
+	// deadline expiry; the violation_count and the run of attempt.violation rows
+	// are the evidence that explains why. Only a counted report reaches this,
+	// and the attempt is still in_progress (checked above), so submit flips it
+	// here and returns a payload; a repeat is impossible because that flip makes
+	// every later report a terminal-state 409.
+	var submittedPay *submittedPayload
+	if counted {
+		action, maxViolations, err := guardrailLadder(ctx, tx, a.QuizID, a.QuizVersion)
+		if err != nil {
+			return Attempt{}, false, err
+		}
+		if action == "auto_submit" && maxViolations >= 1 && newCount >= maxViolations {
+			a, submittedPay, err = submit(ctx, tx, a, "auto")
+			if err != nil {
+				return Attempt{}, false, err
+			}
+			// The trap the whole codebase shares: submit() never enqueues
+			// grading - every caller does (SubmitManual, Kick). A real flip
+			// (submittedPay != nil) must enqueue the grade job in this same
+			// transaction, or the attempt lands 'submitted' and never grades.
+			if submittedPay != nil {
+				if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+					return Attempt{}, false, err
+				}
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return Attempt{}, false, fmt.Errorf("commit violation: %w", err)
 	}
-	// Publish second: relay the delta so the monitor badge increments (counted)
-	// or the type shows on hover (warn/logged) the moment the socket carries it.
+	// Publish second: relay the violation delta so the monitor badge increments
+	// (counted) or the type shows on hover (warn/logged), then the submitted
+	// delta if the ladder auto-submitted, in the causal order they committed.
 	s.events.Publish(ctx, a.QuizID, a.ID, eventViolation, payload)
+	if submittedPay != nil {
+		s.events.Publish(ctx, a.QuizID, a.ID, eventSubmitted, *submittedPay)
+	}
 	return a, counted, nil
 }
 
@@ -708,6 +752,27 @@ func guardrailPolicy(ctx context.Context, tx *sql.Tx, quizID string, version int
 	default:
 		return "off", nil
 	}
+}
+
+// guardrailLadder resolves this attempt's snapshotted violation ladder: the
+// action to fire (flag | auto_submit | notify, defaulting to flag) once the
+// counted tally reaches max_violations. Both are read from the version-pinned
+// guardrails jsonb, so a mid-window republish can never change the threshold an
+// in-flight attempt is judged against. A max_violations that is absent or null
+// coalesces to 0, which the caller treats as "never fire": a published quiz
+// always validates max_violations into 1..100 (quiz.Guardrails.Validate), so 0
+// only ever guards a misconfigured snapshot from silently auto-submitting.
+func guardrailLadder(ctx context.Context, tx *sql.Tx, quizID string, version int) (string, int, error) {
+	var action string
+	var maxViolations int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT coalesce(guardrails->>'violation_action', 'flag'),
+		        coalesce((guardrails->>'max_violations')::int, 0)
+		 FROM quiz_versions WHERE quiz_id = $1 AND version = $2`,
+		quizID, version).Scan(&action, &maxViolations); err != nil {
+		return "", 0, fmt.Errorf("load violation ladder: %w", err)
+	}
+	return action, maxViolations, nil
 }
 
 // moderatableForUpdate locks the attempt row and authorizes the caller to
