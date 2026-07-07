@@ -388,6 +388,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extend a live quiz's ends_at (owner)
+         * @description Moves a live quiz's ends_at later. In-progress attempts whose personal deadline was clamped to the old window get that time back (deadline_at = least(started_at + duration, new ends_at)); because the window only ever moves later, no attempt is submitted early. Owner- teacher only. A quiz that is not effectively live (draft, not-yet- started, or already closed/archived - use reschedule while scheduled) answers 409 QUIZ_NOT_LIVE; a new ends_at at or before the current one, or not in the future, is a 422.
+         */
+        post: operations["extendQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/assignments": {
         parameters: {
             query?: never;
@@ -1883,6 +1903,51 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    extendQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: date-time
+                     * @description The new close time; must be in the future and later than the current ends_at.
+                     */
+                    ends_at: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The quiz, with the extended ends_at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description QUIZ_NOT_LIVE - the quiz is not effectively live, so ends_at cannot be extended. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
         };
     };
     listAssignments: {

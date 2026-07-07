@@ -54,6 +54,7 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Put("/{id}/questions/order", h.handleReorderQuestions)
 		r.Post("/{id}/publish", h.handlePublishQuiz)
 		r.Post("/{id}/close", h.handleForceCloseQuiz)
+		r.Post("/{id}/extend", h.handleExtendQuiz)
 		r.Get("/{id}/assignments", h.handleListAssignments)
 		r.Put("/{id}/assignments", h.handleSetAssignments)
 		r.Get("/{id}/results", h.handleResults)
@@ -325,6 +326,9 @@ func (h *Handler) writeQuizError(w http.ResponseWriter, op string, err error, no
 	case errors.Is(err, ErrNotClosable):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotLive,
 			"only a live or scheduled quiz can be force-closed")
+	case errors.Is(err, ErrNotExtendable):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotLive,
+			"only a live quiz can be extended")
 	default:
 		h.internalError(w, op, err)
 	}

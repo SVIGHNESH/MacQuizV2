@@ -93,3 +93,16 @@ func (s *Service) enqueueWindowJobs(ctx context.Context, tx *sql.Tx, quizID stri
 	}
 	return nil
 }
+
+// enqueueCloseJob schedules a single close_quiz job to fire at the given time.
+// Extend uses it to run the close chain at the new ends_at; the stale
+// close_quiz job left at the old ends_at no-ops when it fires (the sweep needs
+// ends_at <= now(), and the window is now later).
+func (s *Service) enqueueCloseJob(ctx context.Context, tx *sql.Tx, quizID string, at time.Time) error {
+	_, err := s.jobs.InsertTx(ctx, tx, CloseQuizArgs{QuizID: quizID},
+		&river.InsertOpts{ScheduledAt: at})
+	if err != nil {
+		return fmt.Errorf("enqueue close job: %w", err)
+	}
+	return nil
+}

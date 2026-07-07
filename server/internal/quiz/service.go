@@ -37,6 +37,10 @@ var (
 	// already terminal (docs/06 section 1: force-close is a Live/Scheduled
 	// action).
 	ErrNotClosable = errors.New("only a live or scheduled quiz can be force-closed")
+	// ErrNotExtendable marks an extend of a quiz that is not effectively live:
+	// a not-yet-started quiz uses reschedule, a closed/archived one is already
+	// terminal (docs/06 section 1: extend is the once-Live affordance).
+	ErrNotExtendable = errors.New("only a live quiz can be extended")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay

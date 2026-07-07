@@ -261,6 +261,91 @@ func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id strin
 	return q, nil
 }
 
+// Extend moves a live quiz's ends_at later (docs/04: POST /quizzes/:id/extend
+// "Live only: extend ends_at"; docs/06 section 1: once Live the teacher can
+// only extend, force-close, or kick). It flips ends_at forward and, in the
+// same transaction, hands every in-progress attempt back the personal time
+// the old window clamped off (deadline_at = least(started_at + duration, new
+// ends_at)) and enqueues a fresh close_quiz job at the new ends_at.
+//
+// The design leans on two invariants the sweep already guarantees rather than
+// re-enqueuing a job per attempt (which would import the attempt package and
+// contend on N row locks): (1) because the new window is strictly later,
+// deadline_at only ever moves forward, so no attempt is auto-submitted early -
+// a stale per-attempt deadline job fires against the OLD moment and no-ops
+// since SweepDueAttempts re-derives from the row; (2) the new deadline is
+// enforced by the periodic backstop and, at the window edge, the fresh
+// close_quiz job, whose worker force-submits every still-open attempt. A quiz
+// that is not effectively live (draft, not-yet-started scheduled, or already
+// closed/archived) answers ErrNotExtendable; a new ends_at at or before the
+// current one is a 422 (extend only ever moves the window later).
+func (s *Service) Extend(ctx context.Context, actor authusers.User, id string, newEndsAt time.Time) (Quiz, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("begin extend tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	q, err := s.ownedForUpdate(ctx, tx, actor, id)
+	if err != nil {
+		return Quiz{}, err
+	}
+	// quizColumns/scanQuiz omit the question count (Iteration 1), so populate
+	// it for parity with Publish/ForceClose - all return a QuizResponse.
+	var questionCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT count(*) FROM questions WHERE quiz_id = $1`, id).Scan(&questionCount); err != nil {
+		return Quiz{}, fmt.Errorf("count questions: %w", err)
+	}
+	// Gate on the effective (read-time) status so a scheduled row already past
+	// starts_at counts as live even before its open_quiz job lands. A quiz
+	// whose window has already passed reads as "closed" here and is rejected -
+	// past-window is not extendable (pinned by a subtest).
+	if effectiveStatus(q.Status, q.StartsAt, q.EndsAt, time.Now()) != "live" {
+		return Quiz{}, ErrNotExtendable
+	}
+	if q.EndsAt != nil && !newEndsAt.After(*q.EndsAt) {
+		return Quiz{}, &PreconditionError{Fields: map[string]string{
+			"ends_at": "must be later than the current ends_at"}}
+	}
+	fromEndsAt := q.EndsAt
+
+	q, err = scanQuiz(tx.QueryRowContext(ctx,
+		`UPDATE quizzes SET ends_at = $2 WHERE id = $1
+		 RETURNING `+quizColumns, id, newEndsAt).Scan)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("extend quiz: %w", err)
+	}
+	q.QuestionCount = questionCount
+
+	// Recompute deadline_at from the row's own duration (no Go deref) for every
+	// in-progress attempt; least() leaves an unclamped attempt untouched and
+	// only moves a clamped one forward.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE attempts a
+		 SET deadline_at = least(a.started_at + make_interval(secs => z.duration_sec), $2::timestamptz)
+		 FROM quizzes z
+		 WHERE a.quiz_id = z.id AND z.id = $1 AND a.status = 'in_progress'`,
+		id, newEndsAt); err != nil {
+		return Quiz{}, fmt.Errorf("extend attempt deadlines: %w", err)
+	}
+
+	if err := s.enqueueCloseJob(ctx, tx, id, newEndsAt); err != nil {
+		return Quiz{}, err
+	}
+
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.extended", "quiz", id, map[string]any{
+		"from_ends_at": fromEndsAt,
+		"to_ends_at":   newEndsAt,
+	}); err != nil {
+		return Quiz{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Quiz{}, fmt.Errorf("commit extend: %w", err)
+	}
+	return q, nil
+}
+
 // AssignedStudent is one member of a quiz's audience, as the authoring UI
 // lists it.
 type AssignedStudent struct {

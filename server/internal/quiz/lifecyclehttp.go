@@ -140,6 +140,39 @@ func (h *Handler) handleForceCloseQuiz(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
 }
 
+type extendRequest struct {
+	EndsAt *time.Time `json:"ends_at"`
+}
+
+func (h *Handler) handleExtendQuiz(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such quiz")
+	if !ok {
+		return
+	}
+	var req extendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	// "In the future" is checked here so a stale timestamp never opens a
+	// transaction; "later than the current ends_at" needs the row and is a
+	// precondition the service returns.
+	switch {
+	case req.EndsAt == nil:
+		httpapi.WriteFieldErrors(w, map[string]string{"ends_at": "required"})
+		return
+	case !req.EndsAt.After(time.Now()):
+		httpapi.WriteFieldErrors(w, map[string]string{"ends_at": "must be in the future"})
+		return
+	}
+	q, err := h.svc.Extend(r.Context(), actor, id, req.EndsAt.UTC())
+	if h.writeLifecycleError(w, "extend quiz", err, "no such quiz") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
+}
+
 func (h *Handler) handleListAssignments(w http.ResponseWriter, r *http.Request) {
 	actor, _ := authusers.ActorFrom(r.Context())
 	id, ok := pathUUID(w, r, "no such quiz")

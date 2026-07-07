@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.14.0
+  version: 0.15.0
 servers:
   - url: /
 paths:
@@ -707,6 +707,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/quizzes/{id}/extend:
+    post:
+      operationId: extendQuiz
+      summary: Extend a live quiz's ends_at (owner)
+      description: >-
+        Moves a live quiz's ends_at later. In-progress attempts whose personal
+        deadline was clamped to the old window get that time back
+        (deadline_at = least(started_at + duration, new ends_at)); because the
+        window only ever moves later, no attempt is submitted early. Owner-
+        teacher only. A quiz that is not effectively live (draft, not-yet-
+        started, or already closed/archived - use reschedule while scheduled)
+        answers 409 QUIZ_NOT_LIVE; a new ends_at at or before the current one,
+        or not in the future, is a 422.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ends_at]
+              properties:
+                ends_at:
+                  type: string
+                  format: date-time
+                  description: The new close time; must be in the future and later than the current ends_at.
+      responses:
+        "200":
+          description: The quiz, with the extended ends_at.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            QUIZ_NOT_LIVE - the quiz is not effectively live, so ends_at cannot
+            be extended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/quizzes/{id}/assignments:
     parameters:
       - name: id
