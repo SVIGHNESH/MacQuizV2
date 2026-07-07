@@ -73,6 +73,23 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 4 - The web attempt player: the student finally has a screen</h2>
+      <span class="tag">milestone 4</span>
+    </div>
+    <div class="meta">2026-07-07 &middot; after 7e3c3c2</div>
+    <ul>
+      <li><strong>The student workspace</strong> (<code>web/src/player/</code>): signed-in students now land in the same rail shell as teachers, on <em>My quizzes</em> - one card per assigned quiz with the window, the time limit, the snapshot question count, the caller's attempt history, and exactly the one action the quiz's state allows: <em>Start quiz</em> / <em>Start new attempt</em> (attempts left within a live window), <em>Resume attempt</em> (an open attempt exists), <em>Review</em> (released and graded), or a plain note (scheduled, closed-unreleased, no attempts left).</li>
+      <li><strong>The attempt player</strong>: start (<code>POST /quizzes/:id/attempts</code>) or resume (<code>GET /attempts/:id</code>) renders the snapshot questions of all four types with the authoring workspace's option-row language, plus a countdown pill driven by the server's <code>deadline_at</code> and a clock-offset estimate from every response's <code>now</code> - the client clock is cosmetic, per docs/08. Answers autosave per question behind a 600 ms debounce with a Saving / All changes saved / Not saved badge; a save landing after a newer edit never clobbers it.</li>
+      <li><strong>The server stays the authority on time</strong>: at zero the player locks and fires the manual submit once - inside the 5 s grace it lands, past it the deadline job already owns the submission and the 409 resolves to the same terminal panel. Any autosave answering 409 (submitted in another tab, force-closed) locks the player instead of arguing. The manual submit flushes whatever the debounce still holds before entering the funnel, behind an inline unanswered-count confirm.</li>
+      <li><strong>The released review</strong>: the score banner over per-question verdict chips (Correct / Incorrect / Not answered), each choice row tagged <em>Your answer</em> and <em>Correct answer</em> with success/danger tones, true/false rendered the same way, and short answers as a your-answer / accepted-answers pair - the answer key appears exactly here and nowhere else in the client. A 409 renders as "not released yet", never as an error.</li>
+      <li><strong>The score-withheld stance survives the UI</strong>: attempt rows show <em>Score withheld</em> until <code>results_released_at</code> lands (the SQL-gated value from the assigned list), then the points and the Review button appear - the client never computes or guesses a score.</li>
+      <li><strong>Proven by a new 26-check browser E2E</strong> (<code>web/e2e/player.e2e.mjs</code>): a provisioned teacher publishes a 4-type, 6-point quiz with a 100-second window; the student starts it live in Chromium, answers with a deliberately wrong multi, autosaves, survives a cold reload via Resume with every answer intact, submits through the confirm, sees the score withheld - then the worker closes, grades, and auto-releases at <code>ends_at</code>, and the review shows 4/6 with three Correct chips, the missed multi's full key, and the accepted short answer.</li>
+    </ul>
+    <div class="exit">The Milestone 4 exit criterion is now user-visible end to end: a student took a quiz entirely in the browser, was graded server-side, and read the released review with the answer key. Milestone 4's core is complete; the remaining plan bullet is the optional Redis snapshot cache for attempt start. The milestone explainer lives in <code>milestone-4.html</code>.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 4 - Results release: the policy, the teacher's table, and the student's review</h2>
       <span class="tag">milestone 4</span>
     </div>

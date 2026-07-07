@@ -1,0 +1,328 @@
+/*
+ * Student player styles. The workspace shell, panels, chips, buttons, and
+ * option rows come from authoring.css (one design system, docs/11); this
+ * file adds only what the student surfaces own - the assigned cards, the
+ * countdown, the player chrome, and the review verdict tones.
+ */
+
+/* --- Assigned list ---------------------------------------------------- */
+
+.assigned-list {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.assigned-card {
+  display: grid;
+  gap: 12px;
+}
+
+.assigned-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assigned-title {
+  margin: 0;
+  flex: 1;
+  font: var(--text-card-title);
+  letter-spacing: var(--tracking-card-title);
+}
+
+.assigned-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.meta-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-muted);
+}
+
+.attempt-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+
+.attempt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-hairline);
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.attempt-no {
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.attempt-when {
+  flex: 1;
+}
+
+.attempt-score {
+  font-weight: 600;
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-attempt-in_progress {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+}
+
+.chip-attempt-submitted,
+.chip-attempt-graded {
+  background: var(--color-success-tint);
+  color: var(--color-success-on-tint);
+}
+
+.chip-attempt-kicked {
+  background: var(--color-danger-tint);
+  color: var(--color-danger-on-tint);
+}
+
+.assigned-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assigned-note {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+/* --- Attempt player ---------------------------------------------------- */
+
+.player {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+
+.player-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.player-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.countdown {
+  font: 650 18px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-resting);
+}
+
+.countdown-urgent {
+  color: var(--color-danger);
+  border-color: var(--color-danger-tint);
+  background: var(--color-danger-tint);
+}
+
+.player-questions,
+.review-questions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 16px;
+}
+
+.player-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.player-question-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0;
+}
+
+.player-question-text {
+  flex: 1;
+  font: 600 14.5px/1.45 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.player-question-points {
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.player-short-input {
+  max-width: 420px;
+}
+
+.player-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.player-footer-note {
+  margin: 0;
+  flex: 1;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.player-done {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.player-done .hint {
+  margin: 0;
+}
+
+/* --- Released review ---------------------------------------------------- */
+
+.review {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+
+/* A grid child would stretch; the back link hugs its text like the editor's. */
+.review .back-button {
+  justify-self: start;
+}
+
+.score-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.score-figure {
+  font: var(--text-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+
+.score-max {
+  color: var(--color-text-muted);
+}
+
+.score-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.chip-verdict-correct {
+  background: var(--color-success-tint);
+  color: var(--color-success-on-tint);
+}
+
+.chip-verdict-incorrect {
+  background: var(--color-danger-tint);
+  color: var(--color-danger-on-tint);
+}
+
+.chip-verdict-skipped {
+  background: var(--color-well);
+  color: var(--color-text-secondary);
+}
+
+.review-question {
+  display: grid;
+  gap: 12px;
+}
+
+.review-option {
+  cursor: default;
+}
+
+.review-option-key {
+  border-color: var(--color-success-dot);
+  background: var(--color-success-tint);
+}
+
+.review-option-key .option-key {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-surface);
+}
+
+.review-option-wrong {
+  border-color: var(--color-danger);
+  background: var(--color-danger-tint);
+}
+
+.review-option-wrong .option-key {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-surface);
+}
+
+.review-tag {
+  font: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.review-tag-key {
+  color: var(--color-success-on-tint);
+}
+
+.short-review {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.short-review-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.short-review-row dt {
+  font: 600 12.5px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
+  min-width: 130px;
+}
+
+.short-review-row dd {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--color-ink);
+}

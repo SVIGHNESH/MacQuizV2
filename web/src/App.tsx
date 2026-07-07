@@ -4,6 +4,7 @@ import LoginScreen from './screens/LoginScreen'
 import ChangePasswordScreen from './screens/ChangePasswordScreen'
 import HomeScreen from './screens/HomeScreen'
 import AuthoringWorkspace from './authoring/AuthoringWorkspace'
+import StudentWorkspace from './player/StudentWorkspace'
 import './App.css'
 
 function Screens() {
@@ -29,6 +30,10 @@ function Screens() {
 
   if (state.user.role === 'teacher') {
     return <AuthoringWorkspace user={state.user} />
+  }
+
+  if (state.user.role === 'student') {
+    return <StudentWorkspace user={state.user} />
   }
 
   return <HomeScreen user={state.user} />

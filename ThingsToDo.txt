@@ -1,5 +1,5 @@
 1. DONE - Results release policy + results views (backend): release_policy chosen at publish (default auto), auto-release in the worker sweep after grading, POST /quizzes/:id/release-results + GET /quizzes/:id/results for the teacher, GET /attempts/:id/result for the student, release-gated scores in GET /quizzes/assigned. Remaining: the results UI (rides the web player).
-2. The web attempt player - the student UI does not exist at all. Students currently land on a placeholder HomeScreen; there is no assigned-quiz list screen and no player (questions, countdown, autosave, submit). The entire student-facing frontend is backend-only right now.
+2. DONE - The web attempt player (web/src/player/): students land on a My quizzes workspace (assigned list with attempt history and release-gated scores), the attempt player (all four question types, server-deadline countdown, per-question debounced autosave, resume, the manual submit leg with time-up lockdown), and the released-results review with verdicts and the answer key. Proven by the 26-check browser E2E web/e2e/player.e2e.mjs. Milestone 4 explainer written to milestone-4.html.
 3. (Minor, from the plan) the Redis snapshot cache for attempt start - Redis is in Compose and config but nothing consumes it yet
 
 

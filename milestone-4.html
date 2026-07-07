@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz v2 - Milestone 4: The Attempt Player</title>
+<style>
+  :root {
+    --ground: #F7F9F9;
+    --panel: #FFFFFF;
+    --panel-2: #EEF3F3;
+    --ink: #1B2A31;
+    --ink-2: #45565F;
+    --muted: #5C6E77;
+    --line: #DDE5E6;
+    --line-strong: #C4D0D2;
+    --accent: #0E7568;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E1F0ED;
+    --amber: #B4740E;
+    --amber-soft: #F6ECDA;
+    --danger: #B3362A;
+    --danger-soft: #F7E4E1;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F181D; --panel: #16232A; --panel-2: #1C2C34;
+      --ink: #E4ECEC; --ink-2: #AFC2C4; --muted: #8AA0A4;
+      --line: #24363E; --line-strong: #33484F;
+      --accent: #3FC2A8; --accent-ink: #0B1A17; --accent-soft: #14332F;
+      --amber: #E0A44A; --amber-soft: #33290F;
+      --danger: #E07A6E; --danger-soft: #3A1F1B;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.65;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 24px 96px; }
+  header .kicker {
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 6px;
+  }
+  header h1 { font-size: 2rem; margin: 0 0 8px; line-height: 1.25; }
+  header .lede { color: var(--ink-2); font-size: 1.05rem; margin: 0 0 12px; }
+  .exit-banner {
+    margin: 20px 0 0; padding: 14px 18px; border-left: 3px solid var(--accent);
+    background: var(--accent-soft); border-radius: 0 10px 10px 0; font-size: 0.95rem;
+  }
+  nav.toc {
+    margin: 36px 0; padding: 18px 22px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 12px;
+  }
+  nav.toc strong { display: block; margin-bottom: 6px; }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  section.block {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 26px 30px; margin-bottom: 28px;
+  }
+  section.block h2 { font-size: 1.3rem; margin: 0 0 4px; }
+  section.block .fr {
+    font-family: var(--mono); font-size: 0.75rem; color: var(--muted);
+    margin: 0 0 14px;
+  }
+  section.block h3 { font-size: 1.02rem; margin: 22px 0 6px; }
+  section.block p { margin: 10px 0; color: var(--ink-2); }
+  section.block p strong, section.block li strong { color: var(--ink); }
+  section.block ul { margin: 10px 0; padding-left: 22px; }
+  section.block li { margin-bottom: 6px; color: var(--ink-2); }
+  code {
+    font-family: var(--mono); font-size: 0.86em; background: var(--panel-2);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .flow {
+    font-family: var(--mono); font-size: 0.82rem; line-height: 1.9;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 20px; overflow-x: auto; white-space: pre;
+    color: var(--ink-2);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td code { white-space: nowrap; }
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.72rem;
+    padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line);
+  }
+  .pill.get { background: var(--accent-soft); color: var(--accent); }
+  .pill.post { background: var(--amber-soft); color: var(--amber); }
+  .pill.put { background: var(--panel-2); color: var(--ink-2); }
+  .note {
+    margin: 14px 0; padding: 10px 14px; border-left: 3px solid var(--amber);
+    background: var(--amber-soft); border-radius: 0 8px 8px 0; font-size: 0.9rem;
+  }
+  .proof {
+    margin-top: 16px; padding: 10px 14px; border-left: 3px solid var(--accent);
+    background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: 0.9rem;
+  }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 40px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="kicker">MacQuiz v2 &middot; Build explainer</p>
+    <h1>Milestone 4 - The Attempt Player</h1>
+    <p class="lede">
+      Everything between "a student clicks Start quiz" and "they read their released score
+      next to the answer key": the transactional attempt lifecycle, server-authoritative
+      timing, deterministic grading, the results-release policy, and the student web UI
+      that finally makes the platform usable from a browser. Implements FR-6 of
+      <code>docs/12-implementation-plan.md</code>.
+    </p>
+    <div class="exit-banner">
+      <strong>Exit criterion, met and witnessed:</strong> a student takes a quiz, closes the
+      laptop, is auto-submitted at the deadline by the server alone, gets graded - and (the
+      user-visible half) takes another quiz entirely in the browser and reviews the released
+      result with the answer key. Both proven live against the Docker Compose stack.
+    </div>
+  </header>
+
+  <nav class="toc">
+    <strong>What was built</strong>
+    <ol>
+      <li><a href="#lifecycle">The attempt lifecycle at a glance</a></li>
+      <li><a href="#start">Attempt start: one transaction, one deadline</a></li>
+      <li><a href="#autosave">Autosave, resume, and the submit funnel</a></li>
+      <li><a href="#timer">The deadline timer and force-submit on close</a></li>
+      <li><a href="#grading">The grading job: deterministic scores from the snapshot key</a></li>
+      <li><a href="#release">Results release: policy, teacher table, student review</a></li>
+      <li><a href="#player">The student web UI: assigned list, player, review</a></li>
+      <li><a href="#api">The API surface and error vocabulary</a></li>
+      <li><a href="#testing">How it was verified</a></li>
+      <li><a href="#remaining">What deliberately remains</a></li>
+    </ol>
+  </nav>
+
+  <section class="block" id="lifecycle">
+    <h2>1. The attempt lifecycle at a glance</h2>
+    <p class="fr">FR-6 &middot; docs/08-attempt-lifecycle.md</p>
+    <p>
+      An attempt is born in one transaction, lives entirely against a pinned snapshot
+      version, and dies exactly once through a single funnel - no matter who kills it:
+    </p>
+    <div class="flow">student clicks Start
+   |
+   v
+in_progress ---- autosave upserts (PUT answer, write-gated by deadline+status)
+   |
+   |  one of four submit kinds, all through the same idempotent funnel:
+   |    manual  - the student clicks Submit
+   |    auto    - the attempt_deadline job fires at deadline_at + grace
+   |    forced  - the quiz closes while the attempt is still open
+   |    kicked  - (reserved for Milestone 6)
+   v
+submitted ---- grading job (enqueued transactionally with the submit)
+   |
+   v
+graded ---- release gate (release_policy auto at close, or the teacher's click)
+   |
+   v
+score + answer key visible to the student</div>
+    <p>
+      Two ideas repeat everywhere below. <strong>The server owns time</strong>: every write
+      validates against a deadline precomputed once, on the database clock; the browser
+      countdown is cosmetic. <strong>Every job is an idempotent repair</strong>: deadline
+      jobs, sweeps, grading, and release can fire late, twice, or concurrently and converge
+      on the same state.
+    </p>
+  </section>
+
+  <section class="block" id="start">
+    <h2>2. Attempt start: one transaction, one deadline</h2>
+    <p class="fr">POST /quizzes/:id/attempts &middot; server/internal/attempt</p>
+    <p>
+      Starting an attempt is a single transaction that checks the three admission rules and
+      precomputes the one timestamp everything else validates against:
+    </p>
+    <ul>
+      <li><strong>Assignment</strong> - the caller must hold an assignment row; anyone else reads
+        <code>404</code>, so quiz existence is never leaked.</li>
+      <li><strong>The live window</strong> - judged on server time with the same lazy status
+        derivation readers use (<code>409 QUIZ_NOT_LIVE</code> outside it), so starting the
+        second a quiz goes live never races the scheduler.</li>
+      <li><strong>The attempt budget</strong> - attempts used vs <code>max_attempts</code>
+        (<code>409 ATTEMPT_LIMIT_REACHED</code>).</li>
+    </ul>
+    <p>
+      The transaction stamps <code>deadline_at = least(now() + duration_sec, quiz.ends_at)</code>
+      - a student starting late gets the remainder of the window, never time past close. The
+      response is the full player payload: the attempt, the quiz title, the snapshotted
+      guardrail config, the saved answers, the server clock (<code>now</code>) for the client's
+      clock-offset estimate, and the pinned snapshot's questions <strong>with the answer key
+      structurally absent</strong> - the key lives behind a serializer boundary
+      (<code>json:"-"</code>), so no student-facing payload can carry it by accident.
+    </p>
+    <p>
+      <strong>Restart is idempotent:</strong> if an unexpired attempt is already open, the same
+      call returns it with <code>200</code> instead of burning an attempt slot - a crashed tab
+      costs nothing. When the quiz shuffles questions, positions are renumbered densely in the
+      per-attempt order, and every later read (including the released review) preserves that
+      same order.
+    </p>
+  </section>
+
+  <section class="block" id="autosave">
+    <h2>3. Autosave, resume, and the submit funnel</h2>
+    <p class="fr">PUT /attempts/:id/answers/:questionId &middot; GET /attempts/:id &middot; POST /attempts/:id/submit</p>
+    <h3>Autosave</h3>
+    <p>
+      Each answer is an idempotent upsert on <code>(attempt_id, question_id)</code>; the
+      question must belong to the snapshot version the attempt pinned. Every write passes one
+      gate - the attempt is still <code>in_progress</code> and <code>now()</code> has not passed
+      <code>deadline_at</code> plus a 5-second grace - and is refused with <code>409</code>
+      otherwise. The response carries <code>deadline_at</code> and <code>now</code> back, so the
+      client re-estimates its clock offset on every save.
+    </p>
+    <h3>Resume</h3>
+    <p>
+      <code>GET /attempts/:id</code> (owner-only, <code>404</code> to anyone else) returns the
+      same player payload as start: saved answers, deadline, server clock. Closing the laptop
+      and reopening it - or a browser crash - loses nothing that was autosaved.
+    </p>
+    <h3>The submit funnel</h3>
+    <p>
+      All terminations go through one <code>submit(attempt_id, kind)</code> path. Whatever is
+      autosaved becomes the submission - there is no separate "final answers" write.
+      Submitting an already-submitted attempt answers <code>200</code> with the unchanged
+      terminal state, so a retried request, a second tab, or a race against the deadline job
+      resolves cleanly. The manual leg is the only one a student can reach; <code>auto</code>
+      and <code>forced</code> belong to the worker (next section), and <code>kicked</code> is
+      reserved for the Milestone 6 guardrail ladder.
+    </p>
+  </section>
+
+  <section class="block" id="timer">
+    <h2>4. The deadline timer and force-submit on close</h2>
+    <p class="fr">River jobs: attempt_deadline, the shared sweep pass &middot; server/internal/worker</p>
+    <p>
+      "The disappearing student" is handled entirely server-side. Every attempt start
+      <strong>transactionally enqueues</strong> an <code>attempt_deadline</code> River job
+      scheduled for <code>deadline_at + grace</code> - the job exists if and only if the attempt
+      does. When it fires, it auto-submits whatever is still open (<code>submit_kind: auto</code>).
+    </p>
+    <p>
+      Behind the exact-timestamp jobs runs an idempotent <strong>attempt sweep</strong> in the
+      worker's shared pass (also the backstop that paces itself every minute): first the
+      auto leg (any attempt past its deadline), then the forced leg (any attempt still open on
+      a quiz that closed early - <code>submit_kind: forced</code>). A quiz close therefore
+      force-submits its stragglers in the very pass that closes it, and a missed or duplicated
+      job is a harmless repair, never a double submission.
+    </p>
+    <div class="note">
+      The browser countdown is <em>cosmetic</em>. If every client dies, the server still
+      terminates, grades, and releases every attempt on time - that is the milestone's exit
+      criterion, and the E2E witnesses it with no API call from the student at all.
+    </div>
+  </section>
+
+  <section class="block" id="grading">
+    <h2>5. The grading job: deterministic scores from the snapshot key</h2>
+    <p class="fr">River job: grade_submitted &middot; server/internal/grading</p>
+    <p>
+      Grading is a pure function of the submitted answers and the pinned snapshot's answer
+      key - deterministic and idempotent, so re-running it can only rewrite the same result.
+      The manual submit <strong>enqueues the grading job in the same transaction</strong>; the
+      worker's shared sweep pass also grades, so auto- and force-submitted attempts are graded
+      in the very pass that terminated them.
+    </p>
+    <p>All four question types score against the key:</p>
+    <table>
+      <thead><tr><th>Type</th><th>Response shape</th><th>Correct when</th></tr></thead>
+      <tbody>
+        <tr><td><code>single</code></td><td>option key (string)</td><td>it equals the key's option</td></tr>
+        <tr><td><code>multi</code></td><td>option keys (array)</td><td>the sets match exactly - no partial credit</td></tr>
+        <tr><td><code>truefalse</code></td><td>boolean</td><td>it equals the key</td></tr>
+        <tr><td><code>short</code></td><td>string</td><td>it normalizes to one of the accepted answers</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Each question writes <code>is_correct</code> and <code>points_awarded</code>; unanswered
+      questions keep <code>is_correct</code> null and award zero. The attempt's score is the
+      sum; <code>max_score</code> always derives from the snapshot version the attempt pinned,
+      so a republished quiz never re-scores old attempts.
+    </p>
+  </section>
+
+  <section class="block" id="release">
+    <h2>6. Results release: policy, teacher table, student review</h2>
+    <p class="fr">Migration 00004 &middot; quiz.ReleaseDueResults &middot; OpenAPI v0.8.0</p>
+    <p>
+      When students see scores is a per-quiz decision made at publish:
+      <code>release_policy</code> is <code>auto</code> (the default - the worker releases at
+      close once grading lands) or <code>manual</code> (the teacher clicks). The single fact
+      every student-facing results read gates on is <code>quizzes.results_released_at</code>;
+      while it is null, scores and the answer key stay server-internal.
+    </p>
+    <h3>Auto-release in the shared pass</h3>
+    <p>
+      <code>ReleaseDueResults</code> runs after grading in the worker's shared sweep: a closed
+      auto-policy quiz releases only once <em>no attempt is left</em> <code>in_progress</code>
+      or <code>submitted</code>. One idempotent pass therefore closes the quiz, force-submits
+      stragglers, grades them, and releases - results never appear with half the class
+      ungraded.
+    </p>
+    <h3>The teacher decides with numbers in hand</h3>
+    <p>
+      <code>GET /quizzes/:id/results</code> (owner) lists one row per assigned student per
+      attempt - students who never started keep their attempt fields null, so absence shows
+      instead of hiding - with scores visible <em>as grading lands, before any release</em>:
+      releasing is the teacher's decision, so they need the numbers first.
+      <code>POST /quizzes/:id/release-results</code> stamps the release: refused with
+      <code>409 QUIZ_NOT_CLOSED</code> until the window ends, idempotent on repeat, audited as
+      <code>quizzes.results_released</code> exactly once.
+    </p>
+    <h3>The student's released review</h3>
+    <p>
+      <code>GET /attempts/:id/result</code> answers <code>409 RESULTS_NOT_RELEASED</code> until
+      the quiz is released <em>and</em> the attempt graded, then returns the score, the max,
+      and every snapshot question in the player's per-attempt order - the student's response,
+      <code>is_correct</code>, <code>points_awarded</code>, and the correct answer.
+      This is the <strong>one documented exception</strong> to answer-key isolation, and the
+      only read anywhere that serializes the key.
+    </p>
+    <h3>Release-gated scores in the assigned list</h3>
+    <p>
+      <code>GET /quizzes/assigned</code> carries <code>results_released_at</code> and the
+      caller's own attempt summaries, with the score gated <em>in the SQL itself</em>
+      (<code>CASE WHEN results_released_at IS NOT NULL</code>) - the withheld value structurally
+      never reaches the wire, the same stance as the answer key's serializer boundary.
+    </p>
+  </section>
+
+  <section class="block" id="player">
+    <h2>7. The student web UI: assigned list, player, review</h2>
+    <p class="fr">web/src/player/ &middot; typed client over OpenAPI v0.8.0</p>
+    <p>
+      The student half of the SPA - previously a placeholder screen - is now a real
+      workspace in the same design system (docs/11) as the teacher's:
+    </p>
+    <ul>
+      <li><strong>My quizzes</strong> (<code>AssignedList</code>): one card per assigned quiz -
+        window, time limit, snapshot question count, the caller's attempt history - offering
+        exactly the one action the state allows: <em>Start quiz</em>, <em>Resume attempt</em>,
+        <em>Review</em>, or a plain explanatory note. Finished attempts read
+        <em>Score withheld</em> until release, then show points and the Review button; the
+        client never computes or guesses a score.</li>
+      <li><strong>The player</strong> (<code>AttemptPlayer</code>): renders all four question
+        types with the workspace's option-row language, a countdown pill driven by
+        <code>deadline_at</code> plus a clock-offset estimate refreshed on every save, and
+        per-question debounced autosave (600 ms) with a Saving / All changes saved / Not saved
+        badge. A save landing after a newer edit never clobbers it.</li>
+      <li><strong>Time-up and terminal handling</strong>: at zero the player locks and fires the
+        manual submit once - inside the server's grace it lands; past it the deadline job owns
+        the submission and the <code>409</code> resolves to the same "Time is up" panel. Any
+        autosave answering <code>409</code> (submitted in another tab, quiz force-closed) locks
+        the player instead of arguing with the server.</li>
+      <li><strong>Submit</strong>: an inline confirm shows the unanswered count, flushes whatever
+        the debounce still holds, then enters the idempotent funnel.</li>
+      <li><strong>The review</strong> (<code>ResultReview</code>): the score banner, per-question
+        verdict chips (Correct / Incorrect / Not answered), every choice row tagged
+        <em>Your answer</em> / <em>Correct answer</em> in success/danger tones, and short answers
+        as a your-answer / accepted-answers pair. The answer key appears exactly here and
+        nowhere else in the client; a <code>409</code> renders as "not released yet", never as
+        an error.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="api">
+    <h2>8. The API surface and error vocabulary</h2>
+    <p class="fr">api/openapi.yaml v0.7.0 (player) + v0.8.0 (results) &middot; regenerated typed TS client</p>
+    <table>
+      <thead><tr><th>Operation</th><th>Who</th><th>What</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill post">POST</span> <code>/quizzes/:id/attempts</code></td><td>student</td><td>Start (or idempotently resume) an attempt; the full player payload, key structurally absent</td></tr>
+        <tr><td><span class="pill get">GET</span> <code>/attempts/:id</code></td><td>owner</td><td>Resume: saved answers, deadline, server clock</td></tr>
+        <tr><td><span class="pill put">PUT</span> <code>/attempts/:id/answers/:questionId</code></td><td>owner</td><td>Autosave one answer; upsert behind the deadline/status write gate</td></tr>
+        <tr><td><span class="pill post">POST</span> <code>/attempts/:id/submit</code></td><td>owner</td><td>The manual leg of the idempotent submit funnel</td></tr>
+        <tr><td><span class="pill get">GET</span> <code>/attempts/:id/result</code></td><td>owner</td><td>The released review: score, per-question grading, the answer key</td></tr>
+        <tr><td><span class="pill get">GET</span> <code>/quizzes/assigned</code></td><td>student</td><td>Assigned quizzes with attempt summaries; scores release-gated in SQL</td></tr>
+        <tr><td><span class="pill get">GET</span> <code>/quizzes/:id/results</code></td><td>teacher</td><td>Per-student attempt/score table; scores visible pre-release</td></tr>
+        <tr><td><span class="pill post">POST</span> <code>/quizzes/:id/release-results</code></td><td>teacher</td><td>Explicit release; idempotent, audited once</td></tr>
+      </tbody>
+    </table>
+    <p>The attempt-state refusals the client switches on (all <code>409</code>, docs/04):</p>
+    <table>
+      <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>QUIZ_NOT_LIVE</code></td><td>start outside the live window</td></tr>
+        <tr><td><code>ATTEMPT_LIMIT_REACHED</code></td><td><code>max_attempts</code> exhausted</td></tr>
+        <tr><td><code>ATTEMPT_DEADLINE_PASSED</code></td><td>write after <code>deadline_at</code> + 5 s grace</td></tr>
+        <tr><td><code>ATTEMPT_ALREADY_SUBMITTED</code></td><td>autosave against a terminal attempt</td></tr>
+        <tr><td><code>ATTEMPT_KICKED</code></td><td>reserved for the Milestone 6 lockout screen</td></tr>
+        <tr><td><code>QUIZ_NOT_CLOSED</code></td><td>release before the window ends</td></tr>
+        <tr><td><code>RESULTS_NOT_RELEASED</code></td><td>student results read before release + grading</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block" id="testing">
+    <h2>9. How it was verified</h2>
+    <p class="fr">make test (Go, against Compose Postgres) &middot; node web/e2e/*.e2e.mjs (Chromium)</p>
+    <ul>
+      <li><strong>Attempt player backend</strong>: integration suite covering the start
+        transaction, idempotent restart, key-free payloads, autosave gates, resume, and every
+        409 - plus a live Compose E2E over curl.</li>
+      <li><strong>Deadline timer and close</strong>: a 6-subtest integration suite and a
+        12-check live Compose E2E where the worker flipped attempts to
+        <code>submitted/auto</code> and <code>submitted/forced</code> with no API call.</li>
+      <li><strong>Grading</strong>: 21 unit cases across the four types, a 5-subtest integration
+        suite, and a 17-check live E2E where the worker graded a manual submit and a
+        disappeared student entirely server-side.</li>
+      <li><strong>Results release</strong>: an 11-subtest integration suite
+        (<code>releaseflow_test.go</code>) - policy storage, withheld scores, both 409s, the
+        teacher table pre-release, manual never auto-releasing, idempotent audited release,
+        the released review with key, cross-student 404, and one-pass
+        close&rarr;force-submit&rarr;grade&rarr;release.</li>
+      <li><strong>The web player</strong>: a 26-check browser E2E
+        (<code>web/e2e/player.e2e.mjs</code>) - a real student in Chromium starts a live
+        4-type quiz, autosaves, survives a cold reload via Resume with every answer intact,
+        submits, sees the score withheld, then - after the worker closes, grades, and
+        auto-releases at <code>ends_at</code> - reads the 4/6 review with verdict chips, the
+        missed multi's full key, and the accepted short answer.</li>
+    </ul>
+    <div class="proof">
+      All suites green as of 2026-07-07. The browser E2E runs unattended in ~4 minutes:
+      <code>make up</code>, <code>make web-dev</code>, then <code>node web/e2e/player.e2e.mjs</code>.
+    </div>
+  </section>
+
+  <section class="block" id="remaining">
+    <h2>10. What deliberately remains</h2>
+    <ul>
+      <li><strong>The Redis snapshot cache for attempt start</strong> - listed in the plan as a
+        read-path optimization; Redis is in Compose and config, nothing consumes it yet. The
+        start transaction reads the snapshot from Postgres, which is correct and fast at
+        current scale; the cache is worth adding before the 1,000-student load test
+        (Milestone 9).</li>
+      <li><strong><code>submit_kind: kicked</code></strong> - the funnel accepts it; the
+        guardrail ladder and the kick endpoint that use it are Milestone 6.</li>
+      <li><strong>Realtime presence</strong> - the player writes no <code>attempt_events</code>
+        yet; the WebSocket gateway and the teacher's live roster are Milestone 5.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Part of the MacQuiz v2 build log - see <a href="progress.html">progress.html</a> for the
+    commit-by-commit record and <code>docs/12-implementation-plan.md</code> for the milestone
+    plan.
+  </footer>
+
+</div>
+</body>
+</html>
