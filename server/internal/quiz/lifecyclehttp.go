@@ -173,6 +173,19 @@ func (h *Handler) handleExtendQuiz(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
 }
 
+func (h *Handler) handleArchiveQuiz(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such quiz")
+	if !ok {
+		return
+	}
+	q, err := h.svc.Archive(r.Context(), actor, id)
+	if h.writeLifecycleError(w, "archive quiz", err, "no such quiz") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
+}
+
 func (h *Handler) handleListAssignments(w http.ResponseWriter, r *http.Request) {
 	actor, _ := authusers.ActorFrom(r.Context())
 	id, ok := pathUUID(w, r, "no such quiz")

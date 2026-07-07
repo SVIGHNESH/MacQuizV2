@@ -408,6 +408,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a closed quiz (owner)
+         * @description Retires a closed quiz to the terminal, read-only Archived state (analytics are retained). A pure status flip with no worker chain - a closed quiz's attempts are already force-submitted and graded. Owner- teacher only. Archiving an already-archived quiz is an idempotent no-op that returns the quiz unchanged; a draft, scheduled, or live quiz (not yet closed - force-close it first) answers 409 QUIZ_NOT_CLOSED.
+         */
+        post: operations["archiveQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/assignments": {
         parameters: {
             query?: never;
@@ -1948,6 +1968,40 @@ export interface operations {
                 };
             };
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    archiveQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz, now archived. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description QUIZ_NOT_CLOSED - the quiz is not closed, so it cannot be archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listAssignments: {

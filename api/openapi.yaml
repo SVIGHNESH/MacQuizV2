@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.15.0
+  version: 0.16.0
 servers:
   - url: /
 paths:
@@ -762,6 +762,44 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/archive:
+    post:
+      operationId: archiveQuiz
+      summary: Archive a closed quiz (owner)
+      description: >-
+        Retires a closed quiz to the terminal, read-only Archived state
+        (analytics are retained). A pure status flip with no worker chain - a
+        closed quiz's attempts are already force-submitted and graded. Owner-
+        teacher only. Archiving an already-archived quiz is an idempotent no-op
+        that returns the quiz unchanged; a draft, scheduled, or live quiz
+        (not yet closed - force-close it first) answers 409 QUIZ_NOT_CLOSED.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz, now archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            QUIZ_NOT_CLOSED - the quiz is not closed, so it cannot be archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/quizzes/{id}/assignments:
     parameters:
       - name: id

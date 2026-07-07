@@ -41,15 +41,21 @@ func (s *Service) ReleaseResults(ctx context.Context, actor authusers.User, id s
 	if err := tx.QueryRowContext(ctx, `SELECT now()`).Scan(&now); err != nil {
 		return Quiz{}, fmt.Errorf("read database clock: %w", err)
 	}
-	if effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now) != "closed" {
+	// Archived is a superset-terminal of closed: a manual-release quiz archived
+	// before its results were released can still be released ("analytics
+	// retained"), so both terminal states pass this gate.
+	if es := effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now); es != "closed" && es != "archived" {
 		return Quiz{}, ErrQuizNotClosed
 	}
 
 	// The status flip rides along for the derivation gap between ends_at
 	// passing and the close job landing - the same idempotent predicate the
-	// sweep uses, so the two paths can never disagree.
+	// sweep uses, so the two paths can never disagree. An already-archived quiz
+	// keeps its terminal status; only a not-yet-flipped row advances to closed.
 	q, err = scanQuiz(tx.QueryRowContext(ctx,
-		`UPDATE quizzes SET status = 'closed', results_released_at = now()
+		`UPDATE quizzes
+		 SET status = CASE WHEN status = 'archived' THEN 'archived' ELSE 'closed' END::quiz_status,
+		     results_released_at = now()
 		 WHERE id = $1 RETURNING `+quizColumns, id).Scan)
 	if err != nil {
 		return Quiz{}, fmt.Errorf("release results: %w", err)
@@ -64,7 +70,9 @@ func (s *Service) ReleaseResults(ctx context.Context, actor authusers.User, id s
 	return q, nil
 }
 
-// ReleaseDueResults applies the auto policy: every closed auto-release quiz
+// ReleaseDueResults applies the auto policy: every closed (or archived - a
+// force-closed auto quiz may be archived before this sweep runs, and its
+// results must still auto-release; "analytics retained") auto-release quiz
 // whose attempts are all terminal and graded gets results_released_at
 // stamped. The grading guard makes release atomic from the student's side -
 // results never appear with half the class still ungraded - and makes the
@@ -74,7 +82,7 @@ func (s *Service) ReleaseResults(ctx context.Context, actor authusers.User, id s
 func ReleaseDueResults(ctx context.Context, db *sql.DB) (int64, error) {
 	res, err := db.ExecContext(ctx,
 		`UPDATE quizzes z SET results_released_at = now()
-		 WHERE z.status = 'closed' AND z.release_policy = 'auto'
+		 WHERE z.status IN ('closed', 'archived') AND z.release_policy = 'auto'
 		   AND z.results_released_at IS NULL
 		   AND NOT EXISTS (
 		       SELECT 1 FROM attempts a

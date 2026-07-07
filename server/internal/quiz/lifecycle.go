@@ -346,6 +346,72 @@ func (s *Service) Extend(ctx context.Context, actor authusers.User, id string, n
 	return q, nil
 }
 
+// Archive retires a closed quiz to the terminal, read-only 'archived' state
+// (docs/06 section 1: "Closed -> Archived | Teacher archives | Read-only;
+// analytics retained"). It is a pure status flip plus an audit row - unlike
+// force-close there is no worker chain to run: a closed quiz's attempts have
+// already been swept and graded, so archiving touches no attempt.
+//
+// The gate is the STORED status, not the effective one: only a quiz the close
+// chain has actually flipped to 'closed' can be archived, so a window-passed
+// but stored-live quiz (whose attempts are not yet force-submitted) reads
+// ErrNotArchivable and must be force-closed first. Archiving an already-
+// archived quiz is an idempotent no-op (no second audit row); a draft,
+// scheduled, or live quiz answers ErrNotArchivable.
+//
+// Archived is a superset-terminal of closed on every read path: the teacher's
+// Results view and the student's released-result read both keep working (the
+// latter gates on the attempt's graded state, not the quiz status), and
+// ReleaseResults accepts an archived quiz so a manual-release quiz archived
+// before release can still be released - "analytics retained". The one place
+// archived is deliberately filtered out is the student's active AssignedQuizzes
+// list, which is the documented read-only retirement.
+func (s *Service) Archive(ctx context.Context, actor authusers.User, id string) (Quiz, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("begin archive tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	q, err := s.ownedForUpdate(ctx, tx, actor, id)
+	if err != nil {
+		return Quiz{}, err
+	}
+	// quizColumns/scanQuiz omit the question count (Iteration 1), so populate
+	// it for parity with Publish/ForceClose/Extend - all return a QuizResponse.
+	var questionCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT count(*) FROM questions WHERE quiz_id = $1`, id).Scan(&questionCount); err != nil {
+		return Quiz{}, fmt.Errorf("count questions: %w", err)
+	}
+	switch q.Status {
+	case "archived":
+		// Already terminal: a double-click or retried request changes nothing.
+		q.QuestionCount = questionCount
+		return q, nil
+	case "closed":
+		// archivable
+	default: // draft, scheduled, live: not yet closed.
+		return Quiz{}, ErrNotArchivable
+	}
+
+	q, err = scanQuiz(tx.QueryRowContext(ctx,
+		`UPDATE quizzes SET status = 'archived' WHERE id = $1
+		 RETURNING `+quizColumns, id).Scan)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("archive quiz: %w", err)
+	}
+	q.QuestionCount = questionCount
+
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.archived", "quiz", id, nil); err != nil {
+		return Quiz{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Quiz{}, fmt.Errorf("commit archive: %w", err)
+	}
+	return q, nil
+}
+
 // AssignedStudent is one member of a quiz's audience, as the authoring UI
 // lists it.
 type AssignedStudent struct {

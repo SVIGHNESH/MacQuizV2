@@ -41,6 +41,10 @@ var (
 	// a not-yet-started quiz uses reschedule, a closed/archived one is already
 	// terminal (docs/06 section 1: extend is the once-Live affordance).
 	ErrNotExtendable = errors.New("only a live quiz can be extended")
+	// ErrNotArchivable marks an archive of a quiz that is not stored 'closed':
+	// archiving is the terminal Closed -> Archived retirement (docs/06 section
+	// 1), so a draft/scheduled/live quiz must be force-closed first.
+	ErrNotArchivable = errors.New("only a closed quiz can be archived")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay

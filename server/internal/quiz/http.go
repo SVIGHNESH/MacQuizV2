@@ -55,6 +55,7 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Post("/{id}/publish", h.handlePublishQuiz)
 		r.Post("/{id}/close", h.handleForceCloseQuiz)
 		r.Post("/{id}/extend", h.handleExtendQuiz)
+		r.Post("/{id}/archive", h.handleArchiveQuiz)
 		r.Get("/{id}/assignments", h.handleListAssignments)
 		r.Put("/{id}/assignments", h.handleSetAssignments)
 		r.Get("/{id}/results", h.handleResults)
@@ -329,6 +330,9 @@ func (h *Handler) writeQuizError(w http.ResponseWriter, op string, err error, no
 	case errors.Is(err, ErrNotExtendable):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotLive,
 			"only a live quiz can be extended")
+	case errors.Is(err, ErrNotArchivable):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotClosed,
+			"only a closed quiz can be archived")
 	default:
 		h.internalError(w, op, err)
 	}
