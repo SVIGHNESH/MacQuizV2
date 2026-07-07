@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.12.0
+  version: 0.13.0
 servers:
   - url: /
 paths:
@@ -342,6 +342,79 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/v1/audit:
+    get:
+      operationId: listAuditLog
+      summary: Filterable audit log (admin)
+      description: >-
+        Reads the append-only audit trail newest first, keyset-paginated on the
+        entry id. Every filter is optional; combine actor_id, action,
+        resource_type, resource_id, and an at range (from/to), then page with
+        before + limit. next_cursor carries the id to pass back as before for
+        the next page, and is null on the last page. Admin-only.
+      parameters:
+        - name: actor_id
+          in: query
+          description: Only entries written by this account.
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          description: Exact action match, e.g. quizzes.published.
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          description: Exact resource type, e.g. quiz, attempt, question.
+          schema:
+            type: string
+        - name: resource_id
+          in: query
+          description: Only entries touching this resource.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          description: Inclusive lower bound on the entry time (at >= from).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Exclusive upper bound on the entry time (at < to).
+          schema:
+            type: string
+            format: date-time
+        - name: before
+          in: query
+          description: Keyset cursor - return entries with id strictly below this.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          description: Page size, 1..200 (default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: A page of audit entries, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/quizzes:
     get:
       operationId: listQuizzes
@@ -1240,6 +1313,46 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    AuditEntry:
+      type: object
+      required: [id, action, resource_type, detail, at]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The bigserial primary key; also the pagination cursor.
+        actor_id:
+          type: string
+          format: uuid
+          description: The account that performed the action; omitted when the column is null (system action).
+        action:
+          type: string
+          description: The action verb, e.g. quizzes.published, attempt.kicked.
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+          description: Omitted when the column is null.
+        detail:
+          nullable: true
+          description: Free-form JSON detail (includes the diff for mutations); null when the writer recorded none.
+        at:
+          type: string
+          format: date-time
+    AuditPage:
+      type: object
+      required: [entries, next_cursor]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntry"
+        next_cursor:
+          type: integer
+          format: int64
+          nullable: true
+          description: Pass as `before` to fetch the next page; null on the last page.
     Health:
       type: object
       required: [status, version, commit, time]

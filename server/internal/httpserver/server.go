@@ -79,6 +79,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 				r.Mount("/users", deps.Auth.UserRoutes())
 				r.Mount("/groups", deps.Auth.GroupRoutes())
 				r.Mount("/directory", deps.Auth.DirectoryRoutes())
+				r.Mount("/audit", deps.Auth.AuditRoutes())
 				if deps.Quiz != nil {
 					// POST /quizzes/{id}/attempts belongs to the quiz mount's
 					// subtree; the handler itself stays in the attempt module.
