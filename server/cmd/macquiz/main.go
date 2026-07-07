@@ -125,7 +125,11 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log)
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
-	attemptSvc := attempt.NewService(sqlDB, log, publisher)
+	// Coalesce serve-side attempt.progress to at most one relay per 2 s per
+	// attempt (docs/05 section 5): every autosave still persists its event row,
+	// only the best-effort Redis relay is thinned to the doc's events/s budget.
+	// The worker emits no progress, so its publisher stays unwrapped.
+	attemptSvc := attempt.NewService(sqlDB, log, attempt.NewProgressCoalescer(publisher))
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
 
 	srv := &http.Server{
