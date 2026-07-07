@@ -127,6 +127,19 @@ func (h *Handler) handleSetAssignments(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"students": students})
 }
 
+func (h *Handler) handleForceCloseQuiz(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such quiz")
+	if !ok {
+		return
+	}
+	q, err := h.svc.ForceClose(r.Context(), actor, id)
+	if h.writeLifecycleError(w, "force close quiz", err, "no such quiz") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
+}
+
 func (h *Handler) handleListAssignments(w http.ResponseWriter, r *http.Request) {
 	actor, _ := authusers.ActorFrom(r.Context())
 	id, ok := pathUUID(w, r, "no such quiz")

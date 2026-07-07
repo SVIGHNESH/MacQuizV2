@@ -32,6 +32,11 @@ var (
 	// ended; results only exist once every attempt is terminated (docs/08
 	// section 3: "only after the quiz closes").
 	ErrQuizNotClosed = errors.New("quiz is not closed yet")
+	// ErrNotClosable marks a force-close of a quiz that is not live or
+	// scheduled - a draft was never open, and a closed/archived quiz is
+	// already terminal (docs/06 section 1: force-close is a Live/Scheduled
+	// action).
+	ErrNotClosable = errors.New("only a live or scheduled quiz can be force-closed")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay

@@ -191,6 +191,76 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	return q, nil
 }
 
+// ForceClose ends a live or scheduled quiz immediately (docs/06 section 1:
+// "Live -> Closed | Scheduler at ends_at, or teacher force-close"). It flips
+// the row to 'closed' and brings ends_at forward to now() in one transaction,
+// then enqueues an immediate close_quiz job so the exact chain a timed close
+// would run - force-submit every still-open attempt (kind='forced'), grade,
+// release per policy - fires now instead of at the original ends_at. The job
+// re-derives everything from the rows, so it flips no quiz twice; the status
+// flip alone is what SweepDueAttempts keys the force-submit on and what Start
+// reads to refuse new attempts, so enforcement never depends on the job's
+// timing. Force-closing an already-closed or archived quiz is an idempotent
+// no-op (no second audit row, no second job); a draft answers ErrNotClosable.
+func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id string) (Quiz, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("begin force-close tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	q, err := s.ownedForUpdate(ctx, tx, actor, id)
+	if err != nil {
+		return Quiz{}, err
+	}
+	// quizColumns/scanQuiz omit the question count (Iteration 1), so populate
+	// it for parity with Publish's response - both return a QuizResponse.
+	var questionCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT count(*) FROM questions WHERE quiz_id = $1`, id).Scan(&questionCount); err != nil {
+		return Quiz{}, fmt.Errorf("count questions: %w", err)
+	}
+	switch q.Status {
+	case "closed", "archived":
+		// Already terminal: a double-click or a retried request changes
+		// nothing, matching the idempotence discipline of kick/readmit.
+		q.QuestionCount = questionCount
+		return q, nil
+	case "scheduled", "live":
+		// force-closable
+	default: // draft: never opened, so there is nothing to close.
+		return Quiz{}, ErrNotClosable
+	}
+	fromStatus := q.Status
+
+	q, err = scanQuiz(tx.QueryRowContext(ctx,
+		`UPDATE quizzes SET status = 'closed', ends_at = now()
+		 WHERE id = $1
+		 RETURNING `+quizColumns, id).Scan)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("force-close quiz: %w", err)
+	}
+	q.QuestionCount = questionCount
+
+	// Fire the close chain now rather than at the original ends_at. A nil
+	// InsertOpts schedules the job immediately; the stale close_quiz job at
+	// the original ends_at stays queued and no-ops when it fires (the sweep
+	// predicate needs status IN (scheduled, live), and this quiz is closed).
+	if _, err := s.jobs.InsertTx(ctx, tx, CloseQuizArgs{QuizID: id}, nil); err != nil {
+		return Quiz{}, fmt.Errorf("enqueue force-close job: %w", err)
+	}
+
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.force_closed", "quiz", id, map[string]any{
+		"from_status": fromStatus,
+	}); err != nil {
+		return Quiz{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Quiz{}, fmt.Errorf("commit force-close: %w", err)
+	}
+	return q, nil
+}
+
 // AssignedStudent is one member of a quiz's audience, as the authoring UI
 // lists it.
 type AssignedStudent struct {

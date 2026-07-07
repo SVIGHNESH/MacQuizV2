@@ -368,6 +368,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force-close a live quiz early (owner)
+         * @description Ends a live or scheduled quiz immediately instead of waiting for ends_at. Flips the quiz to Closed and pulls ends_at forward to now, then runs the same close chain a timed close would - every still-open attempt is force-submitted (kind=forced), graded, and results release per policy. Owner-teacher only. Re-closing an already-closed or archived quiz is an idempotent no-op that returns the quiz unchanged; a draft (never opened) answers 409 QUIZ_NOT_LIVE.
+         */
+        post: operations["forceCloseQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/assignments": {
         parameters: {
             query?: never;
@@ -1829,6 +1849,40 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["NotEditable"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    forceCloseQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz, now closed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description QUIZ_NOT_LIVE - the quiz is a draft and was never opened, so there is nothing to force-close. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listAssignments: {
