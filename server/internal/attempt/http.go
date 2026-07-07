@@ -40,6 +40,7 @@ func (h *Handler) Routes() http.Handler {
 		r.Get("/{id}", h.handleGet)
 		r.Put("/{id}/answers/{questionID}", h.handleSaveAnswer)
 		r.Post("/{id}/submit", h.handleSubmit)
+		r.Post("/{id}/events", h.handleReportViolation)
 		r.Get("/{id}/result", h.handleResult)
 	})
 	// Kick is a live-moderation power for teachers and admins (docs/06 section
@@ -178,6 +179,47 @@ func (h *Handler) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
 }
 
+// maxEventBytes bounds a violation report body. A report is a short type tag
+// plus an optional duration; anything larger is not a guardrail event.
+const maxEventBytes = 1024
+
+type reportViolationRequest struct {
+	Type       string `json:"type"`
+	DurationMs *int   `json:"duration_ms"`
+}
+
+// handleReportViolation serves POST /attempts/{id}/events: the student's client
+// reports one guardrail violation (docs/04:72, the REST fallback for the attempt
+// socket). The type is required and must be a known guardrail; duration_ms is
+// optional. The response carries the attempt (with its updated violation_count)
+// and whether this report counted toward the ladder.
+func (h *Handler) handleReportViolation(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	var req reportViolationRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxEventBytes)).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	req.Type = strings.TrimSpace(req.Type)
+	if !violationTypes[req.Type] {
+		httpapi.WriteFieldErrors(w, map[string]string{"type": "must be fullscreen, focus, or clipboard"})
+		return
+	}
+	if req.DurationMs != nil && *req.DurationMs < 0 {
+		httpapi.WriteFieldErrors(w, map[string]string{"duration_ms": "must not be negative"})
+		return
+	}
+	attempt, counted, err := h.svc.ReportViolation(r.Context(), actor, id, req.Type, req.DurationMs)
+	if h.writeAttemptError(w, "report violation", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt, "counted": counted})
+}
+
 // maxReasonBytes bounds the kick reason. A real justification is a canned
 // phrase plus optional free text; anything near this size is not a reason.
 const maxReasonBytes = 2 * 1024
@@ -285,6 +327,9 @@ func (h *Handler) writeAttemptError(w http.ResponseWriter, op string, err error,
 	case errors.Is(err, ErrNotKicked):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptNotKicked,
 			"this attempt was not kicked, so there is nothing to readmit")
+	case errors.Is(err, ErrGuardrailOff):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeGuardrailOff,
+			"this guardrail is not enabled for this attempt")
 	default:
 		h.svc.log.Error(op, "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")

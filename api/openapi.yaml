@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.11.0
+  version: 0.12.0
 servers:
   - url: /
 paths:
@@ -914,6 +914,67 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/AttemptConflict"
+  /api/v1/attempts/{id}/events:
+    post:
+      operationId: reportAttemptViolation
+      summary: Report a guardrail violation (owner student)
+      description: >-
+        The REST fallback for the attempt socket: the student's own client
+        reports one guardrail violation. Only a guardrail whose snapshotted
+        policy is `count` increments `violation_count` (the tally the roster
+        badge and the violation ladder read); a `warn` report and a clipboard
+        block (logged) are still recorded and broadcast as evidence but leave
+        the count untouched. There is no dedup - one request is one violation.
+        A report for a guardrail switched off in this attempt's snapshot answers
+        409 GUARDRAIL_OFF; a report against a terminated attempt answers its
+        terminal 409. Owner-only; anyone else reads 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  enum: [fullscreen, focus, clipboard]
+                  description: The guardrail the violation is reported against.
+                duration_ms:
+                  type: integer
+                  minimum: 0
+                  nullable: true
+                  description: Optional duration of the violation (e.g. focus-loss length).
+      responses:
+        "200":
+          description: The attempt with its updated count, and whether the report counted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ViolationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            GUARDRAIL_OFF - the reported guardrail is not enabled for this
+            attempt; or a terminal ATTEMPT_KICKED / ATTEMPT_ALREADY_SUBMITTED.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/attempts/{id}/kick:
     post:
       operationId: kickAttempt
@@ -1743,6 +1804,17 @@ components:
       properties:
         attempt:
           $ref: "#/components/schemas/Attempt"
+    ViolationResponse:
+      type: object
+      required: [attempt, counted]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/Attempt"
+        counted:
+          type: boolean
+          description: >-
+            Whether this report incremented violation_count (true only for a
+            guardrail whose snapshotted policy is `count`).
     AssignedQuiz:
       type: object
       description: >-

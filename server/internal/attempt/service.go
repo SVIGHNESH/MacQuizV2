@@ -39,6 +39,10 @@ var (
 	// ErrNotKicked marks a readmit whose target attempt was never kicked;
 	// re-admission is only for a kicked student (docs/06 section 4).
 	ErrNotKicked = errors.New("attempt was not kicked")
+	// ErrGuardrailOff marks a violation report for a guardrail that this
+	// attempt's snapshot has switched off; there is nothing to record
+	// (docs/06 section 3).
+	ErrGuardrailOff = errors.New("guardrail is not enabled for this attempt")
 )
 
 // writeGrace is the autosave slack after deadline_at (docs/06 section 2:
@@ -578,6 +582,132 @@ func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, 
 		return Attempt{}, fmt.Errorf("commit readmit: %w", err)
 	}
 	return a, nil
+}
+
+// ReportViolation records one guardrail violation the student's own client
+// reported (docs/06 section 3: "client reports over the attempt WebSocket -
+// REST fallback POST /attempts/:id/events"). It is the reporting layer of the
+// violation pipeline: the ladder's terminal action (auto_submit) is a separate
+// brick; the default action, flag, needs nothing beyond the counted tally this
+// records, which the live roster's amber badge already reads.
+//
+// Owner-only (a student reports only their own attempt; anyone else reads 404)
+// and in_progress-only (a terminated attempt accrues no violations - a kicked
+// or submitted attempt answers its terminal error so the stale player learns
+// its attempt is over). The deadline gate is deliberately skipped: a focus-loss
+// at deadline+3s is still legitimate evidence.
+//
+// The report counts toward the ladder only when the reported guardrail's
+// snapshotted policy is "count"; a "warn" report (and a clipboard block, which
+// is "on/logged" but never counted per docs/06 section 3) still appends its
+// attempt.violation row and publishes it - the teacher sees the type on hover -
+// but leaves violation_count untouched. A report for a guardrail switched off
+// in this attempt's snapshot answers ErrGuardrailOff. There is deliberately no
+// dedup: one POST is one violation, additive monotonic evidence.
+func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, attemptID, vtype string, durationMs *int) (Attempt, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Attempt{}, false, fmt.Errorf("begin violation tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	a, err := s.ownedForUpdate(ctx, tx, actor, attemptID)
+	if err != nil {
+		return Attempt{}, false, err
+	}
+	switch a.Status {
+	case "kicked":
+		return Attempt{}, false, ErrKicked
+	case "submitted", "graded":
+		return Attempt{}, false, ErrAlreadySubmitted
+	}
+
+	// The policy is read from the version this attempt pinned, so a mid-window
+	// republish can never change what this attempt is judged against.
+	policy, err := guardrailPolicy(ctx, tx, a.QuizID, a.QuizVersion, vtype)
+	if err != nil {
+		return Attempt{}, false, err
+	}
+	if policy == "off" {
+		return Attempt{}, false, ErrGuardrailOff
+	}
+	counted := policy == "count"
+
+	// Only a counted violation advances the tally the ladder reads; a warn-only
+	// or clipboard-logged report keeps the current count. The row is locked
+	// (ownedForUpdate) and confirmed in_progress, so the UPDATE flips exactly it.
+	newCount := a.ViolationCount
+	if counted {
+		if err := tx.QueryRowContext(ctx,
+			`UPDATE attempts SET violation_count = violation_count + 1
+			 WHERE id = $1 AND status = 'in_progress'
+			 RETURNING violation_count`, a.ID).Scan(&newCount); err != nil {
+			return Attempt{}, false, fmt.Errorf("increment violation count: %w", err)
+		}
+	}
+	a.ViolationCount = newCount
+
+	// Persist first: the violation row is evidence for the teacher and commits
+	// with the count it caused, so the two can never disagree.
+	payload := violationPayload{Type: vtype, DurationMs: durationMs, ViolationCount: newCount}
+	if err := appendEvent(ctx, tx, a.ID, eventViolation, payload); err != nil {
+		return Attempt{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Attempt{}, false, fmt.Errorf("commit violation: %w", err)
+	}
+	// Publish second: relay the delta so the monitor badge increments (counted)
+	// or the type shows on hover (warn/logged) the moment the socket carries it.
+	s.events.Publish(ctx, a.QuizID, a.ID, eventViolation, payload)
+	return a, counted, nil
+}
+
+// violationTypes maps the wire violation type to the snapshotted guardrail
+// field it is judged against. clipboard is a boolean guardrail: "on" is treated
+// as a warn-class policy (logged, never counted, per docs/06 section 3's
+// "on (logged)"), "off" as disabled.
+var violationTypes = map[string]bool{"fullscreen": true, "focus": true, "clipboard": true}
+
+// guardrailPolicy resolves the reported violation type to the effective policy
+// ("off" | "warn" | "count") snapshotted for this attempt's version. The
+// fullscreen and focus guardrails carry the tri-state directly; clipboard is a
+// boolean the docs describe as "on (logged)", so it normalizes to "warn" (logged
+// but uncounted) when on and "off" when off. A guardrails jsonb with the field
+// absent or null coalesces to "off": nothing to record.
+func guardrailPolicy(ctx context.Context, tx *sql.Tx, quizID string, version int, vtype string) (string, error) {
+	if !violationTypes[vtype] {
+		// Unknown types are screened at the HTTP layer; treat any that slip
+		// through as a disabled guardrail rather than recording noise.
+		return "off", nil
+	}
+	if vtype == "clipboard" {
+		var on bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT coalesce((guardrails->>'block_clipboard')::boolean, false)
+			 FROM quiz_versions WHERE quiz_id = $1 AND version = $2`, quizID, version).Scan(&on); err != nil {
+			return "", fmt.Errorf("load clipboard guardrail: %w", err)
+		}
+		if on {
+			return "warn", nil
+		}
+		return "off", nil
+	}
+	field := "fullscreen"
+	if vtype == "focus" {
+		field = "focus_tracking"
+	}
+	var policy string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT coalesce(guardrails->>$3, 'off')
+		 FROM quiz_versions WHERE quiz_id = $1 AND version = $2`, quizID, version, field).Scan(&policy); err != nil {
+		return "", fmt.Errorf("load %s guardrail: %w", vtype, err)
+	}
+	switch policy {
+	case "warn", "count":
+		return policy, nil
+	default:
+		return "off", nil
+	}
 }
 
 // moderatableForUpdate locks the attempt row and authorizes the caller to

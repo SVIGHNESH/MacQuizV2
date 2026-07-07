@@ -20,7 +20,7 @@ import (
 
 // The docs/05 section 2 event vocabulary. Only the events the server can
 // source from a REST/worker write are emitted here; disconnected, reconnected,
-// and violation arrive with the heartbeat and guardrail bricks that do not
+// and disconnected/reconnected arrive with the heartbeat brick that does not
 // exist yet.
 const (
 	eventStarted   = "attempt.started"
@@ -28,6 +28,7 @@ const (
 	eventSubmitted = "attempt.submitted"
 	eventGraded    = "attempt.graded"
 	eventKicked    = "attempt.kicked"
+	eventViolation = "attempt.violation"
 )
 
 // startedPayload is the attempt.started delta: the dashboard moves the row to
@@ -69,6 +70,19 @@ type gradedPayload struct {
 type kickedPayload struct {
 	KickedBy string `json:"kicked_by"`
 	Reason   string `json:"reason"`
+}
+
+// violationPayload is the attempt.violation delta (docs/05 section 2): the
+// monitor row's amber badge shows the running ViolationCount, with Type on
+// hover. ViolationCount is the counted tally the ladder reads against - it
+// advances only for a guardrail whose snapshotted policy is "count"; a
+// warn-only or clipboard-logged report carries the (unchanged) count so the
+// teacher still sees the evidence type without it feeding the ladder (docs/06
+// section 3). DurationMs is optional (focus-loss duration); omitted otherwise.
+type violationPayload struct {
+	Type           string `json:"type"`
+	DurationMs     *int   `json:"duration_ms"`
+	ViolationCount int    `json:"violation_count"`
 }
 
 // execer abstracts *sql.Tx (and, for the sweep's per-row inserts, anything

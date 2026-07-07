@@ -531,6 +531,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a guardrail violation (owner student)
+         * @description The REST fallback for the attempt socket: the student's own client reports one guardrail violation. Only a guardrail whose snapshotted policy is `count` increments `violation_count` (the tally the roster badge and the violation ladder read); a `warn` report and a clipboard block (logged) are still recorded and broadcast as evidence but leave the count untouched. There is no dedup - one request is one violation. A report for a guardrail switched off in this attempt's snapshot answers 409 GUARDRAIL_OFF; a report against a terminated attempt answers its terminal 409. Owner-only; anyone else reads 404.
+         */
+        post: operations["reportAttemptViolation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attempts/{id}/kick": {
         parameters: {
             query?: never;
@@ -906,6 +926,11 @@ export interface components {
         };
         AttemptResponse: {
             attempt: components["schemas"]["Attempt"];
+        };
+        ViolationResponse: {
+            attempt: components["schemas"]["Attempt"];
+            /** @description Whether this report incremented violation_count (true only for a guardrail whose snapshotted policy is `count`). */
+            counted: boolean;
         };
         /** @description The student-facing quiz shape - window, budget, size, and the caller's own attempt history. Never the owner, the guardrail internals, or (structurally) a question. */
         AssignedQuiz: {
@@ -1986,6 +2011,53 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AttemptConflict"];
+        };
+    };
+    reportAttemptViolation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description The guardrail the violation is reported against.
+                     * @enum {string}
+                     */
+                    type: "fullscreen" | "focus" | "clipboard";
+                    /** @description Optional duration of the violation (e.g. focus-loss length). */
+                    duration_ms?: number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The attempt with its updated count, and whether the report counted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViolationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description GUARDRAIL_OFF - the reported guardrail is not enabled for this attempt; or a terminal ATTEMPT_KICKED / ATTEMPT_ALREADY_SUBMITTED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
         };
     };
     kickAttempt: {

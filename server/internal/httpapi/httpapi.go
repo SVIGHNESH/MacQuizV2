@@ -27,6 +27,7 @@ const (
 	CodeAttemptKicked           = "ATTEMPT_KICKED"
 	CodeAttemptAlreadySubmitted = "ATTEMPT_ALREADY_SUBMITTED"
 	CodeAttemptNotKicked        = "ATTEMPT_NOT_KICKED"
+	CodeGuardrailOff            = "GUARDRAIL_OFF"
 )
 
 // ErrorBody is the wire shape of every non-2xx response.
