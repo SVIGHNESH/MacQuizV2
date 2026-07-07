@@ -1,4 +1,4 @@
-1. Results release policy + results views - grading writes the score, but nothing exposes it. No teacher "release results" endpoint, no student results view, and the design doc's open question (auto-release at close vs explicit teacher toggle) is still undecided. attempt/service.go explicitly withholds the score pending this.
+1. DONE - Results release policy + results views (backend): release_policy chosen at publish (default auto), auto-release in the worker sweep after grading, POST /quizzes/:id/release-results + GET /quizzes/:id/results for the teacher, GET /attempts/:id/result for the student, release-gated scores in GET /quizzes/assigned. Remaining: the results UI (rides the web player).
 2. The web attempt player - the student UI does not exist at all. Students currently land on a placeholder HomeScreen; there is no assigned-quiz list screen and no player (questions, countdown, autosave, submit). The entire student-facing frontend is backend-only right now.
 3. (Minor, from the plan) the Redis snapshot cache for attempt start - Redis is in Compose and config but nothing consumes it yet
 

@@ -20,6 +20,8 @@ const (
 	CodePasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
 	CodeQuizNotEditable         = "QUIZ_NOT_EDITABLE"
 	CodeQuizNotLive             = "QUIZ_NOT_LIVE"
+	CodeQuizNotClosed           = "QUIZ_NOT_CLOSED"
+	CodeResultsNotReleased      = "RESULTS_NOT_RELEASED"
 	CodeAttemptLimitReached     = "ATTEMPT_LIMIT_REACHED"
 	CodeAttemptDeadlinePassed   = "ATTEMPT_DEADLINE_PASSED"
 	CodeAttemptKicked           = "ATTEMPT_KICKED"

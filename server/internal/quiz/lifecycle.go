@@ -78,12 +78,15 @@ func (g Guardrails) Validate() map[string]string {
 }
 
 // PublishInput is the validated publish request: the live window, the
-// per-attempt duration, and the guardrail config.
+// per-attempt duration, the guardrail config, and the results-release
+// policy ("auto" or "manual"; docs/01 open question 1's documented default
+// is the per-quiz toggle defaulting to auto).
 type PublishInput struct {
-	StartsAt    time.Time
-	EndsAt      time.Time
-	DurationSec int
-	Guardrails  Guardrails
+	StartsAt      time.Time
+	EndsAt        time.Time
+	DurationSec   int
+	Guardrails    Guardrails
+	ReleasePolicy string
 }
 
 // Publish transitions Draft -> Scheduled (docs/06 section 1): it snapshots
@@ -132,6 +135,11 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	if err != nil {
 		return Quiz{}, fmt.Errorf("marshal guardrails: %w", err)
 	}
+	// The HTTP layer validates the policy; direct callers may leave it
+	// empty and get the documented default (docs/01: "default auto-release").
+	if in.ReleasePolicy == "" {
+		in.ReleasePolicy = "auto"
+	}
 
 	// The snapshot is assembled in SQL on purpose: Question tags Correct
 	// with json:"-", so a Go-side marshal would silently drop the answer key
@@ -151,10 +159,11 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	q, err = scanQuiz(tx.QueryRowContext(ctx,
 		`UPDATE quizzes
 		 SET status = 'scheduled', starts_at = $1, ends_at = $2, duration_sec = $3,
-		     guardrails = $4, published_at = now(), version = $5
-		 WHERE id = $6
+		     guardrails = $4, published_at = now(), version = $5, release_policy = $6
+		 WHERE id = $7
 		 RETURNING `+quizColumns,
-		in.StartsAt, in.EndsAt, in.DurationSec, guardrailsJSON, newVersion, id).Scan)
+		in.StartsAt, in.EndsAt, in.DurationSec, guardrailsJSON, newVersion,
+		in.ReleasePolicy, id).Scan)
 	if err != nil {
 		return Quiz{}, fmt.Errorf("update quiz on publish: %w", err)
 	}
@@ -346,17 +355,33 @@ func assignedStudents(ctx context.Context, db querier, quizID string) ([]Assigne
 
 // AssignedQuiz is the student-facing quiz shape: window, budget, and size -
 // never guardrail internals, never the owner, and structurally never a
-// question (let alone an answer key).
+// question (let alone an answer key). Attempts carries the caller's own
+// attempt history so the list can offer resume, count slots, and link to
+// released results.
 type AssignedQuiz struct {
-	ID            string     `json:"id"`
-	Title         string     `json:"title"`
-	Status        string     `json:"status"` // derived: upcoming quizzes read scheduled, open ones live
-	StartsAt      *time.Time `json:"starts_at"`
-	EndsAt        *time.Time `json:"ends_at"`
-	DurationSec   int        `json:"duration_sec"`
-	MaxAttempts   int        `json:"max_attempts"`
-	Version       int        `json:"version"`
-	QuestionCount int        `json:"question_count"`
+	ID                string           `json:"id"`
+	Title             string           `json:"title"`
+	Status            string           `json:"status"` // derived: upcoming quizzes read scheduled, open ones live
+	StartsAt          *time.Time       `json:"starts_at"`
+	EndsAt            *time.Time       `json:"ends_at"`
+	DurationSec       int              `json:"duration_sec"`
+	MaxAttempts       int              `json:"max_attempts"`
+	Version           int              `json:"version"`
+	QuestionCount     int              `json:"question_count"`
+	ResultsReleasedAt *time.Time       `json:"results_released_at"`
+	Attempts          []AttemptSummary `json:"attempts"`
+}
+
+// AttemptSummary is one of the caller's own attempts as the assigned list
+// shows it. Score stays null until the quiz's results are released - the
+// gate is applied in SQL, so the value never reaches this struct early.
+type AttemptSummary struct {
+	ID          string     `json:"id"`
+	AttemptNo   int        `json:"attempt_no"`
+	Status      string     `json:"status"`
+	StartedAt   time.Time  `json:"started_at"`
+	SubmittedAt *time.Time `json:"submitted_at"`
+	Score       *float64   `json:"score"`
 }
 
 // AssignedQuizzes lists the caller's upcoming, live, and past quizzes
@@ -366,7 +391,8 @@ type AssignedQuiz struct {
 func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]AssignedQuiz, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT z.id, z.title, z.status, z.starts_at, z.ends_at, z.duration_sec,
-		        z.max_attempts, z.version, jsonb_array_length(v.questions)
+		        z.max_attempts, z.version, jsonb_array_length(v.questions),
+		        z.results_released_at
 		 FROM quiz_assignments a
 		 JOIN quizzes z ON z.id = a.quiz_id
 		 JOIN quiz_versions v ON v.quiz_id = z.id AND v.version = z.version
@@ -382,13 +408,48 @@ func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]
 	for rows.Next() {
 		var q AssignedQuiz
 		if err := rows.Scan(&q.ID, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
-			&q.DurationSec, &q.MaxAttempts, &q.Version, &q.QuestionCount); err != nil {
+			&q.DurationSec, &q.MaxAttempts, &q.Version, &q.QuestionCount,
+			&q.ResultsReleasedAt); err != nil {
 			return nil, fmt.Errorf("scan assigned quiz: %w", err)
 		}
 		q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now)
+		q.Attempts = []AttemptSummary{}
 		quizzes = append(quizzes, q)
 	}
-	return quizzes, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// The caller's own attempt history, release-gated in SQL: score reads
+	// NULL until results_released_at is set, so the wire shape cannot leak a
+	// withheld score (the same structural stance as the answer key).
+	attemptRows, err := s.db.QueryContext(ctx,
+		`SELECT a.quiz_id, a.id, a.attempt_no, a.status, a.started_at, a.submitted_at,
+		        CASE WHEN z.results_released_at IS NOT NULL THEN a.score END
+		 FROM attempts a JOIN quizzes z ON z.id = a.quiz_id
+		 WHERE a.student_id = $1
+		 ORDER BY a.quiz_id, a.attempt_no`, actor.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list own attempts: %w", err)
+	}
+	defer attemptRows.Close()
+
+	byQuiz := map[string]int{}
+	for i, q := range quizzes {
+		byQuiz[q.ID] = i
+	}
+	for attemptRows.Next() {
+		var quizID string
+		var a AttemptSummary
+		if err := attemptRows.Scan(&quizID, &a.ID, &a.AttemptNo, &a.Status,
+			&a.StartedAt, &a.SubmittedAt, &a.Score); err != nil {
+			return nil, fmt.Errorf("scan own attempt: %w", err)
+		}
+		if i, ok := byQuiz[quizID]; ok {
+			quizzes[i].Attempts = append(quizzes[i].Attempts, a)
+		}
+	}
+	return quizzes, attemptRows.Err()
 }
 
 // effectiveStatus derives the status a reader should see from the stored

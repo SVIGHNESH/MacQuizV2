@@ -55,6 +55,8 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Post("/{id}/publish", h.handlePublishQuiz)
 		r.Get("/{id}/assignments", h.handleListAssignments)
 		r.Put("/{id}/assignments", h.handleSetAssignments)
+		r.Get("/{id}/results", h.handleResults)
+		r.Post("/{id}/release-results", h.handleReleaseResults)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(requireStudent)

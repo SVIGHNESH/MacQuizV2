@@ -371,6 +371,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-student results table (owner)
+         * @description One row per assigned student per attempt; students who never started keep the attempt fields null. The owner sees scores as grading lands, before any release - releasing is their decision, so they need the numbers first. max_score comes from the snapshot version each attempt pinned.
+         */
+        get: operations["listQuizResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quizzes/{id}/release-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release results to students (owner)
+         * @description Stamps results_released_at, the fact every student results read gates on. Requires the quiz's window to have ended (409 QUIZ_NOT_CLOSED otherwise); releasing an already-released quiz is an idempotent no-op. Quizzes published with release_policy auto are released by the worker at close without this call.
+         */
+        post: operations["releaseResults"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/assigned": {
         parameters: {
             query?: never;
@@ -465,6 +505,26 @@ export interface paths {
          * @description The manual leg of the idempotent submit funnel - whatever is autosaved becomes the submission. Submitting an already-submitted attempt answers 200 with the unchanged terminal state, so a retried request or a race against the deadline job resolves cleanly.
          */
         post: operations["submitAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The released review for an attempt (owner)
+         * @description The score, the per-question grading, and - only here, per the documented exception to answer-key isolation - the correct answers. Refused with 409 RESULTS_NOT_RELEASED until the quiz's results are released and this attempt is graded. Owner-only; anyone else reads 404. Questions come back in the same per-attempt order the player showed.
+         */
+        get: operations["getAttemptResult"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -588,6 +648,16 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             question_count: number;
+            /**
+             * @description When scores become visible to students - auto releases in the worker pass that grades the closed quiz, manual waits for POST /quizzes/{id}/release-results.
+             * @enum {string}
+             */
+            release_policy: "auto" | "manual";
+            /**
+             * Format: date-time
+             * @description Null means scores and the answer key are withheld.
+             */
+            results_released_at: string | null;
         };
         QuestionBody: {
             text: string;
@@ -683,6 +753,11 @@ export interface components {
             /** @description Per-attempt time budget; a student starting late gets min(duration, time-to-close). */
             duration_sec: number;
             guardrails?: components["schemas"]["Guardrails"];
+            /**
+             * @description When scores become visible to students - auto (the default when omitted) releases at close once grading lands, manual waits for the teacher's explicit release.
+             * @enum {string}
+             */
+            release_policy?: "auto" | "manual";
         };
         SetAssignmentsRequest: {
             student_ids?: string[];
@@ -772,7 +847,7 @@ export interface components {
         AttemptResponse: {
             attempt: components["schemas"]["Attempt"];
         };
-        /** @description The student-facing quiz shape - window, budget, and size. Never the owner, the guardrail internals, or (structurally) a question. */
+        /** @description The student-facing quiz shape - window, budget, size, and the caller's own attempt history. Never the owner, the guardrail internals, or (structurally) a question. */
         AssignedQuiz: {
             /** Format: uuid */
             id: string;
@@ -790,6 +865,79 @@ export interface components {
             max_attempts: number;
             version: number;
             question_count: number;
+            /**
+             * Format: date-time
+             * @description Null means scores are withheld.
+             */
+            results_released_at: string | null;
+            /** @description The caller's own attempts, oldest first. */
+            attempts: components["schemas"]["AttemptSummary"][];
+        };
+        /** @description One of the caller's own attempts as the assigned list shows it. score stays null until the quiz's results are released. */
+        AttemptSummary: {
+            /** Format: uuid */
+            id: string;
+            attempt_no: number;
+            /** @enum {string} */
+            status: "in_progress" | "submitted" | "graded" | "kicked";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            submitted_at: string | null;
+            score: number | null;
+        };
+        /** @description One line of the teacher's results table - an assigned student and one of their attempts. Students who never started keep the attempt fields null. */
+        ResultRow: {
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            /** Format: email */
+            email: string;
+            /** Format: uuid */
+            attempt_id: string | null;
+            attempt_no: number | null;
+            /** @enum {string|null} */
+            status: "in_progress" | "submitted" | "graded" | "kicked" | null;
+            /** @enum {string|null} */
+            submit_kind: "manual" | "auto" | "forced" | "kicked" | null;
+            /** Format: date-time */
+            started_at: string | null;
+            /** Format: date-time */
+            submitted_at: string | null;
+            score: number | null;
+            /** @description Total points of the snapshot version this attempt pinned. */
+            max_score: number | null;
+        };
+        QuizResultsResponse: {
+            quiz: components["schemas"]["Quiz"];
+            results: components["schemas"]["ResultRow"][];
+        };
+        /** @description One snapshot question in the released review - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response and is_correct null. */
+        ResultQuestion: {
+            /** Format: uuid */
+            id: string;
+            position: number;
+            /** @enum {string} */
+            type: "single" | "multi" | "truefalse" | "short";
+            body: components["schemas"]["QuestionBody"];
+            options?: components["schemas"]["QuestionOption"][];
+            /** @description The answer key - exposed here only, after close and release (the documented exception to answer-key isolation). */
+            correct: unknown;
+            points: number;
+            /** @description The autosaved response; shape depends on question type. */
+            response: unknown;
+            is_correct: boolean | null;
+            points_awarded: number;
+        };
+        /** @description The released results payload for one attempt. The attempt keeps its usual score-free shape; the released score rides at the top level. */
+        AttemptResult: {
+            attempt: components["schemas"]["Attempt"];
+            quiz_title: string;
+            score: number;
+            max_score: number;
+            /** Format: date-time */
+            released_at: string;
+            questions: components["schemas"]["ResultQuestion"][];
         };
     };
     responses: {
@@ -840,6 +988,24 @@ export interface components {
         };
         /** @description The attempt state refuses this action; the client switches on code - QUIZ_NOT_LIVE (start outside the window), ATTEMPT_LIMIT_REACHED (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a terminal attempt), or ATTEMPT_KICKED (show the lockout screen). */
         AttemptConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description QUIZ_NOT_CLOSED - results can be released once the quiz's window has ended. */
+        QuizNotClosed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description RESULTS_NOT_RELEASED - the quiz's results are not released yet (or this attempt's grading has not landed); the client shows a "results pending" state. */
+        ResultsNotReleased: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1504,6 +1670,57 @@ export interface operations {
             422: components["responses"]["ValidationFailed"];
         };
     };
+    listQuizResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz and its results table. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResultsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    releaseResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz with results_released_at set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["QuizNotClosed"];
+        };
+    };
     listAssignedQuizzes: {
         parameters: {
             query?: never;
@@ -1644,6 +1861,32 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AttemptConflict"];
+        };
+    };
+    getAttemptResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The released result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ResultsNotReleased"];
         };
     };
     deleteQuestion: {

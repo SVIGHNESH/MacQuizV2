@@ -116,12 +116,18 @@ func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, trigger, sub
 	if err != nil {
 		return err
 	}
-	if opened > 0 || closed > 0 || auto > 0 || forced > 0 || graded > 0 {
+	// Auto-policy results release runs last, so a quiz closed in this pass
+	// releases only after its force-submitted attempts are graded.
+	released, err := quiz.ReleaseDueResults(ctx, sqlDB)
+	if err != nil {
+		return err
+	}
+	if opened > 0 || closed > 0 || auto > 0 || forced > 0 || graded > 0 || released > 0 {
 		log.Info("due transitions applied",
 			"trigger", trigger, "subject", subject,
 			"quizzes_opened", opened, "quizzes_closed", closed,
 			"attempts_auto_submitted", auto, "attempts_force_submitted", forced,
-			"attempts_graded", graded)
+			"attempts_graded", graded, "results_released", released)
 	}
 	return nil
 }

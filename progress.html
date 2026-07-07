@@ -73,6 +73,24 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 4 - Results release: the policy, the teacher's table, and the student's review</h2>
+      <span class="tag">milestone 4</span>
+    </div>
+    <div class="meta">2026-07-07 &middot; after 2ea3b69</div>
+    <ul>
+      <li><strong>The docs/01 open question is resolved to its documented default</strong>: a per-quiz <code>release_policy</code> chosen at publish - <code>auto</code> (the default) releases results in the worker pass that grades the closed quiz, <code>manual</code> waits for the teacher. Migration <code>00004</code> adds the policy column and <code>results_released_at</code>, the single fact every student-facing results read gates on: null means scores and the answer key stay server-internal (docs/08 section 3).</li>
+      <li><strong>Auto-release joins the shared sweep pass</strong> (<code>quiz.ReleaseDueResults</code>, run after <code>GradeSubmitted</code>): a closed auto-policy quiz releases only once no attempt is left <code>in_progress</code> or <code>submitted</code>, so results never appear with half the class ungraded - one worker pass closes the quiz, force-submits, grades, and releases, and the predicate makes any late or repeated caller a harmless repair, like every other sweep.</li>
+      <li><strong>The teacher decides with numbers in hand</strong>: <code>GET /quizzes/:id/results</code> (owner) lists one row per assigned student per attempt - students who never started keep their attempt fields null, so absence shows instead of hiding - with scores visible as grading lands, before any release, and <code>max_score</code> summed from the snapshot version each attempt pinned. <code>POST /quizzes/:id/release-results</code> stamps the release: refused with the new <code>409 QUIZ_NOT_CLOSED</code> until the window ends (judged on the database clock with the same lazy derivation readers use, so clicking the moment <code>ends_at</code> passes never races the scheduler), idempotent on repeat, audited as <code>quizzes.results_released</code> exactly once.</li>
+      <li><strong>The student's released review</strong>: <code>GET /attempts/:id/result</code> answers the new <code>409 RESULTS_NOT_RELEASED</code> until the quiz is released <em>and</em> the attempt is graded, then returns the score, the max, and every snapshot question - in the same per-attempt order the player showed - with the student's response, <code>is_correct</code>, <code>points_awarded</code>, and (only here, the documented exception to answer-key isolation) the correct answer. The <code>Attempt</code> wire shape stays score-free; the released score rides at the top level, so no payload embedding an attempt gains a score by accident.</li>
+      <li><strong>The assigned list learned its history</strong>: <code>GET /quizzes/assigned</code> now carries <code>results_released_at</code> plus the caller's own attempt summaries (id, number, status, score) - the score is release-gated in SQL itself (<code>CASE WHEN results_released_at IS NOT NULL</code>), so the wire value cannot leak early, the same structural stance as the answer key. This is the data the web player's home screen will render.</li>
+      <li><strong>Contract at v0.8.0</strong>: three new operations (<code>listQuizResults</code>, <code>releaseResults</code>, <code>getAttemptResult</code>), the <code>ResultRow</code>/<code>AttemptResult</code>/<code>ResultQuestion</code>/<code>AttemptSummary</code> schemas, the release fields on <code>Quiz</code>/<code>PublishQuizRequest</code>/<code>AssignedQuiz</code>, and the two new error responses - regenerated into the typed web client (build and lint green).</li>
+      <li><strong>Proven by a new 11-subtest integration suite</strong> (<code>releaseflow_test.go</code>, own database): the stored policy, the withheld score in the assigned list, both 409s, the teacher table's 3/1-of-3 scores before release, the sweep refusing to auto-release a manual quiz, the student 403 on release, release idempotence with exactly one audit row, the released review with key and per-question grading, the cross-student 404, and an auto quiz whose disappearing student was force-submitted, graded, and released by one worker pass.</li>
+    </ul>
+    <div class="exit">Results now flow end to end on the server: grading writes the score, the policy decides the moment, the teacher reads the table and releases (or the worker does), and the student's review opens with the key - every step behind the docs/08 gate. The remaining Milestone 4 item is the web attempt player and results UI.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 4 - The grading job: deterministic scores from the snapshot key</h2>
       <span class="tag">milestone 4</span>
     </div>

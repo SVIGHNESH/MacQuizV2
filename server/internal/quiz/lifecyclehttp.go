@@ -18,10 +18,11 @@ const (
 )
 
 type publishRequest struct {
-	StartsAt    *time.Time  `json:"starts_at"`
-	EndsAt      *time.Time  `json:"ends_at"`
-	DurationSec *int        `json:"duration_sec"`
-	Guardrails  *Guardrails `json:"guardrails"`
+	StartsAt      *time.Time  `json:"starts_at"`
+	EndsAt        *time.Time  `json:"ends_at"`
+	DurationSec   *int        `json:"duration_sec"`
+	Guardrails    *Guardrails `json:"guardrails"`
+	ReleasePolicy *string     `json:"release_policy"`
 }
 
 func (h *Handler) handlePublishQuiz(w http.ResponseWriter, r *http.Request) {
@@ -66,16 +67,24 @@ func (h *Handler) handlePublishQuiz(w http.ResponseWriter, r *http.Request) {
 			fields[field] = msg
 		}
 	}
+	releasePolicy := "auto"
+	if req.ReleasePolicy != nil {
+		releasePolicy = *req.ReleasePolicy
+		if releasePolicy != "auto" && releasePolicy != "manual" {
+			fields["release_policy"] = "must be auto or manual"
+		}
+	}
 	if len(fields) > 0 {
 		httpapi.WriteFieldErrors(w, fields)
 		return
 	}
 
 	q, err := h.svc.Publish(r.Context(), actor, id, PublishInput{
-		StartsAt:    req.StartsAt.UTC(),
-		EndsAt:      req.EndsAt.UTC(),
-		DurationSec: *req.DurationSec,
-		Guardrails:  guardrails,
+		StartsAt:      req.StartsAt.UTC(),
+		EndsAt:        req.EndsAt.UTC(),
+		DurationSec:   *req.DurationSec,
+		Guardrails:    guardrails,
+		ReleasePolicy: releasePolicy,
 	})
 	if h.writeLifecycleError(w, "publish quiz", err, "no such quiz") {
 		return

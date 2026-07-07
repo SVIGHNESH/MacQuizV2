@@ -54,6 +54,8 @@ Unassigned resources return 404, not 403, so existence is never leaked.
 | `PUT /quizzes/:id/assignments` | Set the audience (student ids and/or group ids, expanded to rows) |
 | `POST /quizzes/:id/extend` | Live only: extend ends_at (audited, broadcast) |
 | `POST /quizzes/:id/close` | Live only: force-close early (audited, broadcast) |
+| `GET /quizzes/:id/results` | Per-student attempt/score table; owner sees scores as grading lands, before release |
+| `POST /quizzes/:id/release-results` | Closed only: release scores to students (audited, idempotent); publish's `release_policy: auto` does this automatically |
 
 Publish preconditions: at least one question, `starts_at < ends_at` and in the future, a duration, at least one assigned student.
 
@@ -66,6 +68,7 @@ Publish preconditions: at least one question, `starts_at < ends_at` and in the f
 | `GET /attempts/:id` | Resume: saved answers, current server time, deadline |
 | `PUT /attempts/:id/answers/:qid` | Autosave one answer; idempotent upsert on (attempt_id, question_id); rejected when `now() > deadline_at + 5 s` or status is not in_progress |
 | `POST /attempts/:id/submit` | Manual submit (client confirms "n unanswered" first) |
+| `GET /attempts/:id/result` | Released review: score, answer key, per-question grading; 409 until the quiz's results are released |
 | `POST /attempts/:id/events` | Report a guardrail violation (REST fallback for the attempt socket) |
 
 ### Moderation (teacher/admin, v2)
@@ -93,6 +96,8 @@ Publish preconditions: at least one question, `starts_at < ends_at` and in the f
 | `ATTEMPT_DEADLINE_PASSED` | 409 | Autosave/submit after deadline + grace |
 | `ATTEMPT_LIMIT_REACHED` | 409 | max_attempts exhausted |
 | `QUIZ_NOT_LIVE` | 409 | Start outside the window |
+| `QUIZ_NOT_CLOSED` | 409 | Results release before the window has ended |
+| `RESULTS_NOT_RELEASED` | 409 | Results read before the quiz's release moment |
 | `NOT_FOUND` | 404 | Also returned for resources the caller is not assigned to |
 | `VALIDATION_FAILED` | 422 | Body-level validation with field errors |
 | `RATE_LIMITED` | 429 | Includes Retry-After |

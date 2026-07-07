@@ -28,6 +28,10 @@ var (
 	// ErrBadOrder marks a reorder list that is not a permutation of the
 	// quiz's question ids.
 	ErrBadOrder = errors.New("order must list every question id exactly once")
+	// ErrQuizNotClosed marks a results release before the quiz's window has
+	// ended; results only exist once every attempt is terminated (docs/08
+	// section 3: "only after the quiz closes").
+	ErrQuizNotClosed = errors.New("quiz is not closed yet")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay
@@ -46,6 +50,12 @@ type Quiz struct {
 	Version          int        `json:"version"`
 	CreatedAt        time.Time  `json:"created_at"`
 	QuestionCount    int        `json:"question_count"`
+	// ReleasePolicy decides when scores become visible to students: auto
+	// releases in the worker pass that grades the closed quiz, manual waits
+	// for POST /quizzes/:id/release-results. ResultsReleasedAt is the fact
+	// every results read gates on; null means withheld.
+	ReleasePolicy     string     `json:"release_policy"`
+	ResultsReleasedAt *time.Time `json:"results_released_at"`
 }
 
 // Question is the internal question shape. Correct is tagged `json:"-"` so
@@ -96,13 +106,14 @@ func NewService(db *sql.DB, log *slog.Logger) *Service {
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,
-	max_attempts, shuffle_questions, published_at, version, created_at`
+	max_attempts, shuffle_questions, published_at, version, created_at,
+	release_policy, results_released_at`
 
 func scanQuiz(scan func(dest ...any) error) (Quiz, error) {
 	var q Quiz
 	err := scan(&q.ID, &q.OwnerID, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 		&q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions, &q.PublishedAt,
-		&q.Version, &q.CreatedAt)
+		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt)
 	return q, err
 }
 
@@ -150,7 +161,8 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 		var q Quiz
 		if err := rows.Scan(&q.ID, &q.OwnerID, &q.Title, &q.Status, &q.StartsAt,
 			&q.EndsAt, &q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions,
-			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.QuestionCount); err != nil {
+			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.ReleasePolicy,
+			&q.ResultsReleasedAt, &q.QuestionCount); err != nil {
 			return nil, fmt.Errorf("scan quiz: %w", err)
 		}
 		q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now)

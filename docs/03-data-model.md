@@ -59,7 +59,11 @@ quizzes (
                                       -- {fullscreen, focus_tracking, block_clipboard,
                                       --  max_violations, violation_action}
   published_at      timestamptz,
-  version           int               -- bumped on republish
+  version           int,              -- bumped on republish
+  release_policy    enum('auto','manual') DEFAULT 'auto',
+                                      -- results release: auto releases at
+                                      -- close, manual waits for the teacher
+  results_released_at timestamptz     -- null = scores and answer key withheld
 )
 ```
 

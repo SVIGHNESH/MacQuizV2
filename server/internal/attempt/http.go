@@ -35,6 +35,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Get("/{id}", h.handleGet)
 	r.Put("/{id}/answers/{questionID}", h.handleSaveAnswer)
 	r.Post("/{id}/submit", h.handleSubmit)
+	r.Get("/{id}/result", h.handleResult)
 	return r
 }
 
@@ -144,6 +145,27 @@ func (h *Handler) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
+}
+
+// handleResult serves GET /attempts/{id}/result: the released review with
+// the score, the answer key, and the per-question grading.
+func (h *Handler) handleResult(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	result, err := h.svc.Result(r.Context(), actor, id)
+	if err != nil {
+		if errors.Is(err, ErrResultsNotReleased) {
+			httpapi.WriteError(w, http.StatusConflict, httpapi.CodeResultsNotReleased,
+				"results for this quiz have not been released yet")
+			return
+		}
+		h.writeAttemptError(w, "read result", err, "no such attempt")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, result)
 }
 
 // writeAttemptError maps service errors onto the docs/04 wire vocabulary; it

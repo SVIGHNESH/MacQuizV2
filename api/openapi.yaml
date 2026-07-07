@@ -6,12 +6,14 @@
 # (quiz authoring: draft quiz CRUD, question CRUD, reorder), Milestone 3
 # (publish with snapshot + versioning, assignments, the teacher-readable
 # audience directory, student quiz list), and Milestone 4 (the attempt
-# player: start, resume, autosave, manual submit).
+# player: start, resume, autosave, manual submit, and results release:
+# publish-time release policy, the teacher results table and explicit
+# release, and the student's released review).
 openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.7.0
+  version: 0.8.0
 servers:
   - url: /
 paths:
@@ -647,6 +649,68 @@ paths:
           $ref: "#/components/responses/NotEditable"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/results:
+    get:
+      operationId: listQuizResults
+      summary: Per-student results table (owner)
+      description: >-
+        One row per assigned student per attempt; students who never started
+        keep the attempt fields null. The owner sees scores as grading lands,
+        before any release - releasing is their decision, so they need the
+        numbers first. max_score comes from the snapshot version each
+        attempt pinned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz and its results table.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResultsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/quizzes/{id}/release-results:
+    post:
+      operationId: releaseResults
+      summary: Release results to students (owner)
+      description: >-
+        Stamps results_released_at, the fact every student results read
+        gates on. Requires the quiz's window to have ended (409
+        QUIZ_NOT_CLOSED otherwise); releasing an already-released quiz is an
+        idempotent no-op. Quizzes published with release_policy auto are
+        released by the worker at close without this call.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz with results_released_at set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/QuizNotClosed"
   /api/v1/quizzes/assigned:
     get:
       operationId: listAssignedQuizzes
@@ -816,6 +880,39 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/AttemptConflict"
+  /api/v1/attempts/{id}/result:
+    get:
+      operationId: getAttemptResult
+      summary: The released review for an attempt (owner)
+      description: >-
+        The score, the per-question grading, and - only here, per the
+        documented exception to answer-key isolation - the correct answers.
+        Refused with 409 RESULTS_NOT_RELEASED until the quiz's results are
+        released and this attempt is graded. Owner-only; anyone else reads
+        404. Questions come back in the same per-attempt order the player
+        showed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The released result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ResultsNotReleased"
   /api/v1/questions/{id}:
     parameters:
       - name: id
@@ -911,6 +1008,23 @@ components:
         (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after
         deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a
         terminal attempt), or ATTEMPT_KICKED (show the lockout screen).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    QuizNotClosed:
+      description: >-
+        QUIZ_NOT_CLOSED - results can be released once the quiz's window has
+        ended.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ResultsNotReleased:
+      description: >-
+        RESULTS_NOT_RELEASED - the quiz's results are not released yet (or
+        this attempt's grading has not landed); the client shows a "results
+        pending" state.
       content:
         application/json:
           schema:
@@ -1067,6 +1181,8 @@ components:
           version,
           created_at,
           question_count,
+          release_policy,
+          results_released_at,
         ]
       properties:
         id:
@@ -1106,6 +1222,18 @@ components:
           format: date-time
         question_count:
           type: integer
+        release_policy:
+          type: string
+          enum: [auto, manual]
+          description: >-
+            When scores become visible to students - auto releases in the
+            worker pass that grades the closed quiz, manual waits for
+            POST /quizzes/{id}/release-results.
+        results_released_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null means scores and the answer key are withheld.
     QuestionBody:
       type: object
       required: [text]
@@ -1298,6 +1426,13 @@ components:
             min(duration, time-to-close).
         guardrails:
           $ref: "#/components/schemas/Guardrails"
+        release_policy:
+          type: string
+          enum: [auto, manual]
+          description: >-
+            When scores become visible to students - auto (the default when
+            omitted) releases at close once grading lands, manual waits for
+            the teacher's explicit release.
     SetAssignmentsRequest:
       type: object
       properties:
@@ -1473,11 +1608,12 @@ components:
     AssignedQuiz:
       type: object
       description: >-
-        The student-facing quiz shape - window, budget, and size. Never the
-        owner, the guardrail internals, or (structurally) a question.
+        The student-facing quiz shape - window, budget, size, and the
+        caller's own attempt history. Never the owner, the guardrail
+        internals, or (structurally) a question.
       required:
         [id, title, status, starts_at, ends_at, duration_sec, max_attempts,
-         version, question_count]
+         version, question_count, results_released_at, attempts]
       properties:
         id:
           type: string
@@ -1502,3 +1638,157 @@ components:
           type: integer
         question_count:
           type: integer
+        results_released_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null means scores are withheld.
+        attempts:
+          type: array
+          description: The caller's own attempts, oldest first.
+          items:
+            $ref: "#/components/schemas/AttemptSummary"
+    AttemptSummary:
+      type: object
+      description: >-
+        One of the caller's own attempts as the assigned list shows it.
+        score stays null until the quiz's results are released.
+      required: [id, attempt_no, status, started_at, submitted_at, score]
+      properties:
+        id:
+          type: string
+          format: uuid
+        attempt_no:
+          type: integer
+        status:
+          type: string
+          enum: [in_progress, submitted, graded, kicked]
+        started_at:
+          type: string
+          format: date-time
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        score:
+          type: number
+          nullable: true
+    ResultRow:
+      type: object
+      description: >-
+        One line of the teacher's results table - an assigned student and
+        one of their attempts. Students who never started keep the attempt
+        fields null.
+      required:
+        [student_id, full_name, email, attempt_id, attempt_no, status,
+         submit_kind, started_at, submitted_at, score, max_score]
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        attempt_id:
+          type: string
+          format: uuid
+          nullable: true
+        attempt_no:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, submitted, graded, kicked]
+          nullable: true
+        submit_kind:
+          type: string
+          enum: [manual, auto, forced, kicked]
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        score:
+          type: number
+          nullable: true
+        max_score:
+          type: number
+          nullable: true
+          description: Total points of the snapshot version this attempt pinned.
+    QuizResultsResponse:
+      type: object
+      required: [quiz, results]
+      properties:
+        quiz:
+          $ref: "#/components/schemas/Quiz"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResultRow"
+    ResultQuestion:
+      type: object
+      description: >-
+        One snapshot question in the released review - what was asked, what
+        the student answered, the key, and what it earned. Unanswered
+        questions keep response and is_correct null.
+      required:
+        [id, position, type, body, correct, points, response, is_correct,
+         points_awarded]
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        type:
+          type: string
+          enum: [single, multi, truefalse, short]
+        body:
+          $ref: "#/components/schemas/QuestionBody"
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionOption"
+        correct:
+          description: >-
+            The answer key - exposed here only, after close and release
+            (the documented exception to answer-key isolation).
+        points:
+          type: number
+        response:
+          nullable: true
+          description: The autosaved response; shape depends on question type.
+        is_correct:
+          type: boolean
+          nullable: true
+        points_awarded:
+          type: number
+    AttemptResult:
+      type: object
+      description: >-
+        The released results payload for one attempt. The attempt keeps its
+        usual score-free shape; the released score rides at the top level.
+      required:
+        [attempt, quiz_title, score, max_score, released_at, questions]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/Attempt"
+        quiz_title:
+          type: string
+        score:
+          type: number
+        max_score:
+          type: number
+        released_at:
+          type: string
+          format: date-time
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResultQuestion"
