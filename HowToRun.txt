@@ -1,0 +1,50 @@
+
+1. Start the backend stack (Docker Compose)
+
+cd ~/Projects/MacQuizV2
+make up          # = docker compose up --build -d
+
+This brings up five services in order: Postgres 16 (host port 5433), Redis 7 (host port 6380), a one-shot migrate service, a one-shot bootstrap service that idempotently creates the first admin, then the app (API on http://localhost:8080) and the worker (the River scheduler/grader). The non-default database ports are deliberate so it coexists with any host-local Postgres/Redis.
+
+Sanity checks:
+
+curl http://localhost:8080/healthz    # liveness
+curl http://localhost:8080/readyz     # 200 once Postgres is up
+docker compose logs -f app worker     # watch the API and scheduler
+
+2. Start the web frontend (dev server)
+
+cd web && npm install    # first time only
+make web-dev             # = npm run dev, from the repo root
+
+Vite serves the SPA (it prints the URL, normally http://localhost:5173) and proxies /api and /healthz to the Go API on :8080, so cookies work same-origin with no CORS setup.
+
+3. Sign in
+
+The bootstrap admin credentials come from docker-compose.yml:
+
+- Email: admin@macquiz.local
+- Password: admin-dev-password
+
+Note the admin sees only a placeholder screen in the UI. To exercise the real workspace, provision a teacher via the API and sign in as them (the UI will force a password reset on first login):
+
+# login as admin, keep the cookies
+curl -s -c /tmp/mq.jar -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@macquiz.local","password":"admin-dev-password"}'
+
+# provision a teacher; the one-time password is in the response, shown exactly once
+curl -s -b /tmp/mq.jar -X POST http://localhost:8080/api/v1/users \
+  -H 'Content-Type: application/json' \
+  -d '{"role":"teacher","email":"teacher@macquiz.local","full_name":"Test Teacher"}'
+
+Then sign in as the teacher in the browser to reach the authoring/publish workspace.
+
+Other useful targets
+
+make down       # stop the stack
+make test       # Go unit + integration tests (need the Compose DB running)
+make build      # build the single macquiz binary to server/bin/
+node web/e2e/auth.e2e.mjs        # browser E2E suites (need stack + Chromium)
+
+You can also run the API outside Docker with make run-server / make run-worker, but you'd have to point MACQUIZ_DATABASE_URL at localhost:5433 yourself; the Compose route is the intended dev loop.

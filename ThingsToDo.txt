@@ -1,0 +1,20 @@
+1. Results release policy + results views - grading writes the score, but nothing exposes it. No teacher "release results" endpoint, no student results view, and the design doc's open question (auto-release at close vs explicit teacher toggle) is still undecided. attempt/service.go explicitly withholds the score pending this.
+2. The web attempt player - the student UI does not exist at all. Students currently land on a placeholder HomeScreen; there is no assigned-quiz list screen and no player (questions, countdown, autosave, submit). The entire student-facing frontend is backend-only right now.
+3. (Minor, from the plan) the Redis snapshot cache for attempt start - Redis is in Compose and config but nothing consumes it yet
+
+
+- Milestone 5 - Realtime (FR-7): server/internal/realtime/ is a doc-comment stub. No WebSocket gateway, no channel auth, no attempt_events writes (the table exists but is never written), no Redis pub/sub, no GET /quizzes/:id/live roster snapshot, no heartbeat/disconnect tracking, and no teacher live dashboard UI.
+- Milestone 6 - Guardrails and kick (FR-10, FR-11): guardrail config is validated and snapshotted at publish, but nothing enforces it. No violation reporting endpoint, violation_count is never incremented, no ladder actions (flag/auto_submit/notify), no POST /attempts/:id/kick or /readmit, and no client-side fullscreen/focus/clipboard guardrails since the player itself doesn't exist.
+- Milestone 7 - Bulk import (FR-3): the imports table exists in the schema but no code touches it. No upload endpoints, no import worker job, no object storage integration, no review UI.
+- Milestone 8 - Analytics (FR-8, FR-9): server/internal/analytics/ is a stub. quiz_stats/student_stats are never written (no rollup-on-close job), no /analytics/* endpoints, no dashboards.
+- Milestone 9 - Production hardening: deployment per docs/09, backups, monitoring, and the 1,000-student load test.
+
+Smaller design-doc items with no home yet
+
+- Admin console UI - user/group management exists only as API; the admin sees a placeholder screen.
+- Audit log read side - writes happen everywhere, but the admin-facing GET /audit endpoint is missing.
+- Live-quiz teacher controls - extend ends_at, force-close early, and archive (the fifth lifecycle state) have no endpoints; only the automatic scheduler close exists.
+- Notifications on assignment changes (in-app/email) - nothing exists.
+- Single active session per attempt - listed as "always on" in the design; not implemented (depends on the realtime layer).
+
+In short: the server-authoritative core (identity, authoring, scheduling, attempts, grading) is done and solid,but the platform is not yet usable by a student or admin through the browser. The natural next steps in plan order are finishing Milestone 4 (results release + the web attempt player, which is also the exit criterion's user-visible half), then realtime, guardrails/kick, import, and analytics.
