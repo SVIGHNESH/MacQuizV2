@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,11 +32,23 @@ func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 // /quizzes/{id}/attempts and is attached to the quiz mount via HandleStart.
 func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireStudent)
-	r.Get("/{id}", h.handleGet)
-	r.Put("/{id}/answers/{questionID}", h.handleSaveAnswer)
-	r.Post("/{id}/submit", h.handleSubmit)
-	r.Get("/{id}/result", h.handleResult)
+	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged)
+	// The player surface is students only; per-attempt ownership stays in the
+	// service, where denials answer 404.
+	r.Group(func(r chi.Router) {
+		r.Use(requireStudent)
+		r.Get("/{id}", h.handleGet)
+		r.Put("/{id}/answers/{questionID}", h.handleSaveAnswer)
+		r.Post("/{id}/submit", h.handleSubmit)
+		r.Get("/{id}/result", h.handleResult)
+	})
+	// Kick is a live-moderation power for teachers and admins (docs/06 section
+	// 4); the owner-vs-admin resource decision stays in the service, where a
+	// non-owning teacher answers 404.
+	r.Group(func(r chi.Router) {
+		r.Use(requireStaff)
+		r.Post("/{id}/kick", h.handleKick)
+	})
 	return r
 }
 
@@ -46,6 +59,23 @@ func requireStudent(next http.Handler) http.Handler {
 		if u, ok := authusers.ActorFrom(r.Context()); !ok || u.Role != "student" {
 			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
 				"the attempt player is for students")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireStaff gates the kick surface on the role-shaped fact that only
+// teachers and admins may moderate a live attempt (docs/06 section 4). The
+// owner-vs-admin resource decision stays in the service, where a non-owning
+// teacher answers 404. It mirrors quiz.requireStaff (the two surfaces live in
+// different packages, so the small gate is duplicated rather than shared).
+func requireStaff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := authusers.ActorFrom(r.Context()); !ok ||
+			(u.Role != "teacher" && u.Role != "admin") {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"live moderation is for teachers and admins")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -142,6 +172,39 @@ func (h *Handler) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	attempt, err := h.svc.SubmitManual(r.Context(), actor, id)
 	if h.writeAttemptError(w, "submit attempt", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
+}
+
+// maxReasonBytes bounds the kick reason. A real justification is a canned
+// phrase plus optional free text; anything near this size is not a reason.
+const maxReasonBytes = 2 * 1024
+
+type kickRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleKick serves POST /attempts/{id}/kick: the teacher/admin removes a
+// student from a live attempt (docs/06 section 4). The reason is required.
+func (h *Handler) handleKick(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	var req kickRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReasonBytes)).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		httpapi.WriteFieldErrors(w, map[string]string{"reason": "required"})
+		return
+	}
+	attempt, err := h.svc.Kick(r.Context(), actor, id, req.Reason)
+	if h.writeAttemptError(w, "kick attempt", err, "no such attempt") {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})

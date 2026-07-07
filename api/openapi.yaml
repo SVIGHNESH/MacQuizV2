@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.9.0
+  version: 0.10.0
 servers:
   - url: /
 paths:
@@ -914,6 +914,54 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/AttemptConflict"
+  /api/v1/attempts/{id}/kick:
+    post:
+      operationId: kickAttempt
+      summary: Remove a student from a live attempt (owner or admin)
+      description: >-
+        Server-authoritative removal of a candidate from a live attempt. One
+        transaction flips the attempt to the terminal `kicked` state, records
+        who kicked it and why, and enqueues grading of whatever was autosaved
+        (kicked work is graded, not discarded). Enforcement is the status flip,
+        not the socket: the kicked student's every later autosave and submit
+        answers 409 ATTEMPT_KICKED. Idempotent - a repeat kick, or one that
+        lost the race to a submit, answers 200 with the unchanged terminal
+        state. Policy: the quiz owner or any admin; a non-owning teacher reads
+        404, so an attempt's existence never leaks. The reason is required.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  description: Why the student was removed (canned phrase plus optional free text).
+      responses:
+        "200":
+          description: The attempt in its terminal (kicked, or race-won) state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/attempts/{id}/result:
     get:
       operationId: getAttemptResult

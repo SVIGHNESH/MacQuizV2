@@ -14,6 +14,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 
+	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
 
@@ -430,6 +431,115 @@ func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, *
 		return Attempt{}, nil, err
 	}
 	return a, &payload, nil
+}
+
+// Kick terminates a live attempt on a teacher's or admin's order (docs/06
+// section 4). Authorization is ActionAttemptModerate - the owning teacher or
+// any admin - decided against the attempt's quiz owner, so a non-owning teacher
+// (and an unknown attempt) reads 404 and existence never leaks. One transaction
+// flips the attempt to 'kicked', records who kicked it and why, appends the
+// attempt.kicked event, writes the audit row, and enqueues grading of whatever
+// was autosaved ("kicked work is graded, not discarded"). Enforcement is that
+// status flip, not the socket: the same status = 'in_progress' gate that gates
+// every autosave and submit now rejects the kicked student (writableForUpdate,
+// submit). A repeat kick, or a kick that lost the race to an auto-submit,
+// resolves cleanly to whichever committed first and emits nothing.
+func (s *Service) Kick(ctx context.Context, actor authusers.User, attemptID, reason string) (Attempt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("begin kick tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	a, err := s.moderatableForUpdate(ctx, tx, actor, attemptID)
+	if err != nil {
+		return Attempt{}, err
+	}
+
+	freshlyKicked := a.Status == "in_progress"
+	a, kicked, err := kick(ctx, tx, a, actor.ID, reason)
+	if err != nil {
+		return Attempt{}, err
+	}
+	// A real flip enqueues grading and records the audit trail; a no-op re-kick
+	// (or a kick the auto-submit beat) touches neither, so the audit_log carries
+	// exactly one row per attempt actually removed.
+	if freshlyKicked {
+		if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+			return Attempt{}, err
+		}
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.kicked", "attempt", a.ID,
+			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+			return Attempt{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Attempt{}, fmt.Errorf("commit kick: %w", err)
+	}
+	// Publish second: only a real in_progress -> kicked flip returns a payload,
+	// so the kicked delta relays exactly once per attempt, mirroring the single
+	// appendEvent it committed.
+	if kicked != nil {
+		s.events.Publish(ctx, a.QuizID, a.ID, eventKicked, *kicked)
+	}
+	return a, nil
+}
+
+// kick is the idempotent kick transition (docs/06 section 4). It shares the
+// terminal-state discipline of submit - a kick that races an auto-submit, a
+// manual submit, or a second kick resolves to whichever committed first and
+// writes nothing - but it is its own transition, not a submit: 'kicked' is a
+// distinct terminal status the roster shows separately, and the delta is
+// attempt.kicked, not attempt.submitted. It returns the kicked payload it
+// appended when it actually flipped the row, and nil for the terminal no-ops,
+// so the caller relays the event to Redis after commit exactly when a row
+// changed.
+func kick(ctx context.Context, tx *sql.Tx, a Attempt, kickedBy, reason string) (Attempt, *kickedPayload, error) {
+	switch a.Status {
+	case "kicked", "submitted", "graded":
+		// Already terminal: a repeat kick is idempotent, and a kick that lost
+		// the race to a submit leaves that submit standing (docs/06 section 4).
+		return a, nil, nil
+	}
+	a, err := scanAttempt(tx.QueryRowContext(ctx,
+		`UPDATE attempts
+		 SET status = 'kicked', submit_kind = 'kicked', submitted_at = now(),
+		     kicked_by = $1, kick_reason = $2
+		 WHERE id = $3 AND status = 'in_progress'
+		 RETURNING `+attemptColumns, kickedBy, reason, a.ID).Scan)
+	if err != nil {
+		return Attempt{}, nil, fmt.Errorf("mark kicked: %w", err)
+	}
+	payload := kickedPayload{KickedBy: kickedBy, Reason: reason}
+	if err := appendEvent(ctx, tx, a.ID, eventKicked, payload); err != nil {
+		return Attempt{}, nil, err
+	}
+	return a, &payload, nil
+}
+
+// moderatableForUpdate locks the attempt row and authorizes the caller to
+// moderate it (kick) against the attempt's quiz owner: the owning teacher or
+// any admin (ActionAttemptModerate). A missing attempt, and one the caller may
+// not moderate, both read ErrNotFound so a non-owning teacher cannot even learn
+// the attempt exists.
+func (s *Service) moderatableForUpdate(ctx context.Context, tx *sql.Tx, actor authusers.User, id string) (Attempt, error) {
+	a, err := scanAttempt(tx.QueryRowContext(ctx,
+		`SELECT `+attemptColumns+` FROM attempts WHERE id = $1 FOR UPDATE`, id).Scan)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Attempt{}, ErrNotFound
+	}
+	if err != nil {
+		return Attempt{}, fmt.Errorf("load attempt: %w", err)
+	}
+	var ownerID string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT owner_id FROM quizzes WHERE id = $1`, a.QuizID).Scan(&ownerID); err != nil {
+		return Attempt{}, fmt.Errorf("load quiz owner: %w", err)
+	}
+	if !authusers.Can(actor, authusers.ActionAttemptModerate, authusers.Resource{OwnerID: ownerID}) {
+		return Attempt{}, ErrNotFound
+	}
+	return a, nil
 }
 
 // ownedForUpdate locks the attempt row and verifies the caller owns it;

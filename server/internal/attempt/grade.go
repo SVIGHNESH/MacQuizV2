@@ -43,14 +43,19 @@ func (s *Service) enqueueGradeJob(ctx context.Context, tx *sql.Tx, attemptID str
 	return nil
 }
 
-// GradeSubmitted grades every attempt sitting in status = 'submitted', each
-// in its own transaction, and returns how many were graded. Like the due
-// sweeps, it re-derives what needs work from the rows themselves, so any
-// caller - the grade job, the close pass, the boot re-scan, the periodic
-// backstop - can run it at any time.
+// GradeSubmitted grades every terminated-but-ungraded attempt, each in its own
+// transaction, and returns how many were graded. That is every attempt in
+// status = 'submitted' or 'kicked' - "kicked work is graded, not discarded"
+// (docs/06 section 4), and a kick whose grading job never ran (a lost enqueue,
+// a crash) is repaired here; both advance to 'graded'. Like the due sweeps, it
+// re-derives what needs work from the rows themselves, so any caller - the
+// grade job, the close pass, the boot re-scan, the periodic backstop - can run
+// it at any time.
 func GradeSubmitted(ctx context.Context, db *sql.DB, publishers ...EventPublisher) (int64, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id FROM attempts WHERE status = 'submitted' ORDER BY submitted_at, id`)
+		`SELECT id FROM attempts
+		 WHERE status IN ('submitted', 'kicked')
+		 ORDER BY submitted_at, id`)
 	if err != nil {
 		return 0, fmt.Errorf("list submitted attempts: %w", err)
 	}
@@ -81,9 +86,14 @@ func GradeSubmitted(ctx context.Context, db *sql.DB, publishers ...EventPublishe
 	return graded, nil
 }
 
-// gradeOne scores a single attempt. It reports false without error when the
-// attempt is no longer in status = 'submitted' - a concurrent grader got
-// there first, which is exactly the idempotence the funnel promises.
+// gradeOne scores a single attempt. It grades the two ungraded terminal
+// states - a normal 'submitted' attempt, and a 'kicked' attempt whose work is
+// graded too (docs/06 section 4) - advancing both to 'graded', and reports
+// false without error when there is nothing to grade (a concurrent grader got
+// there first, or the attempt is not terminated), which is exactly the
+// idempotence the funnel promises. The kick is preserved after grading by
+// submit_kind = 'kicked', which is what the roster and results flag on, so
+// 'graded' can stay the single "grading landed" signal every read path gates on.
 func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublisher) (bool, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -95,7 +105,7 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublis
 	var version int
 	err = tx.QueryRowContext(ctx,
 		`SELECT quiz_id, quiz_version FROM attempts
-		 WHERE id = $1 AND status = 'submitted' FOR UPDATE`, attemptID).Scan(&quizID, &version)
+		 WHERE id = $1 AND status IN ('submitted', 'kicked') FOR UPDATE`, attemptID).Scan(&quizID, &version)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -156,7 +166,7 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublis
 
 	res, err := tx.ExecContext(ctx,
 		`UPDATE attempts SET score = $1, status = 'graded'
-		 WHERE id = $2 AND status = 'submitted'`, score, attemptID)
+		 WHERE id = $2 AND status IN ('submitted', 'kicked')`, score, attemptID)
 	if err != nil {
 		return false, fmt.Errorf("mark graded: %w", err)
 	}

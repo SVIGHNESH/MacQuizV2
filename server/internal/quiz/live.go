@@ -113,7 +113,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 			&r.QuestionCount, &r.MaxScore); err != nil {
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("scan live row: %w", err)
 		}
-		r.State = rosterState(r.Status)
+		r.State = rosterState(r.Status, r.SubmitKind)
 		roster = append(roster, r)
 	}
 	return q, roster, now, rows.Err()
@@ -140,10 +140,16 @@ func (s *Service) OwnerOf(ctx context.Context, quizID string) (ownerID string, f
 // rosterState collapses the attempt status enum to the dashboard roster
 // vocabulary (docs/05 section 6). A null status is a student who never
 // started; graded folds into submitted because the dashboard cell is the
-// same ("submitted", score shown per policy) once work stops.
-func rosterState(status *string) string {
+// same ("submitted", score shown per policy) once work stops. A kick is
+// permanent: it is read off submit_kind, not status, because a kicked
+// attempt's work is still graded (its status advances to 'graded'), so only
+// submit_kind = 'kicked' survives to mark the removal forever.
+func rosterState(status, submitKind *string) string {
 	if status == nil {
 		return "not_started"
+	}
+	if submitKind != nil && *submitKind == "kicked" {
+		return "kicked"
 	}
 	switch *status {
 	case "in_progress":

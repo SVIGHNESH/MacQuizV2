@@ -20,13 +20,14 @@ import (
 
 // The docs/05 section 2 event vocabulary. Only the events the server can
 // source from a REST/worker write are emitted here; disconnected, reconnected,
-// violation, and kicked arrive with the heartbeat, guardrail, and kick bricks
-// that do not exist yet.
+// and violation arrive with the heartbeat and guardrail bricks that do not
+// exist yet.
 const (
 	eventStarted   = "attempt.started"
 	eventProgress  = "attempt.progress"
 	eventSubmitted = "attempt.submitted"
 	eventGraded    = "attempt.graded"
+	eventKicked    = "attempt.kicked"
 )
 
 // startedPayload is the attempt.started delta: the dashboard moves the row to
@@ -59,6 +60,15 @@ type submittedPayload struct {
 // release policy owns (docs/04 section 4), not the event log's.
 type gradedPayload struct {
 	Score float64 `json:"score"`
+}
+
+// kickedPayload is the attempt.kicked delta (docs/05 section 2): the monitor
+// row moves to "kicked" and the student's own attempt socket renders the
+// lockout screen with the reason. KickedBy is the teacher or admin who ordered
+// it; Reason is the required free-text/canned justification (docs/06 section 4).
+type kickedPayload struct {
+	KickedBy string `json:"kicked_by"`
+	Reason   string `json:"reason"`
 }
 
 // execer abstracts *sql.Tx (and, for the sweep's per-row inserts, anything
