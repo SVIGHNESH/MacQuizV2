@@ -218,6 +218,15 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 		if err := s.enqueueDeadlineJob(ctx, tx, a.ID, a.DeadlineAt); err != nil {
 			return Detail{}, false, err
 		}
+		// Persist first (docs/05 section 1): the started delta commits with the
+		// attempt row, so the dashboard can move this student to "in progress"
+		// the moment the socket relays it. A resume emits nothing - the row is
+		// already on the roster from its original start.
+		if err := appendEvent(ctx, tx, a.ID, eventStarted, startedPayload{
+			StudentID: a.StudentID, AttemptID: a.ID, DeadlineAt: a.DeadlineAt,
+		}); err != nil {
+			return Detail{}, false, err
+		}
 	}
 
 	detail, err := s.buildDetail(ctx, tx, a)
@@ -290,6 +299,18 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 		attemptID, questionID, []byte(response), timeSpentMs).Scan(
 		&ans.Response, &ans.TimeSpentMs, &ans.SavedAt); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("upsert answer: %w", err)
+	}
+	// The progress delta rides the autosave transaction. It carries only the
+	// answered count read after this upsert; the cursor stays null because the
+	// server never learns the student's position over REST (see progressPayload).
+	answered, err := countAnswered(ctx, tx, attemptID)
+	if err != nil {
+		return Answer{}, time.Time{}, err
+	}
+	if err := appendEvent(ctx, tx, attemptID, eventProgress, progressPayload{
+		AnsweredCount: answered,
+	}); err != nil {
+		return Answer{}, time.Time{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("commit save: %w", err)
@@ -366,6 +387,18 @@ func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, e
 		 RETURNING `+attemptColumns, kind, a.ID).Scan)
 	if err != nil {
 		return Attempt{}, fmt.Errorf("mark submitted: %w", err)
+	}
+	// Only a real in_progress -> submitted flip reaches here (the terminal
+	// cases returned above), so the submitted delta is emitted exactly once per
+	// attempt, in the same transaction as the flip.
+	answered, err := countAnswered(ctx, tx, a.ID)
+	if err != nil {
+		return Attempt{}, err
+	}
+	if err := appendEvent(ctx, tx, a.ID, eventSubmitted, submittedPayload{
+		SubmitKind: kind, AnsweredCount: answered,
+	}); err != nil {
+		return Attempt{}, err
 	}
 	return a, nil
 }

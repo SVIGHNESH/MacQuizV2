@@ -163,6 +163,14 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("count graded: %w", err)
 	}
+	// A concurrent grader that got there first flips no row (n == 0) and emits
+	// nothing; the one grader that actually wrote the score records it, in the
+	// same transaction, so the graded delta fires exactly once (docs/05).
+	if n == 1 {
+		if err := appendEvent(ctx, tx, attemptID, eventGraded, gradedPayload{Score: score}); err != nil {
+			return false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit grade: %w", err)
 	}
