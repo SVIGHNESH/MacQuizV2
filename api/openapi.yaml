@@ -13,7 +13,7 @@ openapi: 3.0.3
 info:
   title: MacQuiz v2 API
   description: Quiz platform for admins, teachers, and students.
-  version: 0.8.0
+  version: 0.9.0
 servers:
   - url: /
 paths:
@@ -711,6 +711,40 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/QuizNotClosed"
+  /api/v1/quizzes/{id}/live:
+    get:
+      operationId: getLiveRoster
+      summary: Live roster snapshot (owner or admin)
+      description: >-
+        The roster the teacher dashboard fetches on connect before applying
+        streamed deltas. One row per assigned student, collapsed to their
+        latest attempt (max attempt_no), so a student is in exactly one roster
+        state. Authorization is the owning teacher or any admin; a non-owning
+        teacher gets 404. server_time is the database clock the row timestamps
+        were read against, so every client-side countdown shares one origin.
+        current_question is always null for now - no server column tracks it
+        (it will arrive via the attempt.progress delta over the WebSocket); the
+        "disconnected" state is likewise absent until heartbeats exist.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz and its live roster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveRosterResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/quizzes/assigned:
     get:
       operationId: listAssignedQuizzes
@@ -1731,6 +1765,88 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ResultRow"
+    LiveRosterRow:
+      type: object
+      description: >-
+        One roster cell - an assigned student and their latest attempt.
+        Students who never started read as not_started with the attempt
+        fields null. state collapses the attempt status to the dashboard
+        vocabulary; graded folds into submitted.
+      required:
+        [student_id, full_name, email, state, attempt_id, attempt_no, status,
+         submit_kind, started_at, deadline_at, answered_count,
+         current_question, question_count, violation_count, score, max_score]
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        state:
+          type: string
+          enum: [not_started, in_progress, submitted, kicked]
+        attempt_id:
+          type: string
+          format: uuid
+          nullable: true
+        attempt_no:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, submitted, graded, kicked]
+          nullable: true
+        submit_kind:
+          type: string
+          enum: [manual, auto, forced, kicked]
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        deadline_at:
+          type: string
+          format: date-time
+          nullable: true
+        answered_count:
+          type: integer
+          nullable: true
+          description: Questions with a non-null saved response.
+        current_question:
+          type: integer
+          nullable: true
+          description: Always null - no server column tracks it yet.
+        question_count:
+          type: integer
+          nullable: true
+          description: Question count of the snapshot version this attempt pinned.
+        violation_count:
+          type: integer
+          nullable: true
+        score:
+          type: number
+          nullable: true
+        max_score:
+          type: number
+          nullable: true
+          description: Total points of the snapshot version this attempt pinned.
+    LiveRosterResponse:
+      type: object
+      required: [quiz, roster, server_time]
+      properties:
+        quiz:
+          $ref: "#/components/schemas/Quiz"
+        roster:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveRosterRow"
+        server_time:
+          type: string
+          format: date-time
+          description: The database clock the row timestamps were read against.
     ResultQuestion:
       type: object
       description: >-

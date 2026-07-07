@@ -59,6 +59,13 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Post("/{id}/release-results", h.handleReleaseResults)
 	})
 	r.Group(func(r chi.Router) {
+		// Live monitoring is teacher-or-admin (docs/05 section 3); the
+		// service's ActionQuizWatchLive check answers the owner-vs-admin
+		// resource question and 404s a teacher who is not the owner.
+		r.Use(requireStaff)
+		r.Get("/{id}/live", h.handleLiveRoster)
+	})
+	r.Group(func(r chi.Router) {
 		r.Use(requireStudent)
 		r.Get("/assigned", h.handleAssignedQuizzes)
 		if h.attemptStart != nil {
@@ -87,6 +94,22 @@ func requireTeacher(next http.Handler) http.Handler {
 			!authusers.Can(u, authusers.ActionQuizCreate, authusers.Resource{}) {
 			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
 				"quiz authoring is for teachers")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireStaff gates the live-monitoring surface on the role-shaped fact that
+// only teachers and admins may watch a quiz live (docs/05 section 3). The
+// owner-vs-admin resource decision stays in the service, where a non-owning
+// teacher answers 404.
+func requireStaff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := authusers.ActorFrom(r.Context()); !ok ||
+			(u.Role != "teacher" && u.Role != "admin") {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"live monitoring is for teachers and admins")
 			return
 		}
 		next.ServeHTTP(w, r)

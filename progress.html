@@ -73,6 +73,21 @@
 
   <section class="entry">
     <div class="entry-head">
+      <h2>Milestone 5 - The live roster snapshot: the dashboard's first brick</h2>
+      <span class="tag">milestone 5</span>
+    </div>
+    <div class="meta">2026-07-08 &middot; after b520fa8</div>
+    <ul>
+      <li><strong>The snapshot the dashboard opens on</strong> (<code>GET /quizzes/:id/live</code>, docs/05 section 4): before the WebSocket layer exists, the teacher can already read the current roster over plain REST - the same materialized state the live dashboard will fetch on connect and then apply streamed deltas onto. One row per assigned student, <strong>collapsed to their latest attempt</strong> via a <code>LATERAL</code> join to <code>max(attempt_no)</code>, so a student who restarted is one cell, not two - the docs/05 section 6 rule that a student is in exactly one roster state.</li>
+      <li><strong>State is derived, honestly degraded</strong>: <code>state</code> folds the attempt status into the dashboard vocabulary - <code>not_started</code> (assigned, never started), <code>in_progress</code>, <code>submitted</code> (covers <code>graded</code>), <code>kicked</code>. The <code>disconnected</code> state is deliberately absent - it depends on the heartbeat the attempt socket will send, which does not exist yet, so the snapshot never invents it. <code>current_question</code> is null for the same reason: no server column tracks a cursor (it arrives via the <code>attempt.progress</code> delta later). <code>answered_count</code>, <code>violation_count</code>, and the per-attempt <code>question_count</code>/<code>max_score</code> from the pinned snapshot version are all real and computed now, and <code>server_time</code> ships the database clock the row timestamps were read against so every client countdown shares one origin.</li>
+      <li><strong>Authorized as the owning teacher or any admin</strong> (docs/05 section 3): the service gates on the existing <code>ActionQuizWatchLive</code> policy action, so an admin can open the dashboard for a quiz they do not own while a non-owning teacher reads <code>404</code> (existence never leaks); a new <code>requireStaff</code> route group answers <code>403</code> to students before the handler.</li>
+      <li><strong>Proven by a new integration suite</strong> (<code>liveflow_test.go</code>, own database <code>macquiz_livetest</code>): three assigned students in distinct states (one in progress with one saved answer, one submitted, one never started), a directly-inserted stale earlier attempt to prove the roster collapses to the latest and still emits exactly one row per student, the <code>question_count</code>/<code>max_score</code> from the snapshot, an admin watching a quiz it does not own, the non-owning teacher's <code>404</code>, and the student's <code>403</code> - the full <code>quiz</code> and <code>attempt</code> suites still green beside it. Contract at <strong>v0.9.0</strong> with <code>getLiveRoster</code> and the <code>LiveRosterRow</code>/<code>LiveRosterResponse</code> schemas, regenerated into the typed client (build and lint green).</li>
+    </ul>
+    <div class="exit">Milestone 5's consistency floor is in: the roster snapshot that late joins and reconnects will materialize against - and reconcile streamed deltas onto - exists and is proven, entirely over REST. Remaining Milestone 5 items: the WebSocket gateway and channel auth, the <code>attempt_events</code> writes plus Redis pub/sub delta stream, heartbeat/disconnect tracking, and the teacher live dashboard UI that consumes this snapshot.</div>
+  </section>
+
+  <section class="entry">
+    <div class="entry-head">
       <h2>Milestone 4 - The web attempt player: the student finally has a screen</h2>
       <span class="tag">milestone 4</span>
     </div>

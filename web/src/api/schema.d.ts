@@ -411,6 +411,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live roster snapshot (owner or admin)
+         * @description The roster the teacher dashboard fetches on connect before applying streamed deltas. One row per assigned student, collapsed to their latest attempt (max attempt_no), so a student is in exactly one roster state. Authorization is the owning teacher or any admin; a non-owning teacher gets 404. server_time is the database clock the row timestamps were read against, so every client-side countdown shares one origin. current_question is always null for now - no server column tracks it (it will arrive via the attempt.progress delta over the WebSocket); the "disconnected" state is likewise absent until heartbeats exist.
+         */
+        get: operations["getLiveRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/assigned": {
         parameters: {
             query?: never;
@@ -911,6 +931,46 @@ export interface components {
         QuizResultsResponse: {
             quiz: components["schemas"]["Quiz"];
             results: components["schemas"]["ResultRow"][];
+        };
+        /** @description One roster cell - an assigned student and their latest attempt. Students who never started read as not_started with the attempt fields null. state collapses the attempt status to the dashboard vocabulary; graded folds into submitted. */
+        LiveRosterRow: {
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            /** Format: email */
+            email: string;
+            /** @enum {string} */
+            state: "not_started" | "in_progress" | "submitted" | "kicked";
+            /** Format: uuid */
+            attempt_id: string | null;
+            attempt_no: number | null;
+            /** @enum {string|null} */
+            status: "in_progress" | "submitted" | "graded" | "kicked" | null;
+            /** @enum {string|null} */
+            submit_kind: "manual" | "auto" | "forced" | "kicked" | null;
+            /** Format: date-time */
+            started_at: string | null;
+            /** Format: date-time */
+            deadline_at: string | null;
+            /** @description Questions with a non-null saved response. */
+            answered_count: number | null;
+            /** @description Always null - no server column tracks it yet. */
+            current_question: number | null;
+            /** @description Question count of the snapshot version this attempt pinned. */
+            question_count: number | null;
+            violation_count: number | null;
+            score: number | null;
+            /** @description Total points of the snapshot version this attempt pinned. */
+            max_score: number | null;
+        };
+        LiveRosterResponse: {
+            quiz: components["schemas"]["Quiz"];
+            roster: components["schemas"]["LiveRosterRow"][];
+            /**
+             * Format: date-time
+             * @description The database clock the row timestamps were read against.
+             */
+            server_time: string;
         };
         /** @description One snapshot question in the released review - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response and is_correct null. */
         ResultQuestion: {
@@ -1719,6 +1779,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["QuizNotClosed"];
+        };
+    };
+    getLiveRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz and its live roster. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveRosterResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAssignedQuizzes: {
