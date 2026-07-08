@@ -6,6 +6,7 @@ export type QuestionInput = components['schemas']['QuestionInput']
 export type QuestionType = QuestionInput['type']
 export type QuestionOption = components['schemas']['QuestionOption']
 export type ApiError = components['schemas']['Error']
+export type Import = components['schemas']['Import']
 
 export const TYPE_LABEL: Record<QuestionType, string> = {
   single: 'Single choice',

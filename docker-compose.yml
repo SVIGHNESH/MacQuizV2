@@ -63,6 +63,17 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  # One-shot: the app/worker images run as the distroless "nonroot" user
+  # (uid/gid 65532), but Docker creates a brand-new named volume's mount
+  # point owned by root, so the first write into it fails "permission
+  # denied" - chown it once, as root, before app/worker start.
+  import-dir-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "mkdir -p /var/lib/macquiz/imports && chown -R 65532:65532 /var/lib/macquiz/imports"]
+    volumes:
+      - import_data:/var/lib/macquiz/imports
+    restart: "no"
+
   app:
     build: ./server
     command: ["serve"]
@@ -84,6 +95,8 @@ services:
         condition: service_healthy
       bootstrap:
         condition: service_completed_successfully
+      import-dir-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   worker:
@@ -102,6 +115,8 @@ services:
       redis:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      import-dir-init:
         condition: service_completed_successfully
     restart: unless-stopped
 

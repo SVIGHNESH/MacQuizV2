@@ -668,6 +668,34 @@ paths:
           $ref: "#/components/responses/NotEditable"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/imports/{id}:
+    get:
+      operationId: getImport
+      summary: Get a bulk import's status and error report (owner)
+      description: >-
+        docs/07 section 2 step 4: the review UI polls this to watch an
+        import move from "validating" to "ready" or "failed", and to read
+        the row-level error_report once it fails.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The import.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/imports/{id}/commit:
     post:
       operationId: commitImport

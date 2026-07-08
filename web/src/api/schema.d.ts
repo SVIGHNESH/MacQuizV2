@@ -368,6 +368,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a bulk import's status and error report (owner)
+         * @description docs/07 section 2 step 4: the review UI polls this to watch an import move from "validating" to "ready" or "failed", and to read the row-level error_report once it fails.
+         */
+        get: operations["getImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/{id}/commit": {
         parameters: {
             query?: never;
@@ -1965,6 +1985,31 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["NotEditable"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     commitImport: {

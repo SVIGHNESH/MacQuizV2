@@ -376,6 +376,32 @@ func scanImport(scan func(dest ...any) error) (Import, error) {
 	return imp, err
 }
 
+// GetImport loads one bulk-upload import by id, for the review UI to poll
+// status (docs/07 section 2 step 4: "validating" resolves to "ready" or
+// "failed"). Non-owners get ErrNotFound, never a 403, so existence is not
+// leaked - same convention as GetQuiz. Unlike draftForUpdate this is a plain
+// read: no row lock, and importable regardless of whether the quiz has since
+// left draft, so a teacher can still see how a past import resolved.
+func (s *Service) GetImport(ctx context.Context, actor authusers.User, importID string) (Import, error) {
+	var ownerID string
+	imp, err := scanImport(func(dest ...any) error {
+		return s.db.QueryRowContext(ctx,
+			`SELECT `+prefixColumns("imports", importColumns)+`, quizzes.owner_id
+			 FROM imports JOIN quizzes ON quizzes.id = imports.quiz_id
+			 WHERE imports.id = $1`, importID).Scan(append(dest, &ownerID)...)
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Import{}, ErrNotFound
+	}
+	if err != nil {
+		return Import{}, fmt.Errorf("load import: %w", err)
+	}
+	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: ownerID}) {
+		return Import{}, ErrNotFound
+	}
+	return imp, nil
+}
+
 // RegisterImport saves a bulk-upload file for a draft quiz the actor owns,
 // creates its imports row in 'validating', and enqueues the import_validate
 // job the worker picks up (docs/07 section 2 steps 2-3). file has already

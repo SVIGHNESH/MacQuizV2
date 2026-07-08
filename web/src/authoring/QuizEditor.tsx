@@ -8,6 +8,7 @@ import {
   type QuestionType,
   type TeacherQuestion,
 } from './model'
+import ImportPanel from './ImportPanel'
 import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
@@ -352,6 +353,15 @@ function LoadedEditor({
             ))}
           </div>
         </section>
+      )}
+
+      {editable && (
+        <ImportPanel
+          quizId={quiz.id}
+          onCommitted={(added) =>
+            setQuestions((prev) => [...prev, ...added])
+          }
+        />
       )}
 
       {(quiz.status === 'draft' || quiz.status === 'scheduled') && (

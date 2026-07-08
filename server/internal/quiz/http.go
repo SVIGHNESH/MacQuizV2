@@ -89,12 +89,13 @@ func (h *Handler) QuestionRoutes() http.Handler {
 	return r
 }
 
-// ImportRoutes returns the /api/v1/imports route group
-// (docs/04-api.md: POST /imports/:id/commit). It sits outside QuizRoutes
+// ImportRoutes returns the /api/v1/imports route group (docs/04-api.md:
+// GET /imports/:id, POST /imports/:id/commit). It sits outside QuizRoutes
 // because the resource in the path is the import, not its quiz.
 func (h *Handler) ImportRoutes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireTeacher)
+	r.Get("/{id}", h.handleGetImport)
 	r.Post("/{id}/commit", h.handleCommitImport)
 	return r
 }
@@ -270,6 +271,22 @@ func (h *Handler) handleRegisterImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"import": imp})
+}
+
+// handleGetImport implements "Get an import" (docs/04-api.md), the poll
+// endpoint the review UI uses to watch an import move from "validating" to
+// "ready"/"failed" and to read the row-level error_report once it fails.
+func (h *Handler) handleGetImport(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such import")
+	if !ok {
+		return
+	}
+	imp, err := h.svc.GetImport(r.Context(), actor, id)
+	if h.writeQuizError(w, "get import", err, "no such import") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"import": imp})
 }
 
 // handleCommitImport implements "Commit a validated import transactionally"
