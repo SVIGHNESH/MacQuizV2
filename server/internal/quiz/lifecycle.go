@@ -513,6 +513,29 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 			"student_ids": "a scheduled quiz needs at least one assigned student"}}
 	}
 
+	// The pre-change audience, so the post-commit publish below can tell
+	// exactly who was newly added or dropped - diffing on IDs, not names or
+	// counts, so a same-size swap (drop one student, add another) still
+	// notifies both correctly.
+	before, err := tx.QueryContext(ctx,
+		`SELECT student_id FROM quiz_assignments WHERE quiz_id = $1`, quizID)
+	if err != nil {
+		return nil, fmt.Errorf("load prior assignments: %w", err)
+	}
+	prevAudience := map[string]bool{}
+	for before.Next() {
+		var id string
+		if err := before.Scan(&id); err != nil {
+			before.Close()
+			return nil, fmt.Errorf("scan prior assignment: %w", err)
+		}
+		prevAudience[id] = true
+	}
+	before.Close()
+	if err := before.Err(); err != nil {
+		return nil, err
+	}
+
 	ids := make([]string, 0, len(audience))
 	for id := range audience {
 		ids = append(ids, id)
@@ -544,6 +567,21 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit assignments: %w", err)
+	}
+
+	// Publish second (docs/05 section 1 discipline): notify only the students
+	// whose membership actually changed, never the whole new/old audience -
+	// a student re-listed on every save of an unrelated assignment tweak
+	// must not get a fresh "assigned" ping each time.
+	for id := range audience {
+		if !prevAudience[id] {
+			s.events.PublishNotify(ctx, id, eventAssigned, assignmentPayload{QuizID: quizID, Title: q.Title})
+		}
+	}
+	for id := range prevAudience {
+		if !audience[id] {
+			s.events.PublishNotify(ctx, id, eventUnassigned, assignmentPayload{QuizID: quizID, Title: q.Title})
+		}
 	}
 	return students, nil
 }

@@ -5,6 +5,15 @@
  * countdown, the player chrome, and the review verdict tones.
  */
 
+/* --- Workspace-level notices (docs/05 section 3 user:{id}:notify) ------ */
+
+.workspace-notices {
+  display: grid;
+  gap: 8px;
+  max-width: 860px;
+  margin-bottom: 16px;
+}
+
 /* --- Assigned list ---------------------------------------------------- */
 
 .assigned-list {

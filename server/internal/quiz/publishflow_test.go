@@ -30,11 +30,27 @@ type capturePublisher struct {
 
 type capturedEvent struct {
 	quizID  string
+	userID  string
 	typ     string
 	payload map[string]any
 }
 
 func (c *capturePublisher) Publish(_ context.Context, quizID, _ string, eventType string, payload any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.captured = append(c.captured, capturedEvent{quizID: quizID, typ: eventType, payload: decodePayload(payload)})
+}
+
+// PublishNotify is quiz.EventPublisher's second leg (realtime.go): it records
+// the same way Publish does but keyed on userID instead of quizID, so
+// TestQuizAssignmentNotificationsE2E can assert who a notification went to.
+func (c *capturePublisher) PublishNotify(_ context.Context, userID, eventType string, payload any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.captured = append(c.captured, capturedEvent{userID: userID, typ: eventType, payload: decodePayload(payload)})
+}
+
+func decodePayload(payload any) map[string]any {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		panic(err)
@@ -43,9 +59,7 @@ func (c *capturePublisher) Publish(_ context.Context, quizID, _ string, eventTyp
 	if err := json.Unmarshal(raw, &m); err != nil {
 		panic(err)
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.captured = append(c.captured, capturedEvent{quizID: quizID, typ: eventType, payload: m})
+	return m
 }
 
 func (c *capturePublisher) forType(typ string) []capturedEvent {
@@ -184,6 +198,100 @@ func TestQuizWindowEventsE2E(t *testing.T) {
 		}
 		if got := len(publisher.forType("quiz.closed")); got != before {
 			t.Fatalf("quiz.closed publishes after idempotent re-close = %d, want %d", got, before)
+		}
+	})
+}
+
+// TestQuizAssignmentNotificationsE2E pins the "Notifications on assignment
+// changes" gap ThingsToDo.txt named: SetAssignments (lifecycle.go) now
+// notifies exactly the students whose membership in the audience changed -
+// quiz.assigned for a newly-added student, quiz.unassigned for a dropped
+// one - on their own user:{id}:notify channel, and stays silent for a
+// no-op re-save of the same audience.
+//
+// It runs in its own database (macquiz_assignnotifytest).
+func TestQuizAssignmentNotificationsE2E(t *testing.T) {
+	baseURL := os.Getenv("MACQUIZ_TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("MACQUIZ_TEST_DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	sqlDB := itest.FreshDatabase(t, ctx, baseURL, "macquiz_assignnotifytest")
+	if _, err := db.MigrateUp(ctx, sqlDB); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := authusers.NewService(sqlDB, "test-secret", log)
+	publisher := &capturePublisher{}
+	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}, publisher)
+	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
+		DB:   sqlDB,
+		Auth: authusers.NewHandler(authSvc, false),
+		Quiz: quiz.NewHandler(quizSvc, authSvc),
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	if err := authSvc.EnsureBootstrapAdmin(ctx, "admin@school.test", "admin-password-1", "Root Admin"); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	provision(t, ctx, sqlDB, "teacher", "owner2@school.test")
+	provision(t, ctx, sqlDB, "student", "alice@school.test")
+	provision(t, ctx, sqlDB, "student", "bob@school.test")
+	owner := login(t, server, "owner2@school.test", "account-password")
+	aliceID := userID(t, ctx, sqlDB, "alice@school.test")
+	bobID := userID(t, ctx, sqlDB, "bob@school.test")
+
+	quizID := authorMinimalQuiz(t, server, owner, "Assignment Notifications")
+
+	t.Run("assigning a new student publishes quiz.assigned to only them", func(t *testing.T) {
+		assign(t, server, owner, quizID, aliceID)
+		evs := publisher.forType("quiz.assigned")
+		if len(evs) != 1 {
+			t.Fatalf("quiz.assigned publishes = %d, want 1", len(evs))
+		}
+		if evs[0].userID != aliceID {
+			t.Fatalf("quiz.assigned user_id = %q, want %q", evs[0].userID, aliceID)
+		}
+		if got := evs[0].payload["quiz_id"]; got != quizID {
+			t.Fatalf("quiz.assigned quiz_id = %v, want %q", got, quizID)
+		}
+		if got := evs[0].payload["title"]; got != "Assignment Notifications" {
+			t.Fatalf("quiz.assigned title = %v, want %q", got, "Assignment Notifications")
+		}
+	})
+
+	t.Run("re-saving the same audience publishes nothing new", func(t *testing.T) {
+		before := len(publisher.forType("quiz.assigned")) + len(publisher.forType("quiz.unassigned"))
+		assign(t, server, owner, quizID, aliceID)
+		if got := len(publisher.forType("quiz.assigned")) + len(publisher.forType("quiz.unassigned")); got != before {
+			t.Fatalf("notify publishes after no-op re-save = %d, want %d", got, before)
+		}
+	})
+
+	t.Run("swapping the audience notifies both the added and the dropped student", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
+			map[string]any{"student_ids": []string{bobID}}, owner)
+		if status != 200 {
+			t.Fatalf("swap assignments = %d %v", status, body)
+		}
+		assigned := publisher.forType("quiz.assigned")
+		if len(assigned) != 2 {
+			t.Fatalf("quiz.assigned publishes = %d, want 2 (alice, then bob)", len(assigned))
+		}
+		if assigned[1].userID != bobID {
+			t.Fatalf("second quiz.assigned user_id = %q, want %q (bob)", assigned[1].userID, bobID)
+		}
+		unassigned := publisher.forType("quiz.unassigned")
+		if len(unassigned) != 1 {
+			t.Fatalf("quiz.unassigned publishes = %d, want 1", len(unassigned))
+		}
+		if unassigned[0].userID != aliceID {
+			t.Fatalf("quiz.unassigned user_id = %q, want %q (alice)", unassigned[0].userID, aliceID)
 		}
 	})
 }

@@ -32,6 +32,11 @@ const publishTimeout = 2 * time.Second
 // channel name, so the envelope does not repeat it.
 func eventsChannel(quizID string) string { return "quiz:" + quizID + ":events" }
 
+// notifyChannel is the docs/05 section 3 user:{id}:notify channel: a per-user
+// stream, separate from any quiz's events channel, since a notification (e.g.
+// a new assignment) is not scoped to one quiz's audience of subscribers.
+func notifyChannel(userID string) string { return "user:" + userID + ":notify" }
+
 // Event is the envelope published on quiz:{quiz_id}:events. It carries the
 // docs/05 section 2 event type, the attempt the delta applies to (the roster
 // row the dashboard updates), and the typed payload as raw JSON.
@@ -39,6 +44,13 @@ type Event struct {
 	Type      string          `json:"type"`
 	AttemptID string          `json:"attempt_id"`
 	Payload   json.RawMessage `json:"payload"`
+}
+
+// NotifyEvent is the envelope published on user:{id}:notify. It has no
+// attempt_id: unlike Event, a notification is never scoped to one roster row.
+type NotifyEvent struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // Publisher relays committed attempt events onto Redis pub/sub. It satisfies
@@ -98,6 +110,30 @@ func (p *Publisher) Publish(ctx context.Context, quizID, attemptID, eventType st
 	if err := p.rdb.Publish(ctx, eventsChannel(quizID), env).Err(); err != nil {
 		p.log.Warn("publish realtime event",
 			"type", eventType, "quiz_id", quizID, "attempt_id", attemptID, "err", err)
+	}
+}
+
+// PublishNotify marshals one event into the user:{id}:notify envelope and
+// publishes it to that user's channel. Best-effort by the same contract as
+// Publish: the caller has already committed whatever made the notification
+// true (e.g. the quiz_assignments row), so a failure here is logged and
+// swallowed rather than returned.
+func (p *Publisher) PublishNotify(ctx context.Context, userID, eventType string, payload any) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
+	defer cancel()
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		p.log.Error("marshal notify payload", "type", eventType, "user_id", userID, "err", err)
+		return
+	}
+	env, err := json.Marshal(NotifyEvent{Type: eventType, Payload: raw})
+	if err != nil {
+		p.log.Error("marshal notify envelope", "type", eventType, "user_id", userID, "err", err)
+		return
+	}
+	if err := p.rdb.Publish(ctx, notifyChannel(userID), env).Err(); err != nil {
+		p.log.Warn("publish notify event", "type", eventType, "user_id", userID, "err", err)
 	}
 }
 

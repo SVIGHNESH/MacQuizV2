@@ -31,9 +31,15 @@ import (
 // lockout message, docs/06 section 4 step 4) plus any quiz-wide banner
 // events. It also enforces docs/08 section 1's single active session: only
 // one attempt:{id} socket per attempt may be open at a time, a second
-// device's connect force-closes the first. The user:{id}:notify channel and
-// heartbeat/disconnect/current-question tracking are separate bricks that
-// still layer on top.
+// device's connect force-closes the first.
+//
+// It also lands the user:{id}:notify channel (docs/05 section 3): a much
+// simpler relay than either of the above, since the channel's own name is
+// the authorization decision - "the user themselves" (docs/04-api.md section
+// 6) needs no owner lookup, just comparing the URL id to the authenticated
+// actor. It carries quiz.assigned/quiz.unassigned (quiz/events.go), the only
+// notifications the codebase produces today. Heartbeat/disconnect tracking
+// is a separate brick that still layers on top.
 
 const (
 	// pingInterval keeps the socket (and any intermediate proxy) alive across
@@ -159,6 +165,7 @@ func (g *Gateway) Routes() http.Handler {
 		r.Get("/quizzes/{id}/monitor", g.handleMonitor)
 	})
 	r.Get("/attempts/{id}", g.handleAttempt)
+	r.Get("/users/{id}/notify", g.handleNotify)
 	return r
 }
 
@@ -386,6 +393,47 @@ func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-cha
 			}
 		}
 	}
+}
+
+// handleNotify authorizes the subscribe against the URL id matching the
+// caller's own id (docs/04-api.md section 6: "the user themselves" - no
+// owner lookup needed, unlike handleMonitor/handleAttempt, since the
+// resource the channel names is the actor), then streams every notification
+// published to that user's channel until the client disconnects or the
+// process shuts down. There is no "not found" ambiguity to preserve here (a
+// user always knows their own id), so a mismatched id is a plain 403.
+func (g *Gateway) handleNotify(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	userID := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(userID) || actor.ID != userID {
+		httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden, "you may only subscribe to your own notifications")
+		return
+	}
+
+	// Subscribe before upgrading, same reasoning as handleMonitor/handleAttempt:
+	// a Redis failure here is a clean 500, not a socket that connects and then
+	// silently delivers nothing.
+	connCtx, cancel := context.WithCancel(g.baseCtx)
+	defer cancel()
+	sub, err := g.sub.Subscribe(connCtx, notifyChannel(userID))
+	if err != nil {
+		g.log.Error("subscribe notify channel", "user_id", userID, "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	defer sub.Close()
+
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: g.origins})
+	if err != nil {
+		// Accept has already written the failure response.
+		return
+	}
+	defer c.CloseNow()
+	g.metrics.IncWSConnections(g.baseCtx)
+	defer g.metrics.DecWSConnections(g.baseCtx)
+
+	ctx := c.CloseRead(connCtx)
+	g.pump(ctx, c, sub.Messages())
 }
 
 // requireStaff is the coarse teacher-or-admin role gate on the monitor

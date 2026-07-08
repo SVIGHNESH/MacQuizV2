@@ -28,6 +28,7 @@ The event row is the source of truth; the publish is best-effort delivery.
 | `attempt.submitted` | submit_kind, answered_count | Row moves to "submitted"; summary counters update |
 | `attempt.graded` | score | Score appears (visible per quiz result policy) |
 | `quiz.extended` / `quiz.closed` | new ends_at | Banner to teacher and all in-progress students |
+| `quiz.assigned` / `quiz.unassigned` | quiz_id, title | Notification banner on the student's `user:{id}:notify` channel |
 
 ## 3. Channels and authorization
 
@@ -35,7 +36,7 @@ The event row is the source of truth; the publish is best-effort delivery.
 |---------|---------|------------------|
 | `quiz:{id}:monitor` | Teacher/admin live dashboard | Quiz owner or admin |
 | `attempt:{id}` | Student's own attempt: kick delivery, quiz.extended banners, heartbeat | Attempt owner |
-| `user:{id}:notify` | Assignment notifications | The user |
+| `user:{id}:notify` | Assignment notifications (`quiz.assigned`/`quiz.unassigned`) | The user |
 
 The gateway checks `can()` once at subscribe and revalidates on token refresh.
 
@@ -48,6 +49,8 @@ Implemented as `web/src/authoring/LiveMonitorPanel.tsx`: shown on a quiz's edito
 `attempt.started` re-fetches the snapshot instead of patching, since the delta carries no question/version data and it fires only once per attempt.
 The kick and readmit escalations post to the existing `/attempts/:id/kick` and `/attempts/:id/readmit` endpoints from the same roster row.
 The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pieces remain unimplemented, so the dashboard never shows "disconnected". `current_question` is now wired: it is the 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student's autosave resolved, persisted on `attempts.current_question` and carried by both the snapshot and the `attempt.progress` delta.
+
+`user:{id}:notify` is now implemented end to end: `quiz.Service.SetAssignments` diffs the audience before and after each `PUT /quizzes/:id/assignments` call and, after commit, publishes `quiz.assigned`/`quiz.unassigned` (quiz_id, title) to exactly the students whose membership changed - never the whole audience on an unrelated save. `web/src/player/StudentWorkspace.tsx` opens the channel for the whole signed-in session (a teacher can change assignments while the student is mid-attempt on something else) and renders each notification as a dismissable banner.
 
 ## 5. Throttling and degradation
 

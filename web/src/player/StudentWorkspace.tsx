@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth, type SessionUser } from '../auth/context'
 import AssignedList from './AssignedList'
 import AttemptPlayer, { type PlayerEntry } from './AttemptPlayer'
@@ -10,6 +10,26 @@ type View =
   | { kind: 'list' }
   | { kind: 'player'; entry: PlayerEntry }
   | { kind: 'result'; attemptId: string }
+
+// docs/05 section 3's user:{id}:notify envelope, same shape as the
+// attempt:{id} channel's RealtimeEvent (AttemptPlayer.tsx) minus attempt_id -
+// a notification is never scoped to one roster row.
+interface NotifyEvent {
+  type: string
+  payload: unknown
+}
+
+interface Notice {
+  id: number
+  text: string
+}
+
+const NOTIFY_SOCKET_RECONNECT_MS = 3_000
+
+function notifySocketURL(userId: string): string {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}/ws/users/${userId}/notify`
+}
 
 function initials(fullName: string): string {
   return fullName
@@ -32,10 +52,72 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
   // Remounts the list on every return to it, so it always refetches: an
   // attempt just submitted or results just released must show immediately.
   const [listEpoch, setListEpoch] = useState(0)
+  const [notices, setNotices] = useState<Notice[]>([])
+  const noticeSeq = useRef(0)
+  const viewRef = useRef(view)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
 
   const toList = () => {
     setListEpoch((n) => n + 1)
     setView({ kind: 'list' })
+  }
+
+  // The user:{id}:notify channel (docs/05 section 3): open for the whole
+  // signed-in session, not just the list view, since a teacher can assign or
+  // unassign a quiz while the student is mid-attempt on something else.
+  // Reconnects on drop, entirely outside React state, mirroring
+  // AttemptPlayer.tsx's attempt:{id} socket.
+  useEffect(() => {
+    let cancelled = false
+    let socket: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      if (cancelled) return
+      socket = new WebSocket(notifySocketURL(user.id))
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        let msg: NotifyEvent
+        try {
+          msg = JSON.parse(event.data) as NotifyEvent
+        } catch {
+          return
+        }
+        if (msg.type !== 'quiz.assigned' && msg.type !== 'quiz.unassigned') return
+        const p = msg.payload as { title?: string }
+        const title = p.title?.trim() || 'a quiz'
+        const text =
+          msg.type === 'quiz.assigned'
+            ? `You've been assigned "${title}".`
+            : `"${title}" is no longer assigned to you.`
+        noticeSeq.current += 1
+        setNotices((prev) => [...prev, { id: noticeSeq.current, text }])
+        // The assigned list is stale the moment the audience changes; if it
+        // is on screen right now, remount it immediately rather than waiting
+        // for the student to navigate away and back.
+        if (viewRef.current.kind === 'list') setListEpoch((n) => n + 1)
+      }
+      socket.onclose = () => {
+        if (cancelled) return
+        reconnectTimer = setTimeout(connect, NOTIFY_SOCKET_RECONNECT_MS)
+      }
+      socket.onerror = () => {
+        socket?.close()
+      }
+    }
+    connect()
+
+    return () => {
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      socket?.close()
+    }
+  }, [user.id])
+
+  const dismissNotice = (id: number) => {
+    setNotices((prev) => prev.filter((n) => n.id !== id))
   }
 
   return (
@@ -84,6 +166,23 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
       </aside>
 
       <main className="workspace-main">
+        {notices.length > 0 && (
+          <div className="workspace-notices">
+            {notices.map((notice) => (
+              <p className="quiz-banner" key={notice.id}>
+                {notice.text}
+                <button
+                  className="quiz-banner-dismiss"
+                  type="button"
+                  onClick={() => dismissNotice(notice.id)}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </p>
+            ))}
+          </div>
+        )}
         {view.kind === 'list' && (
           <AssignedList
             key={listEpoch}

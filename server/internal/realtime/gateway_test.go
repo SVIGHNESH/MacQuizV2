@@ -406,6 +406,104 @@ func TestAttemptNoOwnerFuncWired404(t *testing.T) {
 	}
 }
 
+const testUserID = "33333333-3333-3333-3333-333333333333"
+
+// mountNotify wires handleNotify behind an injected actor, mirroring
+// mountAttempt: it returns the httptest server and the ws:// URL for the
+// notify channel endpoint.
+func mountNotify(t *testing.T, g *Gateway, actor authusers.User) (*httptest.Server, string) {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(authusers.WithActor(req.Context(), actor)))
+		})
+	})
+	r.Get("/ws/users/{id}/notify", g.handleNotify)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/users/" + testUserID + "/notify"
+	return srv, wsURL
+}
+
+// TestNotifyRelaysEvents proves the happy path: a user subscribed to their
+// own channel receives whatever is pushed to it verbatim.
+func TestNotifyRelaysEvents(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := newFakeSubscriber()
+	g := NewGateway(base, fake, nil, ownerIs("teacher-1"), nil, discardLog())
+	_, wsURL := mountNotify(t, g, student(testUserID))
+
+	ctx, c := dial(t, wsURL)
+	defer c.CloseNow()
+
+	fake.emit(`{"type":"quiz.assigned","payload":{"quiz_id":"q-1","title":"Algebra"}}`)
+	_, data, err := c.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := string(data); !strings.Contains(got, `"quiz.assigned"`) {
+		t.Fatalf("relayed %q, want the emitted envelope", got)
+	}
+}
+
+// TestNotifyRejectsOtherUser proves a caller cannot subscribe to a different
+// user's notify channel - the URL id must match the authenticated actor's own
+// id (docs/04-api.md section 6: "the user themselves").
+func TestNotifyRejectsOtherUser(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	srv, _ := mountNotify(t, g, student("44444444-4444-4444-4444-444444444444"))
+
+	resp := plainGet(t, srv.URL+"/ws/users/"+testUserID+"/notify")
+	if resp != http.StatusForbidden {
+		t.Fatalf("other user's notify channel status = %d, want 403", resp)
+	}
+}
+
+// TestNotifyBadUUID403 proves a malformed user id never reaches the actor
+// comparison.
+func TestNotifyBadUUID403(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(authusers.WithActor(req.Context(), student("not-a-uuid"))))
+		})
+	})
+	r.Get("/ws/users/{id}/notify", g.handleNotify)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	if resp := plainGet(t, srv.URL+"/ws/users/not-a-uuid/notify"); resp != http.StatusForbidden {
+		t.Fatalf("bad uuid status = %d, want 403", resp)
+	}
+}
+
+// TestNotifyShutdownClosesSocket proves the notify socket, like the monitor
+// and attempt channels, is bound to the gateway's base context rather than
+// the request context.
+func TestNotifyShutdownClosesSocket(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	fake := newFakeSubscriber()
+	g := NewGateway(base, fake, nil, ownerIs("teacher-1"), nil, discardLog())
+	_, wsURL := mountNotify(t, g, student(testUserID))
+
+	ctx, c := dial(t, wsURL)
+	defer c.CloseNow()
+
+	cancel() // simulate process shutdown
+	readCtx, readCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer readCancel()
+	if _, _, err := c.Read(readCtx); err == nil {
+		t.Fatal("expected the socket to close when the base context is canceled")
+	}
+}
+
 // dial opens a WebSocket client to url and returns a context for its
 // operations. The dialer sends no Origin header, so Accept's same-origin check
 // passes without OriginPatterns.
