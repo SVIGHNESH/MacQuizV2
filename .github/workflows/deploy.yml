@@ -1,0 +1,73 @@
+# CD per docs/09-deployment.md section 5: on merge to main, build the ARM64
+# image, push it to GHCR, then roll it out on the VM over SSH - refusing to
+# deploy while any quiz is live (docs/10-operations.md section 4) by checking
+# the app's own GET /deploy-check endpoint before pulling new containers.
+#
+# Gated behind the `DEPLOY_ENABLED` repository variable so this workflow stays
+# green (skipped) rather than red on every push until the target VM exists and
+# its secrets are configured. Flip the variable to "true" once the VM is
+# provisioned and DEPLOY_SSH_HOST/DEPLOY_SSH_USER/DEPLOY_SSH_KEY are set.
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          platforms: linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.tag.outputs.tag }}
+            COMMIT=${{ github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/macquiz-app:${{ steps.tag.outputs.tag }}
+
+  rollout:
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull and restart app + worker over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/deploy-check)
+            if [ "$status" != "200" ]; then
+              echo "deploy-check returned $status - a quiz is live or the check failed; refusing to deploy." >&2
+              exit 1
+            fi
+
+            cd /opt/macquiz
+            export TAG=${{ needs.build.outputs.tag }}
+            docker compose pull app worker
+            docker compose up -d app worker
