@@ -118,17 +118,23 @@ type Service struct {
 	// reads back through the same store, and CommitImport reads it a second
 	// time at commit to recover the parsed rows to insert.
 	uploads ImportFileStore
+	// events relays quiz.extended/quiz.closed onto Redis pub/sub after Extend
+	// and ForceClose commit (docs/05 section 2). It defaults to a no-op, so
+	// the service works with no realtime layer wired.
+	events EventPublisher
 }
 
-// NewService wires the quiz authoring service.
-func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore) *Service {
+// NewService wires the quiz authoring service. An optional EventPublisher
+// relays quiz.extended/quiz.closed onto Redis pub/sub after they commit;
+// omitting it leaves realtime delivery a no-op.
+func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore, publishers ...EventPublisher) *Service {
 	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
 	if err != nil {
 		// The empty config is statically valid; NewClient has nothing left
 		// to reject, so this cannot happen at runtime.
 		panic(fmt.Sprintf("build insert-only river client: %v", err))
 	}
-	return &Service{db: db, log: log, jobs: jobs, uploads: uploads}
+	return &Service{db: db, log: log, jobs: jobs, uploads: uploads, events: resolvePublisher(publishers)}
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,

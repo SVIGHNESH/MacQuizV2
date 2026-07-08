@@ -265,6 +265,10 @@ func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id strin
 	if err := tx.Commit(); err != nil {
 		return Quiz{}, fmt.Errorf("commit force-close: %w", err)
 	}
+	// Publish after commit ("persist first, publish second"): the audit row
+	// above is already the durable record, so a dropped publish loses only
+	// the live banner, never the fact of the close.
+	s.events.Publish(ctx, id, "", eventClosed, windowPayload{EndsAt: *q.EndsAt})
 	return q, nil
 }
 
@@ -350,6 +354,10 @@ func (s *Service) Extend(ctx context.Context, actor authusers.User, id string, n
 	if err := tx.Commit(); err != nil {
 		return Quiz{}, fmt.Errorf("commit extend: %w", err)
 	}
+	// Publish after commit ("persist first, publish second"): the audit row
+	// above is already the durable record, so a dropped publish loses only
+	// the live banner, never the fact of the extension.
+	s.events.Publish(ctx, id, "", eventExtended, windowPayload{EndsAt: newEndsAt})
 	return q, nil
 }
 
