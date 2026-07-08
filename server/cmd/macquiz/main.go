@@ -111,6 +111,20 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer sqlDB.Close()
 
+	// Production's Compose stack (docs/09-deployment.md section 4) has no
+	// standalone migrate service - only the dev stack does. So the app
+	// entrypoint must apply pending migrations itself before accepting
+	// traffic (docs/09 section 5, docs/10 section 6: "the app refuses to
+	// start if migrations fail"). Idempotent and safe alongside the dev
+	// compose's separate migrate one-shot: MigrateUp is a no-op at head, and
+	// newProvider's Postgres session lock serializes it against any other
+	// migrator racing at the same time.
+	applied, err := db.MigrateUp(ctx, sqlDB)
+	if err != nil {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+	log.Info("migrations applied", "count", applied)
+
 	// The realtime relay is the "publish second" half of docs/05: the attempt
 	// service persists each event, then hands it here to fan out over Redis.
 	// A bad URL fails boot; an unreachable Redis does not - publishes degrade
