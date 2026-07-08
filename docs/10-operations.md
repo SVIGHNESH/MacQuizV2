@@ -24,7 +24,8 @@ Status: implementation baseline.
   External probing catches the "VM died" failure class that self-hosted monitoring cannot see.
 - Grafana Cloud free tier receives OpenTelemetry metrics from the app.
   Key series: autosave latency (`macquiz.attempt.autosave.duration`), WebSocket connection count (`macquiz.realtime.ws_connections`), queue lag (`macquiz.queue.lag_seconds`, the same query `/healthz` uses), and violation/kick event rates (`macquiz.attempt.violations`, `macquiz.attempt.kicks`).
-  Implemented as `server/internal/telemetry` (OTLP/HTTP export via `go.opentelemetry.io/otel`), wired into `serve()` only - `worker` does not yet export metrics.
+  Implemented as `server/internal/telemetry` (OTLP/HTTP export via `go.opentelemetry.io/otel`), wired into both `serve()` (service name `macquiz-api`) and `worker()` (service name `macquiz-worker`).
+  The worker exports the same `macquiz.queue.lag_seconds` gauge (it queries Postgres directly, independent of whether the API process is up) plus `macquiz.worker.due_transitions` (a counter labeled by `kind` - `quizzes_opened`, `quizzes_closed`, `attempts_auto_submitted`, `attempts_force_submitted`, `attempts_graded`, `results_released`, `quizzes_rolled_up` - one per sweep pass), matching the fields already in its "due transitions applied" log line.
   Configured via `MACQUIZ_OTEL_EXPORTER_ENDPOINT`/`MACQUIZ_OTEL_EXPORTER_HEADERS`; blank (the default) disables telemetry, so every instrument is a no-op until a Grafana Cloud OTLP endpoint is set.
   14-day retention on the free tier is accepted.
   OpenTelemetry log export is not implemented; the app logs structured JSON to stdout only (Compose/journald captured), not shipped to Grafana Cloud.

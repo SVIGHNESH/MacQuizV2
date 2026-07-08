@@ -31,6 +31,7 @@ type Metrics struct {
 	wsConnections    metric.Int64UpDownCounter
 	violationEvents  metric.Int64Counter
 	kickEvents       metric.Int64Counter
+	dueTransitions   metric.Int64Counter
 }
 
 // RecordAutosave records one autosave request's handling latency.
@@ -72,6 +73,18 @@ func (m *Metrics) RecordKick(ctx context.Context) {
 		return
 	}
 	m.kickEvents.Add(ctx, 1)
+}
+
+// RecordDueTransitions counts n due state transitions of the given kind
+// (e.g. "quizzes_opened", "attempts_auto_submitted") applied by a worker
+// sweep pass - the process-level signal that the scheduler/deadline/grading
+// pipeline is actually making progress, exported only from the worker
+// process since sweepDue only ever runs there.
+func (m *Metrics) RecordDueTransitions(ctx context.Context, kind string, n int64) {
+	if m == nil || n == 0 {
+		return
+	}
+	m.dueTransitions.Add(ctx, n, metric.WithAttributes(attribute.String("kind", kind)))
 }
 
 // Provider owns the MeterProvider lifetime and the shared Metrics instance.
@@ -151,11 +164,17 @@ func newMetrics(meter metric.Meter) (*Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	dueTransitions, err := meter.Int64Counter("macquiz.worker.due_transitions",
+		metric.WithDescription("Due state transitions applied by a worker sweep pass, by kind"))
+	if err != nil {
+		return nil, err
+	}
 	return &Metrics{
 		autosaveDuration: autosave,
 		wsConnections:    wsConn,
 		violationEvents:  violations,
 		kickEvents:       kicks,
+		dueTransitions:   dueTransitions,
 	}, nil
 }
 

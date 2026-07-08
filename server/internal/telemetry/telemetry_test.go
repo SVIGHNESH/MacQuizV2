@@ -23,6 +23,7 @@ func TestSetupDisabledIsNoop(t *testing.T) {
 	p.Metrics.DecWSConnections(ctx)
 	p.Metrics.RecordViolation(ctx, "fullscreen")
 	p.Metrics.RecordKick(ctx)
+	p.Metrics.RecordDueTransitions(ctx, "quizzes_opened", 3)
 
 	if err := p.RegisterQueueLagGauge(func(context.Context) (float64, error) {
 		return 0, nil
@@ -45,6 +46,7 @@ func TestNilMetricsIsSafe(t *testing.T) {
 	m.DecWSConnections(ctx)
 	m.RecordViolation(ctx, "focus")
 	m.RecordKick(ctx)
+	m.RecordDueTransitions(ctx, "quizzes_opened", 1)
 }
 
 func TestNilProviderMethodsAreSafe(t *testing.T) {
