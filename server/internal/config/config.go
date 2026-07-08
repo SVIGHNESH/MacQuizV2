@@ -35,6 +35,11 @@ type Config struct {
 	BootstrapAdminEmail    string
 	BootstrapAdminPassword string
 	BootstrapAdminName     string
+	// ImportDir is the local-disk directory bulk-upload files are read from
+	// by the import validation worker (docs/07 section 2). It stands in for
+	// object storage until the pre-signed-upload brick lands; a production
+	// deployment will replace it with an R2-backed config.
+	ImportDir string
 }
 
 // Load reads configuration from the environment, applying development defaults.
@@ -52,6 +57,8 @@ func Load() Config {
 		BootstrapAdminEmail:    os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_EMAIL"),
 		BootstrapAdminPassword: os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD"),
 		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
+
+		ImportDir: getenv("MACQUIZ_IMPORT_DIR", "/tmp/macquiz-imports"),
 	}
 }
 

@@ -111,6 +111,7 @@ func TestWorkerOpensAndClosesQuiz(t *testing.T) {
 			RedisURL:      "redis://localhost:6380/0",
 			ShutdownGrace: 10 * time.Second,
 			Env:           "test",
+			ImportDir:     t.TempDir(),
 		}, log)
 	}()
 

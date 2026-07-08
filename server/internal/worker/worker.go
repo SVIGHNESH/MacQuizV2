@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -105,6 +106,19 @@ func (w *sweepQuizzesWorker) Work(ctx context.Context, _ *river.Job[quiz.SweepQu
 	return sweepDue(ctx, w.db, w.log, w.pub, "periodic sweep", "")
 }
 
+// importValidateWorker fires once a bulk-upload file is registered and runs
+// the docs/07 section 2 step 3 validation pass against it.
+type importValidateWorker struct {
+	river.WorkerDefaults[quiz.ImportValidateArgs]
+	db      *sql.DB
+	log     *slog.Logger
+	storage quiz.ImportStorage
+}
+
+func (w *importValidateWorker) Work(ctx context.Context, job *river.Job[quiz.ImportValidateArgs]) error {
+	return quiz.ValidateImport(ctx, w.db, w.storage, job.Args.ImportID)
+}
+
 // sweepDue applies every due transition: quiz flips first, then the attempt
 // sweep, then grading - so a quiz closed in this pass has its open attempts
 // force-submitted and graded in the same pass. subject is the id the
@@ -169,12 +183,17 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer pub.Close()
 
+	if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
+		return fmt.Errorf("create import dir: %w", err)
+	}
+
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log, pub: pub})
 	river.AddWorker(workers, &closeQuizWorker{db: sqlDB, log: log, pub: pub})
 	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log, pub: pub})
 	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log, pub: pub})
 	river.AddWorker(workers, &gradeAttemptWorker{db: sqlDB, log: log, pub: pub})
+	river.AddWorker(workers, &importValidateWorker{db: sqlDB, log: log, storage: quiz.LocalImportStorage{Dir: cfg.ImportDir}})
 
 	client, err := river.NewClient(riverdatabasesql.New(sqlDB), &river.Config{
 		Logger:  log,
