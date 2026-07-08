@@ -635,6 +635,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org-wide dashboard (admin)
+         * @description docs/07 section 4 (FR-9): active users by role, a 12-week quizzes-created trend, platform-wide participation, and a per-group cohort comparison. Computed live from small, already-indexed aggregates rather than a rollup table. Admin-only; every other caller reads 403.
+         */
+        get: operations["getOrgStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/assigned": {
         parameters: {
             query?: never;
@@ -1126,6 +1146,32 @@ export interface components {
             /** @description Mean of each quiz's raw-point mean; not a percentage. */
             avg_class_score: number | null;
             avg_publish_to_results_sec: number | null;
+        };
+        /** @description The admin org-wide dashboard (docs/07 section 4, FR-9). Every field is computed live: there is no org_stats rollup table. */
+        OrgStats: {
+            active_users: {
+                admins: number;
+                teachers: number;
+                students: number;
+            };
+            /** @description Quizzes created per week over the trailing 12 weeks, oldest first. A week with no quizzes created is simply absent. */
+            quizzes_per_week: {
+                /** Format: date-time */
+                week_start: string;
+                count: number;
+            }[];
+            /** @description Mean participation across every rolled-up quiz_stats row. */
+            platform_participation: number | null;
+            cohort_comparisons: components["schemas"]["CohortStats"][];
+        };
+        /** @description One group's members compared against the platform-wide student-analytics profile. */
+        CohortStats: {
+            /** Format: uuid */
+            group_id: string;
+            group_name: string;
+            member_count: number;
+            avg_completion_rate: number | null;
+            avg_accuracy: number | null;
         };
         Group: {
             /** Format: uuid */
@@ -2557,6 +2603,28 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getOrgStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The org-wide dashboard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listAssignedQuizzes: {

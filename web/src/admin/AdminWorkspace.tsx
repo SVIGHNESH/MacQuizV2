@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useAuth, type SessionUser } from '../auth/context'
 import UsersPanel from './UsersPanel'
 import GroupsPanel from './GroupsPanel'
+import OrgStatsPanel from './OrgStatsPanel'
 import '../authoring/authoring.css'
 import './admin.css'
 
-type View = 'users' | 'groups'
+type View = 'overview' | 'users' | 'groups'
 
 function initials(fullName: string): string {
   return fullName
@@ -23,7 +24,7 @@ function initials(fullName: string): string {
  */
 export default function AdminWorkspace({ user }: { user: SessionUser }) {
   const { logout } = useAuth()
-  const [view, setView] = useState<View>('users')
+  const [view, setView] = useState<View>('overview')
   const [signingOut, setSigningOut] = useState(false)
 
   return (
@@ -37,6 +38,14 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
         </div>
 
         <nav className="rail-nav" aria-label="Workspace">
+          <button
+            className={`rail-item${view === 'overview' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView('overview')}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            Overview
+          </button>
           <button
             className={`rail-item${view === 'users' ? ' rail-item-active' : ''}`}
             type="button"
@@ -80,7 +89,13 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
       </aside>
 
       <main className="workspace-main">
-        {view === 'users' ? <UsersPanel /> : <GroupsPanel />}
+        {view === 'overview' ? (
+          <OrgStatsPanel />
+        ) : view === 'users' ? (
+          <UsersPanel />
+        ) : (
+          <GroupsPanel />
+        )}
       </main>
     </div>
   )

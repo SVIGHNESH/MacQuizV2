@@ -39,7 +39,22 @@ func (h *Handler) Routes() http.Handler {
 	r.With(requireStaff).Get("/quizzes/{id}", h.handleQuizStats)
 	r.Get("/students/{id}", h.handleStudentStats)
 	r.With(requireStaff).Get("/teachers/{id}", h.handleTeacherStats)
+	r.With(requireAdmin).Get("/org", h.handleOrgStats)
 	return r
+}
+
+// requireAdmin gates the org-wide dashboard on the role-shaped fact that it
+// is admin-only (docs/07 section 4, "Org-wide ... | Admin"): no owner or
+// subject resource ever makes it visible to a teacher or student.
+func requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := authusers.ActorFrom(r.Context()); !ok || u.Role != "admin" {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"org analytics is admin-only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // requireStaff gates the analytics surface on the role-shaped fact that only
@@ -125,6 +140,27 @@ func (h *Handler) handleTeacherStats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.svc.log.Error("teacher analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, stats)
+}
+
+// handleOrgStats serves GET /analytics/org: the admin-only org-wide
+// dashboard (active users, quizzes-per-week trend, platform participation,
+// cohort comparisons). It takes no path parameter, so there is no
+// existence-leak concern to hide behind a 404 - the requireAdmin gate above
+// already turned "not an admin" into 403.
+func (h *Handler) handleOrgStats(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	stats, err := h.svc.OrgStats(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"org analytics is admin-only")
+			return
+		}
+		h.svc.log.Error("org analytics", "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
 		return
 	}

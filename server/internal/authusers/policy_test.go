@@ -63,6 +63,10 @@ func TestCan(t *testing.T) {
 		{"teacher cannot see another teacher's analytics", teacher, ActionAnalyticsTeacher, Resource{OwnerID: "t2"}, false},
 		{"student cannot see teacher analytics", student, ActionAnalyticsTeacher, Resource{OwnerID: "t1"}, false},
 
+		{"admin reads org analytics", admin, ActionAnalyticsOrg, Resource{}, true},
+		{"teacher cannot read org analytics", teacher, ActionAnalyticsOrg, Resource{}, false},
+		{"student cannot read org analytics", student, ActionAnalyticsOrg, Resource{}, false},
+
 		{"disabled admin can do nothing", User{ID: "a1", Role: "admin", Status: "disabled"}, ActionUsersManage, Resource{}, false},
 		{"unknown action fails closed", admin, Action("typo.action"), Resource{}, false},
 	}

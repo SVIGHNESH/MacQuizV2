@@ -1178,6 +1178,27 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/org:
+    get:
+      operationId: getOrgStats
+      summary: Org-wide dashboard (admin)
+      description: >-
+        docs/07 section 4 (FR-9): active users by role, a 12-week
+        quizzes-created trend, platform-wide participation, and a per-group
+        cohort comparison. Computed live from small, already-indexed
+        aggregates rather than a rollup table. Admin-only; every other caller
+        reads 403.
+      responses:
+        "200":
+          description: The org-wide dashboard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/quizzes/assigned:
     get:
       operationId: listAssignedQuizzes
@@ -2261,6 +2282,74 @@ components:
           nullable: true
           description: Mean of each quiz's raw-point mean; not a percentage.
         avg_publish_to_results_sec:
+          type: number
+          nullable: true
+    OrgStats:
+      type: object
+      description: >-
+        The admin org-wide dashboard (docs/07 section 4, FR-9). Every field is
+        computed live: there is no org_stats rollup table.
+      required:
+        - active_users
+        - quizzes_per_week
+        - platform_participation
+        - cohort_comparisons
+      properties:
+        active_users:
+          type: object
+          required: [admins, teachers, students]
+          properties:
+            admins:
+              type: integer
+            teachers:
+              type: integer
+            students:
+              type: integer
+        quizzes_per_week:
+          type: array
+          description: >-
+            Quizzes created per week over the trailing 12 weeks, oldest
+            first. A week with no quizzes created is simply absent.
+          items:
+            type: object
+            required: [week_start, count]
+            properties:
+              week_start:
+                type: string
+                format: date-time
+              count:
+                type: integer
+        platform_participation:
+          type: number
+          nullable: true
+          description: Mean participation across every rolled-up quiz_stats row.
+        cohort_comparisons:
+          type: array
+          items:
+            $ref: "#/components/schemas/CohortStats"
+    CohortStats:
+      type: object
+      description: >-
+        One group's members compared against the platform-wide
+        student-analytics profile.
+      required:
+        - group_id
+        - group_name
+        - member_count
+        - avg_completion_rate
+        - avg_accuracy
+      properties:
+        group_id:
+          type: string
+          format: uuid
+        group_name:
+          type: string
+        member_count:
+          type: integer
+        avg_completion_rate:
+          type: number
+          nullable: true
+        avg_accuracy:
           type: number
           nullable: true
     Group:

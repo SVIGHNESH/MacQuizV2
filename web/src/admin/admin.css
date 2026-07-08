@@ -97,6 +97,22 @@
   white-space: nowrap;
 }
 
+.admin-cohort-table .qt-head,
+.admin-cohort-table .qt-row {
+  grid-template-columns: minmax(0, 1fr) 100px 130px 120px;
+}
+
+.admin-cohort-table .qt-head > *,
+.admin-cohort-table .qt-row > * {
+  min-width: 0;
+}
+
+.admin-cohort-table .qt-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-members-panel {
   display: grid;
   gap: 14px;

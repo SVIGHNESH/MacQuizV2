@@ -40,6 +40,9 @@ const (
 	// themself; a student sees only themself.
 	ActionAnalyticsStudent Action = "analytics.student"
 	ActionAnalyticsTeacher Action = "analytics.teacher"
+	// ActionAnalyticsOrg is the org-wide dashboard (docs/07 section 4, "Org-wide"):
+	// admin only, no owner or subject to check.
+	ActionAnalyticsOrg Action = "analytics.org"
 )
 
 // Resource carries the identity facts Can needs about the target. The caller
@@ -91,6 +94,8 @@ func Can(actor User, action Action, res Resource) bool {
 	case ActionAnalyticsTeacher:
 		return actor.Role == "admin" ||
 			(actor.Role == "teacher" && actor.ID == res.OwnerID)
+	case ActionAnalyticsOrg:
+		return actor.Role == "admin"
 	}
 	// Unknown actions are denied: a typo can only ever fail closed.
 	return false

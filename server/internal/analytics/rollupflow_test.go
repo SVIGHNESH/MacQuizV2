@@ -667,4 +667,74 @@ func TestRollupFlowE2E(t *testing.T) {
 			t.Fatalf("garbage GET teacher analytics = %d %v, want 404", status, body)
 		}
 	})
+
+	// GET /analytics/org (FR-9, docs/07 section 4 "Org-wide"): admin-only.
+	// scholar/learner/absent already have pinned student_stats rows from the
+	// subtest above (completion 0.75/1/0, avg accuracy 1.0/0.4/null), so a
+	// three-member cohort gives deterministic averages to pin here too.
+	status, body, _ := itest.Call(t, server, "POST", "/api/v1/groups",
+		map[string]string{"name": "Cohort A"}, admin)
+	if status != 201 {
+		t.Fatalf("create group = %d %v, want 201", status, body)
+	}
+	cohortID := body["group"].(map[string]any)["id"].(string)
+	absentID := userID(t, ctx, sqlDB, "absent@school.test")
+	if status, body, _ := itest.Call(t, server, "PUT", "/api/v1/groups/"+cohortID+"/members",
+		map[string]any{"student_ids": []string{scholarID, learnerID, absentID}}, admin); status != 200 {
+		t.Fatalf("set cohort members = %d %v, want 200", status, body)
+	}
+
+	t.Run("an admin reads the org-wide dashboard", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/org", nil, admin)
+		if status != 200 {
+			t.Fatalf("admin GET org analytics = %d %v, want 200", status, body)
+		}
+		users := body["active_users"].(map[string]any)
+		// scholar/learner/absent plus the "newcomer with no rollup yet" fixture
+		// from the student-analytics subtest above.
+		if users["admins"].(float64) != 1 || users["teachers"].(float64) != 2 || users["students"].(float64) != 4 {
+			t.Fatalf("active_users = %v, want 1 admin, 2 teachers, 4 students", users)
+		}
+		// All five quizzes (Graded/Archived/Empty/Ungraded/Pending) were created
+		// in this same test run, so they land in one weekly bucket.
+		weeks := body["quizzes_per_week"].([]any)
+		if len(weeks) != 1 || weeks[0].(map[string]any)["count"].(float64) != 5 {
+			t.Fatalf("quizzes_per_week = %v, want one bucket of 5", weeks)
+		}
+		if body["platform_participation"] == nil {
+			t.Fatalf("platform_participation = nil, want a computed average")
+		}
+		cohorts := body["cohort_comparisons"].([]any)
+		if len(cohorts) != 1 {
+			t.Fatalf("cohort_comparisons = %v, want the one cohort", cohorts)
+		}
+		cohort := cohorts[0].(map[string]any)
+		if cohort["group_id"] != cohortID || cohort["group_name"] != "Cohort A" {
+			t.Fatalf("cohort identity = %v, want %s/Cohort A", cohort, cohortID)
+		}
+		if cohort["member_count"].(float64) != 3 {
+			t.Fatalf("cohort member_count = %v, want 3", cohort["member_count"])
+		}
+		// (0.75 + 1 + 0) / 3.
+		if math.Abs(cohort["avg_completion_rate"].(float64)-7.0/12.0) > 1e-9 {
+			t.Fatalf("cohort avg_completion_rate = %v, want 0.5833", cohort["avg_completion_rate"])
+		}
+		if math.Abs(cohort["avg_accuracy"].(float64)-0.7) > 1e-9 {
+			t.Fatalf("cohort avg_accuracy = %v, want 0.7 (absent's null trend excluded)", cohort["avg_accuracy"])
+		}
+	})
+
+	t.Run("a teacher is blocked at the role gate", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/org", nil, teacher)
+		if status != 403 {
+			t.Fatalf("teacher GET org analytics = %d %v, want 403", status, body)
+		}
+	})
+
+	t.Run("a student is blocked at the role gate", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/org", nil, scholar)
+		if status != 403 {
+			t.Fatalf("student GET org analytics = %d %v, want 403", status, body)
+		}
+	})
 }

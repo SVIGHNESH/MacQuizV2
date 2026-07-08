@@ -218,3 +218,124 @@ func (s *Service) TeacherStats(ctx context.Context, actor authusers.User, teache
 	}
 	return out, nil
 }
+
+// ActiveUserCounts is the platform's active headcount by role (docs/07
+// section 4, "Org-wide": "Active users").
+type ActiveUserCounts struct {
+	Admins   int `json:"admins"`
+	Teachers int `json:"teachers"`
+	Students int `json:"students"`
+}
+
+// WeeklyCount is one bucket of the quizzes-created-per-week trend.
+type WeeklyCount struct {
+	WeekStart time.Time `json:"week_start"`
+	Count     int       `json:"count"`
+}
+
+// CohortStats compares one group's members against the platform-wide
+// student-analytics profile (docs/07 section 4, "cohort comparisons across
+// groups"). AvgCompletionRate and AvgAccuracy are null when no member has a
+// student_stats rollup yet, mirroring the per-student null-until-rolled-up
+// convention.
+type CohortStats struct {
+	GroupID           string   `json:"group_id"`
+	GroupName         string   `json:"group_name"`
+	MemberCount       int      `json:"member_count"`
+	AvgCompletionRate *float64 `json:"avg_completion_rate"`
+	AvgAccuracy       *float64 `json:"avg_accuracy"`
+}
+
+// OrgStats is the admin org-wide dashboard (docs/07 section 4, FR-9): active
+// users, a recent quizzes-created trend, platform-wide participation, and a
+// per-group cohort comparison. Unlike QuizStats/StudentStats it has no
+// rollup table of its own - every field is computed live from small,
+// already-indexed aggregates (user/group counts, the frozen per-quiz
+// quiz_stats rows), so it stays cheap without needing a dedicated org_stats
+// table.
+type OrgStats struct {
+	ActiveUsers           ActiveUserCounts `json:"active_users"`
+	QuizzesPerWeek        []WeeklyCount    `json:"quizzes_per_week"`
+	PlatformParticipation *float64         `json:"platform_participation"`
+	CohortComparisons     []CohortStats    `json:"cohort_comparisons"`
+}
+
+// OrgStats returns the org-wide dashboard for an admin (docs/04 permission
+// matrix: org analytics is admin-only, so the caller gates on ActionAnalyticsOrg
+// before this ever runs; there is no per-resource decision left to make here).
+func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats, error) {
+	if !authusers.Can(actor, authusers.ActionAnalyticsOrg, authusers.Resource{}) {
+		return OrgStats{}, ErrNotFound
+	}
+
+	var out OrgStats
+	err := s.db.QueryRowContext(ctx,
+		`SELECT
+		   (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active'),
+		   (SELECT count(*) FROM users WHERE role = 'teacher' AND status = 'active'),
+		   (SELECT count(*) FROM users WHERE role = 'student' AND status = 'active'),
+		   (SELECT avg(participation) FROM quiz_stats)`,
+	).Scan(&out.ActiveUsers.Admins, &out.ActiveUsers.Teachers, &out.ActiveUsers.Students,
+		&out.PlatformParticipation)
+	if err != nil {
+		return OrgStats{}, fmt.Errorf("load org headcounts: %w", err)
+	}
+
+	// Last 12 weeks of quiz creation, oldest first; a week with no quizzes is
+	// simply absent (the dashboard renders it as a zero bucket), matching the
+	// sparse-series convention student_stats.accuracy_trend already uses.
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT date_trunc('week', created_at) AS week_start, count(*)
+		 FROM quizzes
+		 WHERE created_at >= date_trunc('week', now()) - interval '11 weeks'
+		 GROUP BY week_start
+		 ORDER BY week_start`)
+	if err != nil {
+		return OrgStats{}, fmt.Errorf("load quizzes per week: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var wc WeeklyCount
+		if err := rows.Scan(&wc.WeekStart, &wc.Count); err != nil {
+			return OrgStats{}, fmt.Errorf("scan weekly count: %w", err)
+		}
+		out.QuizzesPerWeek = append(out.QuizzesPerWeek, wc)
+	}
+	if err := rows.Err(); err != nil {
+		return OrgStats{}, fmt.Errorf("load quizzes per week: %w", err)
+	}
+
+	// One row per group, each member's completion_rate averaged directly and
+	// each member's own average accuracy (across their accuracy_trend) averaged
+	// via a lateral subquery, since accuracy lives one level deeper than
+	// completion_rate inside the jsonb trend array.
+	cohortRows, err := s.db.QueryContext(ctx,
+		`SELECT g.id::text, g.name, count(gm.student_id),
+		        avg(ss.completion_rate)::float8, avg(sub.avg_accuracy)
+		 FROM groups g
+		 LEFT JOIN group_members gm ON gm.group_id = g.id
+		 LEFT JOIN student_stats ss ON ss.student_id = gm.student_id
+		 LEFT JOIN LATERAL (
+		     SELECT avg((elem->>'accuracy')::float8) AS avg_accuracy
+		     FROM jsonb_array_elements(ss.accuracy_trend) elem
+		     WHERE elem->>'accuracy' IS NOT NULL
+		 ) sub ON true
+		 GROUP BY g.id, g.name
+		 ORDER BY g.name`)
+	if err != nil {
+		return OrgStats{}, fmt.Errorf("load cohort comparisons: %w", err)
+	}
+	defer cohortRows.Close()
+	for cohortRows.Next() {
+		var cs CohortStats
+		if err := cohortRows.Scan(&cs.GroupID, &cs.GroupName, &cs.MemberCount,
+			&cs.AvgCompletionRate, &cs.AvgAccuracy); err != nil {
+			return OrgStats{}, fmt.Errorf("scan cohort stats: %w", err)
+		}
+		out.CohortComparisons = append(out.CohortComparisons, cs)
+	}
+	if err := cohortRows.Err(); err != nil {
+		return OrgStats{}, fmt.Errorf("load cohort comparisons: %w", err)
+	}
+	return out, nil
+}
