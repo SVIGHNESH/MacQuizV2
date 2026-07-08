@@ -668,6 +668,44 @@ paths:
           $ref: "#/components/responses/NotEditable"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/imports/{id}/commit:
+    post:
+      operationId: commitImport
+      summary: Commit a validated import transactionally (owner)
+      description: >-
+        docs/07 section 2 step 5: only an import in status "ready" may be
+        committed. Inserts every parsed row as an ordinary question tagged
+        source "import" with import_id for provenance, all in one
+        transaction, then flips the import to "committed". The quiz must
+        still be a draft, the same gate as one-by-one authoring.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The committed import and the questions it inserted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitImportResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            Either QUIZ_NOT_EDITABLE (the quiz left draft) or
+            IMPORT_NOT_READY (the import is not status "ready").
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/quizzes/{id}/publish:
     post:
       operationId: publishQuiz
@@ -1459,6 +1497,15 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ImportNotReady:
+      description: >-
+        IMPORT_NOT_READY - the import is not in status "ready" (still
+        validating, failed validation, or already committed), so it cannot
+        be committed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     QuizNotClosed:
       description: >-
         QUIZ_NOT_CLOSED - results can be released once the quiz's window has
@@ -1877,6 +1924,20 @@ components:
       properties:
         import:
           $ref: "#/components/schemas/Import"
+    CommitImportResponse:
+      type: object
+      description: >-
+        docs/07 section 2 step 5: the import, now status "committed", plus
+        the questions it inserted (tagged source "import" with import_id for
+        provenance).
+      required: [import, questions]
+      properties:
+        import:
+          $ref: "#/components/schemas/Import"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeacherQuestion"
     Group:
       type: object
       required: [id, name, member_count, created_at]

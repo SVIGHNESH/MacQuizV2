@@ -90,6 +90,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 					}
 					r.Mount("/quizzes", deps.Quiz.QuizRoutes())
 					r.Mount("/questions", deps.Quiz.QuestionRoutes())
+					r.Mount("/imports", deps.Quiz.ImportRoutes())
 				}
 				if deps.Attempt != nil {
 					r.Mount("/attempts", deps.Attempt.Routes())

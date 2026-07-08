@@ -46,6 +46,12 @@ var (
 	// archiving is the terminal Closed -> Archived retirement (docs/06 section
 	// 1), so a draft/scheduled/live quiz must be force-closed first.
 	ErrNotArchivable = errors.New("only a closed quiz can be archived")
+	// ErrImportNotReady marks a commit attempt against an import that has not
+	// finished validation clean (docs/07 section 2 step 5): only an import in
+	// 'ready' state may be committed. 'validating' means the worker has not
+	// finished yet, 'failed' means the file has row errors to fix, and
+	// 'committed' means this already happened once.
+	ErrImportNotReady = errors.New("import is not ready to commit")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay
@@ -109,12 +115,13 @@ type Service struct {
 	// uploads receives a registered bulk-import file (docs/07 section 2 step
 	// 2); RegisterImport writes through it before enqueueing the
 	// import_validate job the worker (internal/quiz/importworker.go) later
-	// reads back through an ImportStorage pointed at the same files.
-	uploads ImportUploadStore
+	// reads back through the same store, and CommitImport reads it a second
+	// time at commit to recover the parsed rows to insert.
+	uploads ImportFileStore
 }
 
 // NewService wires the quiz authoring service.
-func NewService(db *sql.DB, log *slog.Logger, uploads ImportUploadStore) *Service {
+func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore) *Service {
 	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
 	if err != nil {
 		// The empty config is statically valid; NewClient has nothing left
@@ -409,6 +416,87 @@ func (s *Service) RegisterImport(ctx context.Context, actor authusers.User, quiz
 		return Import{}, fmt.Errorf("commit register import: %w", err)
 	}
 	return imp, nil
+}
+
+// CommitImport inserts every row of a validated bulk-upload file as ordinary
+// questions, tagged source='import' with import_id for provenance, and
+// flips the import to 'committed' (docs/07 section 2 step 5: "the commit is
+// all-or-nothing"). The file was already fully validated by the worker
+// (ValidateImport); CommitImport re-parses it here rather than persisting
+// the parsed rows earlier, since the uploaded file is immutable once saved
+// (LocalImportStorage.Save never overwrites a file_ref) so re-parsing always
+// reproduces the same rows the review step showed the teacher. Everything -
+// the re-parse, every row insert, and the status flip - runs inside one
+// transaction under the quiz row lock, so a failure partway leaves neither a
+// changed import nor any new questions.
+func (s *Service) CommitImport(ctx context.Context, actor authusers.User, importID string) (Import, []Question, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Import{}, nil, fmt.Errorf("begin commit-import tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	var quizID, fileRef, status string
+	err = tx.QueryRowContext(ctx,
+		`SELECT quiz_id, file_ref, status FROM imports WHERE id = $1 FOR UPDATE`, importID).Scan(&quizID, &fileRef, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Import{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return Import{}, nil, fmt.Errorf("load import: %w", err)
+	}
+
+	if _, err := s.draftForUpdate(ctx, tx, actor, quizID); err != nil {
+		return Import{}, nil, err
+	}
+	if status != "ready" {
+		return Import{}, nil, ErrImportNotReady
+	}
+
+	f, err := s.uploads.Open(ctx, fileRef)
+	if err != nil {
+		return Import{}, nil, fmt.Errorf("reopen import file: %w", err)
+	}
+	defer f.Close()
+	rows, rowErrors, err := ParseImportCSV(f)
+	if err != nil || len(rowErrors) > 0 {
+		return Import{}, nil, fmt.Errorf("import file changed since it was validated ready")
+	}
+
+	var basePos int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT coalesce(max(position), 0) FROM questions WHERE quiz_id = $1`, quizID).Scan(&basePos); err != nil {
+		return Import{}, nil, fmt.Errorf("load current position: %w", err)
+	}
+
+	inserted := make([]Question, 0, len(rows))
+	for i, row := range rows {
+		q, err := scanQuestion(tx.QueryRowContext(ctx,
+			`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, source, import_id)
+			 VALUES ($1, $2, $3::question_type, $4::jsonb, $5::jsonb, $6::jsonb, $7::numeric, 'import', $8)
+			 RETURNING `+questionColumns,
+			quizID, basePos+i+1, row.Input.Type, row.Input.Body, nullableJSON(row.Input.Options),
+			row.Input.Correct, row.Input.points, importID).Scan)
+		if err != nil {
+			return Import{}, nil, fmt.Errorf("insert imported question (row %d): %w", row.Row, err)
+		}
+		inserted = append(inserted, q)
+	}
+
+	imp, err := scanImport(tx.QueryRowContext(ctx,
+		`UPDATE imports SET status = 'committed'::import_status WHERE id = $1
+		 RETURNING `+importColumns, importID).Scan)
+	if err != nil {
+		return Import{}, nil, fmt.Errorf("mark import committed: %w", err)
+	}
+	if err := audit.Write(ctx, tx, actor.ID, "imports.committed", "import", importID,
+		map[string]any{"quiz_id": quizID, "question_count": len(inserted)}); err != nil {
+		return Import{}, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Import{}, nil, fmt.Errorf("commit commit-import tx: %w", err)
+	}
+	return imp, inserted, nil
 }
 
 // UpdateQuestion replaces a question's content while its quiz is a draft.

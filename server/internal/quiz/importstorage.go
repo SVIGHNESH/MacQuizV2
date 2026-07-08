@@ -33,6 +33,17 @@ type ImportUploadStore interface {
 	Save(ctx context.Context, r io.Reader) (fileRef string, err error)
 }
 
+// ImportFileStore is the union of ImportUploadStore and ImportStorage.
+// RegisterImport writes a file through it and CommitImport later reads the
+// same file back through the same handle to recover the parsed rows
+// (docs/07 section 2 step 5); every implementation so far is one physical
+// store, so the service depends on a single combined interface rather than
+// two independently-configurable ones.
+type ImportFileStore interface {
+	ImportUploadStore
+	ImportStorage
+}
+
 // LocalImportStorage is the dev/single-VM ImportStorage: files live as
 // plain files under Dir, named by their file_ref. It stands in for the R2
 // pre-signed-upload flow (docs/02 section 3.5, docs/09 section 4) until

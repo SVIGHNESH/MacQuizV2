@@ -368,6 +368,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/{id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit a validated import transactionally (owner)
+         * @description docs/07 section 2 step 5: only an import in status "ready" may be committed. Inserts every parsed row as an ordinary question tagged source "import" with import_id for provenance, all in one transaction, then flips the import to "committed". The quiz must still be a draft, the same gate as one-by-one authoring.
+         */
+        post: operations["commitImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/publish": {
         parameters: {
             query?: never;
@@ -946,6 +966,11 @@ export interface components {
         ImportResponse: {
             import: components["schemas"]["Import"];
         };
+        /** @description docs/07 section 2 step 5: the import, now status "committed", plus the questions it inserted (tagged source "import" with import_id for provenance). */
+        CommitImportResponse: {
+            import: components["schemas"]["Import"];
+            questions: components["schemas"]["TeacherQuestion"][];
+        };
         Group: {
             /** Format: uuid */
             id: string;
@@ -1267,6 +1292,15 @@ export interface components {
         };
         /** @description The attempt state refuses this action; the client switches on code - QUIZ_NOT_LIVE (start outside the window), ATTEMPT_LIMIT_REACHED (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a terminal attempt), or ATTEMPT_KICKED (show the lockout screen). */
         AttemptConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description IMPORT_NOT_READY - the import is not in status "ready" (still validating, failed validation, or already committed), so it cannot be committed. */
+        ImportNotReady: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1931,6 +1965,40 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["NotEditable"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    commitImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The committed import and the questions it inserted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitImportResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Either QUIZ_NOT_EDITABLE (the quiz left draft) or IMPORT_NOT_READY (the import is not status "ready"). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     publishQuiz: {

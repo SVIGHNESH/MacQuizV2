@@ -89,6 +89,16 @@ func (h *Handler) QuestionRoutes() http.Handler {
 	return r
 }
 
+// ImportRoutes returns the /api/v1/imports route group
+// (docs/04-api.md: POST /imports/:id/commit). It sits outside QuizRoutes
+// because the resource in the path is the import, not its quiz.
+func (h *Handler) ImportRoutes() http.Handler {
+	r := chi.NewRouter()
+	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireTeacher)
+	r.Post("/{id}/commit", h.handleCommitImport)
+	return r
+}
+
 // requireTeacher gates the authoring surface on the create capability, the
 // role-shaped row of the permission matrix. Resource-specific denials stay
 // in the service, where they answer 404.
@@ -260,6 +270,31 @@ func (h *Handler) handleRegisterImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"import": imp})
+}
+
+// handleCommitImport implements "Commit a validated import transactionally"
+// (docs/04-api.md: POST /imports/:id/commit). The id in the path is the
+// import, not a quiz, so a bad or unowned id reads as "no such import"
+// rather than the quiz-flavored 404 message other handlers in this file use.
+func (h *Handler) handleCommitImport(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such import")
+	if !ok {
+		return
+	}
+	imp, questions, err := h.svc.CommitImport(r.Context(), actor, id)
+	if errors.Is(err, ErrImportNotReady) {
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeImportNotReady,
+			"import must be validated and ready before it can be committed")
+		return
+	}
+	if h.writeQuizError(w, "commit import", err, "no such import") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{
+		"import":    imp,
+		"questions": TeacherViews(questions),
+	})
 }
 
 func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {
