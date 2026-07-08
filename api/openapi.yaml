@@ -20,13 +20,20 @@ paths:
   /healthz:
     get:
       operationId: getHealth
-      summary: Liveness check
+      summary: Dependency health check
       description: >-
-        Reports that the process is up. Deliberately checks no dependencies;
-        use /readyz to know whether the process can serve real traffic.
+        Checks database connectivity, Redis connectivity, and River queue lag
+        (docs/10-operations.md section 2); polled by external uptime
+        monitoring. Returns 503 if a wired dependency is unreachable.
       responses:
         "200":
-          description: Process is alive.
+          description: Healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: A dependency is unreachable.
           content:
             application/json:
               schema:
@@ -1776,11 +1783,11 @@ components:
           description: Pass as `before` to fetch the next page; null on the last page.
     Health:
       type: object
-      required: [status, version, commit, time]
+      required: [status, version, commit, time, checks]
       properties:
         status:
           type: string
-          enum: [ok]
+          enum: [ok, error]
         version:
           type: string
         commit:
@@ -1788,6 +1795,15 @@ components:
         time:
           type: string
           format: date-time
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+            redis:
+              type: string
+            queue_lag_seconds:
+              type: number
     Ready:
       type: object
       required: [status]

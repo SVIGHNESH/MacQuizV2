@@ -103,3 +103,11 @@ func (p *Publisher) Publish(ctx context.Context, quizID, attemptID, eventType st
 
 // Close releases the Redis connection pool.
 func (p *Publisher) Close() error { return p.rdb.Close() }
+
+// Ping verifies Redis is reachable. It backs the /healthz dependency check
+// (docs/10-operations.md section 2: "/healthz checks DB connectivity, Redis
+// connectivity, and queue depth"), so unlike Publish it returns the error
+// instead of swallowing it.
+func (p *Publisher) Ping(ctx context.Context) error {
+	return p.rdb.Ping(ctx).Err()
+}

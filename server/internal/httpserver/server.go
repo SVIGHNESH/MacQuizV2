@@ -29,10 +29,18 @@ type BuildInfo struct {
 	Commit  string `json:"commit"`
 }
 
+// RedisPinger checks Redis reachability for the /healthz dependency check.
+// realtime.Publisher satisfies this without httpserver importing go-redis
+// directly.
+type RedisPinger interface {
+	Ping(ctx context.Context) error
+}
+
 // Deps carries the wired modules into the router. Fields are nil in unit
 // tests that only exercise the router shell.
 type Deps struct {
 	DB        *sql.DB
+	Redis     RedisPinger
 	Auth      *authusers.Handler
 	Quiz      *quiz.Handler
 	Attempt   *attempt.Handler
@@ -66,7 +74,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Timeout(30 * time.Second))
 
-		r.Get("/healthz", handleHealth(build))
+		r.Get("/healthz", handleHealth(build, deps.DB, deps.Redis))
 		r.Get("/readyz", handleReady(deps.DB))
 
 		// Module routes are mounted under /api/v1 as milestones land:
@@ -106,25 +114,91 @@ func New(build BuildInfo, deps Deps) http.Handler {
 }
 
 type healthResponse struct {
-	Status  string    `json:"status"`
-	Version string    `json:"version"`
-	Commit  string    `json:"commit"`
-	Time    time.Time `json:"time"`
+	Status  string       `json:"status"`
+	Version string       `json:"version"`
+	Commit  string       `json:"commit"`
+	Time    time.Time    `json:"time"`
+	Checks  healthChecks `json:"checks"`
 }
 
-// handleHealth reports liveness. It deliberately checks no dependencies:
-// Compose and the load balancer use it to decide whether the process is up,
-// not whether Postgres is.
-func handleHealth(build BuildInfo) http.HandlerFunc {
+type healthChecks struct {
+	Database        string   `json:"database,omitempty"`
+	Redis           string   `json:"redis,omitempty"`
+	QueueLagSeconds *float64 `json:"queue_lag_seconds,omitempty"`
+}
+
+// healthCheckTimeout bounds each dependency probe below so a partitioned
+// Postgres or Redis fails the check fast instead of hanging the request until
+// the REST group's 30 s timeout middleware fires.
+const healthCheckTimeout = 2 * time.Second
+
+// handleHealth is the dependency check docs/10-operations.md section 2
+// requires: "/healthz checks DB connectivity, Redis connectivity, and queue
+// depth" - UptimeRobot pings this from outside every 5 min. A dependency that
+// is not wired (nil, as in router-shell-only tests) is skipped rather than
+// treated as down. Any wired-but-failing dependency flips the response to 503
+// so external monitoring alerts on it.
+func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
+		defer cancel()
+
+		healthy := true
+		checks := healthChecks{}
+
+		if db != nil {
+			if err := db.PingContext(ctx); err != nil {
+				checks.Database = "error: " + err.Error()
+				healthy = false
+			} else {
+				checks.Database = "ok"
+				// Queue lag is a supplementary signal, not a liveness
+				// condition on its own - a query failure here does not flip
+				// the overall status, it just omits the field.
+				if lag, err := queueLagSeconds(ctx, db); err == nil {
+					checks.QueueLagSeconds = &lag
+				}
+			}
+		}
+
+		if redis != nil {
+			if err := redis.Ping(ctx); err != nil {
+				checks.Redis = "error: " + err.Error()
+				healthy = false
+			} else {
+				checks.Redis = "ok"
+			}
+		}
+
+		status := "ok"
+		if !healthy {
+			status = "error"
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(healthResponse{
-			Status:  "ok",
+			Status:  status,
 			Version: build.Version,
 			Commit:  build.Commit,
 			Time:    time.Now().UTC(),
+			Checks:  checks,
 		})
 	}
+}
+
+// queueLagSeconds reports how overdue the oldest due-but-unfired River job
+// is (docs/10-operations.md's "queue lag (delayed jobs overdue)" alert
+// signal): the age of the oldest job still available/scheduled at or before
+// now, or 0 if the queue has no backlog.
+func queueLagSeconds(ctx context.Context, db *sql.DB) (float64, error) {
+	var lag float64
+	err := db.QueryRowContext(ctx, `
+		SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(scheduled_at))), 0)
+		FROM river_job
+		WHERE state IN ('available', 'scheduled') AND scheduled_at <= NOW()
+	`).Scan(&lag)
+	return lag, err
 }
 
 // handleReady reports readiness: the process can serve real traffic, which

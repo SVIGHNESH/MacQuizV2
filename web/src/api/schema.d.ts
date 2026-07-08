@@ -12,8 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Liveness check
-         * @description Reports that the process is up. Deliberately checks no dependencies; use /readyz to know whether the process can serve real traffic.
+         * Dependency health check
+         * @description Checks database connectivity, Redis connectivity, and River queue lag (docs/10-operations.md section 2); polled by external uptime monitoring. Returns 503 if a wired dependency is unreachable.
          */
         get: operations["getHealth"];
         put?: never;
@@ -919,11 +919,16 @@ export interface components {
         };
         Health: {
             /** @enum {string} */
-            status: "ok";
+            status: "ok" | "error";
             version: string;
             commit: string;
             /** Format: date-time */
             time: string;
+            checks: {
+                database?: string;
+                redis?: string;
+                queue_lag_seconds?: number;
+            };
         };
         Ready: {
             status: string;
@@ -1576,8 +1581,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Process is alive. */
+            /** @description Healthy. */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description A dependency is unreachable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
