@@ -6,6 +6,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,14 @@ type Config struct {
 	Addr string
 	// DatabaseURL is the PostgreSQL connection string.
 	DatabaseURL string
+	// DatabaseMaxConns bounds the pgx/database/sql pool serve and worker
+	// each open (docs/01 "go-live herd"): with no cap a request spike opens
+	// one Postgres connection per in-flight request and can exceed
+	// Postgres's own max_connections, failing every request mid-spike
+	// instead of queuing briefly on a small reused pool. The default (20)
+	// leaves headroom under a stock max_connections=100 for both processes
+	// plus migrate/bootstrap one-shots and a few admin sessions at once.
+	DatabaseMaxConns int
 	// RedisURL is the Redis connection string.
 	RedisURL string
 	// WSAllowedOrigins lists the browser Origin patterns permitted on the
@@ -77,6 +86,7 @@ func Load() Config {
 		Addr: getenv("MACQUIZ_ADDR", ":8080"),
 		// Dev defaults match the host-port mappings in docker-compose.yml.
 		DatabaseURL:      getenv("MACQUIZ_DATABASE_URL", "postgres://macquiz:macquiz@localhost:5433/macquiz?sslmode=disable"),
+		DatabaseMaxConns: getenvInt("MACQUIZ_DATABASE_MAX_CONNS", 20),
 		RedisURL:         getenv("MACQUIZ_REDIS_URL", "redis://localhost:6380/0"),
 		WSAllowedOrigins: splitCSV(os.Getenv("MACQUIZ_WS_ALLOWED_ORIGINS")),
 		ShutdownGrace:    10 * time.Second,
@@ -116,6 +126,20 @@ func splitCSV(v string) []string {
 		}
 	}
 	return out
+}
+
+// getenvInt reads an integer env var, falling back (silently, same as
+// getenv) on either an unset value or one that fails to parse.
+func getenvInt(key string, fallback int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func getenv(key, fallback string) string {

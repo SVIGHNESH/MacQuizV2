@@ -12,6 +12,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver used by goose
 	"github.com/pressly/goose/v3"
@@ -24,11 +25,24 @@ import (
 var migrationsFS embed.FS
 
 // Open connects to Postgres via pgx's database/sql adapter and verifies the
-// connection with a ping.
-func Open(ctx context.Context, url string) (*sql.DB, error) {
+// connection with a ping. maxOpenConns bounds the pool (0 leaves
+// database/sql's default of unlimited, fine for a one-shot command that
+// opens a handful of connections and exits); the long-running serve/worker
+// processes must pass a real bound (docs/01 "go-live herd": found by the
+// go-live-herd load test - with no cap, a concurrent request spike opens one
+// Postgres connection per in-flight request and can blow straight through
+// Postgres's own max_connections, failing every request mid-storm with
+// "sorry, too many clients already" instead of queuing briefly on a small
+// reused pool).
+func Open(ctx context.Context, url string, maxOpenConns int) (*sql.DB, error) {
 	sqlDB, err := sql.Open("pgx", url)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
+	}
+	if maxOpenConns > 0 {
+		sqlDB.SetMaxOpenConns(maxOpenConns)
+		sqlDB.SetMaxIdleConns(maxOpenConns)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
 	}
 	if err := sqlDB.PingContext(ctx); err != nil {
 		sqlDB.Close()

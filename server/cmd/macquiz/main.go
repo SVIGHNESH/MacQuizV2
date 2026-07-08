@@ -7,6 +7,8 @@
 //	macquiz worker     - River job consumers (scheduler, grading, imports, rollups)
 //	macquiz migrate    - apply pending schema migrations, then exit
 //	macquiz bootstrap  - idempotently create the first admin account, then exit
+//	macquiz loadtest-seed - idempotently provision the go-live-herd load
+//	                     test's teacher/students/quiz fixtures, then exit
 //
 // All modes read the same environment configuration (internal/config).
 package main
@@ -70,13 +72,15 @@ func run() error {
 		return migrate(ctx, cfg, log)
 	case "bootstrap":
 		return bootstrap(ctx, cfg, log)
+	case "loadtest-seed":
+		return loadtestSeed(ctx, cfg, log)
 	default:
-		return fmt.Errorf("unknown mode %q (want serve, worker, migrate, or bootstrap)", os.Args[1])
+		return fmt.Errorf("unknown mode %q (want serve, worker, migrate, bootstrap, or loadtest-seed)", os.Args[1])
 	}
 }
 
 func migrate(ctx context.Context, cfg config.Config, log *slog.Logger) error {
-	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL, 0)
 	if err != nil {
 		return err
 	}
@@ -96,7 +100,7 @@ func bootstrap(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	if cfg.BootstrapAdminEmail == "" || cfg.BootstrapAdminPassword == "" {
 		return errors.New("bootstrap requires MACQUIZ_BOOTSTRAP_ADMIN_EMAIL and MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD")
 	}
-	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL, 0)
 	if err != nil {
 		return err
 	}
@@ -108,7 +112,7 @@ func bootstrap(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 }
 
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
-	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL, cfg.DatabaseMaxConns)
 	if err != nil {
 		return err
 	}

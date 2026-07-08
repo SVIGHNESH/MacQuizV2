@@ -182,7 +182,7 @@ func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, pub attempt.
 
 // Run starts the worker loop and blocks until ctx is cancelled.
 func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
-	sqlDB, err := db.Open(ctx, cfg.DatabaseURL)
+	sqlDB, err := db.Open(ctx, cfg.DatabaseURL, cfg.DatabaseMaxConns)
 	if err != nil {
 		return err
 	}

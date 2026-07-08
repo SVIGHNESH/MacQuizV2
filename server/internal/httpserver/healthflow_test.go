@@ -91,7 +91,7 @@ func TestHealthzDependencyChecks(t *testing.T) {
 	})
 
 	t.Run("db down flips to 503", func(t *testing.T) {
-		dead, err := db.Open(ctx, url)
+		dead, err := db.Open(ctx, url, 0)
 		if err != nil {
 			t.Fatalf("open second connection: %v", err)
 		}

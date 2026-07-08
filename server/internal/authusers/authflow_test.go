@@ -235,7 +235,7 @@ func TestAuthFlowE2E(t *testing.T) {
 // connection to it (closed via t.Cleanup).
 func freshDatabase(t *testing.T, ctx context.Context, baseURL, name string) *sql.DB {
 	t.Helper()
-	admin, err := db.Open(ctx, baseURL)
+	admin, err := db.Open(ctx, baseURL, 0)
 	if err != nil {
 		t.Fatalf("open admin connection: %v", err)
 	}
@@ -252,7 +252,7 @@ func freshDatabase(t *testing.T, ctx context.Context, baseURL, name string) *sql
 		t.Fatalf("parse database url: %v", err)
 	}
 	u.Path = "/" + name
-	testDB, err := db.Open(ctx, u.String())
+	testDB, err := db.Open(ctx, u.String(), 0)
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}

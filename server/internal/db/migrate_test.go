@@ -22,7 +22,7 @@ func TestMigrations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	sqlDB, err := Open(ctx, url)
+	sqlDB, err := Open(ctx, url, 0)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
