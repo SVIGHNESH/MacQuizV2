@@ -1059,6 +1059,92 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/quizzes/{id}:
+    get:
+      operationId: getQuizStats
+      summary: Quiz stats and item analysis (owner or admin)
+      description: >-
+        docs/04 section 2: the rolled-up quiz_stats row RollupDue computed on
+        close - score distribution, mean/median/participation, per-question
+        item analysis, and the integrity summary. 404 until the rollup has
+        run (the quiz is still open, or the close sweep has not reached it
+        yet) as well as for a non-owning teacher.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz's rolled-up analytics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/students/{id}:
+    get:
+      operationId: getStudentStats
+      summary: Student performance profile (self, assigned teacher, or admin)
+      description: >-
+        docs/04 section 2: a student's cross-quiz rollup - accuracy trend,
+        average time per question, completion rate. Visible to the student
+        themselves, a teacher who has them assigned, or an admin; every other
+        caller, and a student with no rollup yet, reads 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The student's rolled-up analytics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/teachers/{id}:
+    get:
+      operationId: getTeacherStats
+      summary: Teacher activity and outcomes (admin or self)
+      description: >-
+        docs/07 section 4: a teacher's activity-and-outcomes summary,
+        aggregated live from quizzes/attempts/quiz_stats rather than from a
+        rollup table. Visible to that teacher themselves or an admin; a
+        non-teacher id or any other caller reads 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The teacher's activity-and-outcomes summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/quizzes/assigned:
     get:
       operationId: listAssignedQuizzes
@@ -1966,6 +2052,184 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeacherQuestion"
+    QuizStats:
+      type: object
+      description: >-
+        The quiz_stats row for the wire (docs/03-data-model.md). Frozen at
+        close by RollupDue; a dashboard read is one primary-key lookup, never
+        a live recompute.
+      required:
+        - quiz_id
+        - distribution
+        - mean
+        - median
+        - participation
+        - item_analysis
+        - integrity
+        - computed_at
+      properties:
+        quiz_id:
+          type: string
+          format: uuid
+        distribution:
+          type: array
+          description: >-
+            10 equal-width percentage-of-max-score buckets (0-10%, 10-20%, ...,
+            90-100%), each the count of best-attempt scores falling in it.
+          items:
+            type: integer
+        mean:
+          type: number
+          nullable: true
+        median:
+          type: number
+          nullable: true
+        participation:
+          type: number
+          nullable: true
+          description: Fraction of assigned students with a graded attempt.
+        item_analysis:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemStat"
+        integrity:
+          $ref: "#/components/schemas/IntegritySummary"
+        computed_at:
+          type: string
+          format: date-time
+    ItemStat:
+      type: object
+      description: One question's row in item_analysis, over each student's best graded attempt.
+      required:
+        - question_id
+        - responses
+        - p_value
+        - point_biserial
+        - option_pick_rates
+        - avg_time_ms
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        responses:
+          type: integer
+        p_value:
+          type: number
+          description: Fraction of responses that were correct (difficulty).
+        point_biserial:
+          type: number
+          nullable: true
+          description: Item-discrimination correlation; null when undefined.
+        option_pick_rates:
+          type: object
+          additionalProperties:
+            type: integer
+        avg_time_ms:
+          type: number
+    IntegritySummary:
+      type: object
+      required:
+        - kicked_attempts
+        - flagged_students
+        - total_violations
+        - per_student
+      properties:
+        kicked_attempts:
+          type: integer
+        flagged_students:
+          type: integer
+        total_violations:
+          type: integer
+        per_student:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrityStudent"
+    IntegrityStudent:
+      type: object
+      required: [student_id, violations, kicked]
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        violations:
+          type: integer
+        kicked:
+          type: boolean
+    StudentStats:
+      type: object
+      description: The student_stats row for the wire (docs/03-data-model.md).
+      required:
+        - student_id
+        - accuracy_trend
+        - avg_time_per_question
+        - completion_rate
+        - topic_strengths
+        - updated_at
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        accuracy_trend:
+          type: array
+          description: The student's best-attempt accuracy per terminal quiz, submission-ordered.
+          items:
+            type: object
+            required: [quiz_id, accuracy, submitted_at]
+            properties:
+              quiz_id:
+                type: string
+                format: uuid
+              accuracy:
+                type: number
+                nullable: true
+              submitted_at:
+                type: string
+                format: date-time
+        avg_time_per_question:
+          type: number
+          nullable: true
+        completion_rate:
+          type: number
+          nullable: true
+        topic_strengths:
+          type: object
+          description: Reserved; always an empty object today (no topic taxonomy yet).
+        updated_at:
+          type: string
+          format: date-time
+    TeacherStats:
+      type: object
+      description: >-
+        A teacher's activity-and-outcomes summary (docs/07 section 4),
+        aggregated live rather than from a rollup table.
+      required:
+        - teacher_id
+        - quizzes_created
+        - quizzes_conducted
+        - total_attempts
+        - avg_participation
+        - avg_class_score
+        - avg_publish_to_results_sec
+      properties:
+        teacher_id:
+          type: string
+          format: uuid
+        quizzes_created:
+          type: integer
+        quizzes_conducted:
+          type: integer
+        total_attempts:
+          type: integer
+        avg_participation:
+          type: number
+          nullable: true
+        avg_class_score:
+          type: number
+          nullable: true
+          description: Mean of each quiz's raw-point mean; not a percentage.
+        avg_publish_to_results_sec:
+          type: number
+          nullable: true
     Group:
       type: object
       required: [id, name, member_count, created_at]

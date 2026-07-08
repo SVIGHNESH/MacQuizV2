@@ -571,6 +571,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/quizzes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quiz stats and item analysis (owner or admin)
+         * @description docs/04 section 2: the rolled-up quiz_stats row RollupDue computed on close - score distribution, mean/median/participation, per-question item analysis, and the integrity summary. 404 until the rollup has run (the quiz is still open, or the close sweep has not reached it yet) as well as for a non-owning teacher.
+         */
+        get: operations["getQuizStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/students/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Student performance profile (self, assigned teacher, or admin)
+         * @description docs/04 section 2: a student's cross-quiz rollup - accuracy trend, average time per question, completion rate. Visible to the student themselves, a teacher who has them assigned, or an admin; every other caller, and a student with no rollup yet, reads 404.
+         */
+        get: operations["getStudentStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/teachers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Teacher activity and outcomes (admin or self)
+         * @description docs/07 section 4: a teacher's activity-and-outcomes summary, aggregated live from quizzes/attempts/quiz_stats rather than from a rollup table. Visible to that teacher themselves or an admin; a non-teacher id or any other caller reads 404.
+         */
+        get: operations["getTeacherStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/assigned": {
         parameters: {
             query?: never;
@@ -990,6 +1050,78 @@ export interface components {
         CommitImportResponse: {
             import: components["schemas"]["Import"];
             questions: components["schemas"]["TeacherQuestion"][];
+        };
+        /** @description The quiz_stats row for the wire (docs/03-data-model.md). Frozen at close by RollupDue; a dashboard read is one primary-key lookup, never a live recompute. */
+        QuizStats: {
+            /** Format: uuid */
+            quiz_id: string;
+            /** @description 10 equal-width percentage-of-max-score buckets (0-10%, 10-20%, ..., 90-100%), each the count of best-attempt scores falling in it. */
+            distribution: number[];
+            mean: number | null;
+            median: number | null;
+            /** @description Fraction of assigned students with a graded attempt. */
+            participation: number | null;
+            item_analysis: components["schemas"]["ItemStat"][];
+            integrity: components["schemas"]["IntegritySummary"];
+            /** Format: date-time */
+            computed_at: string;
+        };
+        /** @description One question's row in item_analysis, over each student's best graded attempt. */
+        ItemStat: {
+            /** Format: uuid */
+            question_id: string;
+            responses: number;
+            /** @description Fraction of responses that were correct (difficulty). */
+            p_value: number;
+            /** @description Item-discrimination correlation; null when undefined. */
+            point_biserial: number | null;
+            option_pick_rates: {
+                [key: string]: number;
+            };
+            avg_time_ms: number;
+        };
+        IntegritySummary: {
+            kicked_attempts: number;
+            flagged_students: number;
+            total_violations: number;
+            per_student: components["schemas"]["IntegrityStudent"][];
+        };
+        IntegrityStudent: {
+            /** Format: uuid */
+            student_id: string;
+            violations: number;
+            kicked: boolean;
+        };
+        /** @description The student_stats row for the wire (docs/03-data-model.md). */
+        StudentStats: {
+            /** Format: uuid */
+            student_id: string;
+            /** @description The student's best-attempt accuracy per terminal quiz, submission-ordered. */
+            accuracy_trend: {
+                /** Format: uuid */
+                quiz_id: string;
+                accuracy: number | null;
+                /** Format: date-time */
+                submitted_at: string;
+            }[];
+            avg_time_per_question: number | null;
+            completion_rate: number | null;
+            /** @description Reserved; always an empty object today (no topic taxonomy yet). */
+            topic_strengths: Record<string, never>;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description A teacher's activity-and-outcomes summary (docs/07 section 4), aggregated live rather than from a rollup table. */
+        TeacherStats: {
+            /** Format: uuid */
+            teacher_id: string;
+            quizzes_created: number;
+            quizzes_conducted: number;
+            total_attempts: number;
+            avg_participation: number | null;
+            /** @description Mean of each quiz's raw-point mean; not a percentage. */
+            avg_class_score: number | null;
+            avg_publish_to_results_sec: number | null;
         };
         Group: {
             /** Format: uuid */
@@ -2315,6 +2447,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveRosterResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getQuizStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz's rolled-up analytics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizStats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStudentStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The student's rolled-up analytics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentStats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTeacherStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The teacher's activity-and-outcomes summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherStats"];
                 };
             };
             401: components["responses"]["Unauthorized"];

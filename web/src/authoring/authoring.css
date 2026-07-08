@@ -793,3 +793,113 @@
 .window-summary {
   margin-top: -8px;
 }
+
+/* Quiz stats panel: score distribution, item analysis, integrity (docs/11) */
+
+.stats-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.stat-tile {
+  display: grid;
+  gap: 4px;
+  background: var(--color-well);
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
+}
+
+.stat-tile-label {
+  font: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.stat-tile-value {
+  font: 650 20px/1.3 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.stats-distribution {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  align-items: end;
+  gap: 6px;
+  height: 120px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.stats-bar-col {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  justify-items: center;
+  height: 100%;
+  gap: 4px;
+}
+
+.stats-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--color-chart-tint-1);
+  border-radius: 3px 3px 0 0;
+}
+
+.stats-bar-label {
+  font: var(--text-secondary);
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.stats-item-table {
+  display: grid;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.stats-item-head,
+.stats-item-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 100px 120px 90px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.stats-item-head {
+  background: var(--color-table-header);
+  border-bottom: 1px solid var(--color-border-hairline);
+  font: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.stats-item-row {
+  border-bottom: 1px solid var(--color-well);
+}
+
+.stats-item-row:last-child {
+  border-bottom: 0;
+}
+
+.stats-item-question {
+  font: var(--text-body);
+  color: var(--color-text-strong);
+}
+
+.stats-integrity {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-hairline);
+}

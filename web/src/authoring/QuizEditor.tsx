@@ -11,6 +11,7 @@ import {
 import ImportPanel from './ImportPanel'
 import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
+import QuizStatsPanel from './QuizStatsPanel'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
 
 const QUESTION_TYPES: QuestionType[] = ['single', 'multi', 'truefalse', 'short']
@@ -370,6 +371,10 @@ function LoadedEditor({
           questionCount={questions.length}
           onPublished={setQuiz}
         />
+      )}
+
+      {(quiz.status === 'closed' || quiz.status === 'archived') && (
+        <QuizStatsPanel quizId={quiz.id} questions={questions} />
       )}
     </div>
   )
