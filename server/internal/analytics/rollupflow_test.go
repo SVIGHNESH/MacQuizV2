@@ -175,6 +175,13 @@ func TestRollupFlowE2E(t *testing.T) {
 		`UPDATE attempts SET violation_count = 2, submit_kind = 'kicked' WHERE id = $1`, learnerAttempt); err != nil {
 		t.Fatalf("stamp integrity: %v", err)
 	}
+	// Stamp learner's two answer times (1000 + 3000 ms) so avg_time_per_question
+	// has a non-zero value to pin - autosave leaves time_spent_ms at its default.
+	if _, err := sqlDB.ExecContext(ctx,
+		`UPDATE attempt_answers SET time_spent_ms = CASE WHEN question_id = $2 THEN 1000 ELSE 3000 END
+		 WHERE attempt_id = $1`, learnerAttempt, gSingle); err != nil {
+		t.Fatalf("stamp answer times: %v", err)
+	}
 	setStatus(gradedQuiz, "closed")
 	setStatus(archivedQuiz, "archived")
 
@@ -345,6 +352,81 @@ func TestRollupFlowE2E(t *testing.T) {
 		}
 		if !hasStats(ungradedQuiz) {
 			t.Fatalf("ungraded quiz still has no row after grading + rollup")
+		}
+	})
+
+	// student_stats is the cross-quiz rollup upserted for every assigned
+	// student when a quiz closes. By now scholar has three terminal quizzes
+	// graded (Graded, Archived, Ungraded) out of four assigned (Empty was never
+	// attempted); learner has one (Graded, kicked-then-graded 4/10); absent was
+	// assigned Graded but never attempted. Pending is created after this, so it
+	// is not yet counted.
+	readStudentStats := func(email string) (trend []map[string]any, avgTime, completion sql.NullFloat64, found bool) {
+		t.Helper()
+		var trendJSON []byte
+		err := sqlDB.QueryRowContext(ctx,
+			`SELECT accuracy_trend, avg_time_per_question, completion_rate
+			 FROM student_stats WHERE student_id = $1`, userID(t, ctx, sqlDB, email)).Scan(&trendJSON, &avgTime, &completion)
+		if err == sql.ErrNoRows {
+			return nil, avgTime, completion, false
+		}
+		if err != nil {
+			t.Fatalf("read student_stats for %s: %v", email, err)
+		}
+		if err := json.Unmarshal(trendJSON, &trend); err != nil {
+			t.Fatalf("decode accuracy_trend for %s: %v", email, err)
+		}
+		return trend, avgTime, completion, true
+	}
+
+	t.Run("student_stats rolls up per assigned student across quizzes", func(t *testing.T) {
+		// scholar: 3 of 4 terminal assigned quizzes graded -> completion 0.75,
+		// a three-point accuracy trend (all perfect scores), avg answer time 0
+		// (autosave left every time_spent_ms at its default).
+		trend, avgTime, completion, found := readStudentStats("scholar@school.test")
+		if !found {
+			t.Fatalf("scholar has no student_stats row")
+		}
+		if len(trend) != 3 {
+			t.Fatalf("scholar accuracy_trend = %v, want three entries", trend)
+		}
+		if !completion.Valid || math.Abs(completion.Float64-0.75) > 1e-9 {
+			t.Fatalf("scholar completion_rate = %v, want 0.75", completion)
+		}
+		if !avgTime.Valid || avgTime.Float64 != 0 {
+			t.Fatalf("scholar avg_time_per_question = %v, want 0", avgTime)
+		}
+
+		// learner: the sole assigned quiz graded -> completion 1.0, a one-point
+		// trend at 0.4 (scored 4/10), avg time (1000+3000)/2 = 2000.
+		trend, avgTime, completion, found = readStudentStats("learner@school.test")
+		if !found {
+			t.Fatalf("learner has no student_stats row")
+		}
+		if len(trend) != 1 || math.Abs(trend[0]["accuracy"].(float64)-0.4) > 1e-9 {
+			t.Fatalf("learner accuracy_trend = %v, want one entry at 0.4", trend)
+		}
+		if !completion.Valid || completion.Float64 != 1 {
+			t.Fatalf("learner completion_rate = %v, want 1", completion)
+		}
+		if !avgTime.Valid || avgTime.Float64 != 2000 {
+			t.Fatalf("learner avg_time_per_question = %v, want 2000", avgTime)
+		}
+
+		// absent: assigned Graded, never attempted -> completion 0, an empty
+		// trend, and a null avg time (no answers to average).
+		trend, avgTime, completion, found = readStudentStats("absent@school.test")
+		if !found {
+			t.Fatalf("absent has no student_stats row (a no-show must still roll up)")
+		}
+		if len(trend) != 0 {
+			t.Fatalf("absent accuracy_trend = %v, want empty", trend)
+		}
+		if !completion.Valid || completion.Float64 != 0 {
+			t.Fatalf("absent completion_rate = %v, want 0", completion)
+		}
+		if avgTime.Valid {
+			t.Fatalf("absent avg_time_per_question = %v, want null", avgTime)
 		}
 	})
 

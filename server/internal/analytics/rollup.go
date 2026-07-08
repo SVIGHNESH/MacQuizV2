@@ -23,8 +23,10 @@ import (
 // This brick computes the whole quiz_stats row: the score summary
 // (distribution, mean, median, participation), the per-question
 // item_analysis (p-value, point-biserial, option-pick rates, average time),
-// and the integrity summary (violations per student, kicked attempts).
-// student_stats is a follow-up brick and is left empty for now.
+// and the integrity summary (violations per student, kicked attempts). It
+// also upserts the per-student student_stats rows for the quiz's assigned
+// students (see rollupStudents), the one cross-quiz rollup: unlike the
+// frozen quiz_stats it is recomputed from the live tables on every close.
 //
 // Semantic choices, pinned here because the read endpoint and the dashboards
 // depend on them:
@@ -178,6 +180,14 @@ func rollupOne(ctx context.Context, db *sql.DB, quizID string) (bool, error) {
 	integrityJSON, err := json.Marshal(integrity)
 	if err != nil {
 		return false, fmt.Errorf("marshal integrity: %w", err)
+	}
+
+	// Recompute the per-student rollups BEFORE writing the quiz_stats row, so
+	// the quiz_stats INSERT is the commit marker: if this errors, no quiz_stats
+	// row lands, the quiz stays "due", and the next sweep safely redoes both
+	// rather than stranding student_stats stale forever.
+	if err := rollupStudents(ctx, db, quizID); err != nil {
+		return false, err
 	}
 
 	res, err := db.ExecContext(ctx,
@@ -446,4 +456,101 @@ func integritySummary(ctx context.Context, db *sql.DB, quizID string) (integrity
 		out.PerStudent = append(out.PerStudent, *s)
 	}
 	return out, nil
+}
+
+// rollupStudents recomputes and upserts the student_stats row for every
+// student ASSIGNED to the just-closed quiz (docs/07 section 4: closing "upserts
+// student_stats"). Unlike quiz_stats - computed once and frozen - a student's
+// stats span every quiz they take, so this is a full recompute (ON CONFLICT DO
+// UPDATE) re-read from the live tables each close; two concurrent rollups both
+// read the same rows and converge to identical data. It is keyed on the
+// ASSIGNED set, not the attempters, so a no-show's completion_rate still drops
+// when their quiz closes - only the assignment row proves the miss.
+//
+// One set-based statement, not a per-student Go loop: a 1,000-student quiz
+// closing must not fan out into 1,000 synchronous query batches inside the
+// sweep (docs/12 load-tests the go-live herd).
+//
+// Population: each student's BEST graded attempt per terminal (closed or
+// archived) quiz - the same graded population quiz_stats uses, so a kick's
+// partial score (grading flips kicked -> graded) lands in the trend like any
+// other graded result. accuracy_trend is that series of per-quiz accuracies
+// (score over the version-pinned max score, null when the snapshot has no
+// points) ordered by submission; avg_time_per_question the mean answer time
+// over those best attempts; completion_rate the fraction of the student's
+// terminal assigned quizzes they have a graded attempt for. topic_strengths is
+// an empty object (never null): the schema carries no question topic taxonomy
+// to strengthen against, so it is deferred like the other empty-not-null
+// rollup fields.
+func rollupStudents(ctx context.Context, db *sql.DB, quizID string) error {
+	if _, err := db.ExecContext(ctx, `
+WITH affected AS (
+    SELECT DISTINCT student_id FROM quiz_assignments WHERE quiz_id = $1
+),
+best AS (
+    SELECT DISTINCT ON (a.student_id, a.quiz_id)
+           a.student_id, a.quiz_id, a.id AS attempt_id, a.quiz_version,
+           a.score::float8 AS score, a.submitted_at
+    FROM attempts a
+    JOIN affected f ON f.student_id = a.student_id
+    JOIN quizzes z ON z.id = a.quiz_id
+    WHERE a.status = 'graded' AND z.status IN ('closed', 'archived')
+    ORDER BY a.student_id, a.quiz_id, a.score DESC NULLS LAST
+),
+trend AS (
+    SELECT b.student_id,
+           jsonb_agg(jsonb_build_object(
+               'quiz_id', b.quiz_id,
+               'accuracy', CASE WHEN ms.max_score > 0 THEN b.score / ms.max_score END,
+               'submitted_at', b.submitted_at
+           ) ORDER BY b.submitted_at, b.quiz_id) AS trend
+    FROM best b
+    LEFT JOIN LATERAL (
+        SELECT sum((q->>'points')::float8) AS max_score
+        FROM quiz_versions v, jsonb_array_elements(v.questions) q
+        WHERE v.quiz_id = b.quiz_id AND v.version = b.quiz_version
+    ) ms ON true
+    GROUP BY b.student_id
+),
+tm AS (
+    SELECT b.student_id, avg(aa.time_spent_ms::float8) AS avg_time
+    FROM best b JOIN attempt_answers aa ON aa.attempt_id = b.attempt_id
+    GROUP BY b.student_id
+),
+assigned_terminal AS (
+    SELECT DISTINCT qa.student_id, qa.quiz_id
+    FROM quiz_assignments qa
+    JOIN affected f ON f.student_id = qa.student_id
+    JOIN quizzes z ON z.id = qa.quiz_id
+    WHERE z.status IN ('closed', 'archived')
+),
+cp AS (
+    SELECT t.student_id,
+           count(*) AS assigned_ct,
+           count(b.quiz_id) AS done_ct
+    FROM assigned_terminal t
+    LEFT JOIN best b ON b.student_id = t.student_id AND b.quiz_id = t.quiz_id
+    GROUP BY t.student_id
+)
+INSERT INTO student_stats
+       (student_id, accuracy_trend, avg_time_per_question, completion_rate, topic_strengths, updated_at)
+SELECT f.student_id,
+       coalesce(tr.trend, '[]'::jsonb),
+       tm.avg_time,
+       CASE WHEN cp.assigned_ct > 0 THEN cp.done_ct::numeric / cp.assigned_ct END,
+       '{}'::jsonb,
+       now()
+FROM affected f
+LEFT JOIN trend tr ON tr.student_id = f.student_id
+LEFT JOIN tm ON tm.student_id = f.student_id
+LEFT JOIN cp ON cp.student_id = f.student_id
+ON CONFLICT (student_id) DO UPDATE SET
+    accuracy_trend        = EXCLUDED.accuracy_trend,
+    avg_time_per_question = EXCLUDED.avg_time_per_question,
+    completion_rate       = EXCLUDED.completion_rate,
+    topic_strengths       = EXCLUDED.topic_strengths,
+    updated_at            = now()`, quizID); err != nil {
+		return fmt.Errorf("upsert student_stats: %w", err)
+	}
+	return nil
 }
