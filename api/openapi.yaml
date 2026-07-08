@@ -281,6 +281,39 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /api/v1/groups/{id}/members:
+    get:
+      operationId: getGroupMembers
+      summary: Read a cohort's current roster (admin)
+      description: >-
+        The read side of setGroupMembers - the membership editor loads this
+        before showing a pre-checked picker, since PUT replaces the whole
+        set rather than diffing against it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The cohort's current members.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [students]
+                properties:
+                  students:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AssignedStudent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       operationId: setGroupMembers
       summary: Replace a cohort's membership (admin)

@@ -219,6 +219,29 @@ func TestAdminProvisioningE2E(t *testing.T) {
 			t.Fatalf("set members = %d %v, want 200 with member_count=2", status, body)
 		}
 
+		// The read side: the membership editor loads the current roster
+		// before showing a pre-checked picker.
+		status, body, _ = call(t, server, "GET", "/api/v1/groups/"+groupID+"/members", nil, admin)
+		if status != 200 {
+			t.Fatalf("get group members = %d %v, want 200", status, body)
+		}
+		members := body["students"].([]any)
+		if len(members) != 2 {
+			t.Fatalf("group members = %v, want the two students just set", members)
+		}
+		seen := map[string]bool{}
+		for _, m := range members {
+			seen[m.(map[string]any)["id"].(string)] = true
+		}
+		if !seen[studentA] || !seen[studentB] {
+			t.Fatalf("group members = %v, want studentA and studentB", members)
+		}
+		status, _, _ = call(t, server, "GET",
+			"/api/v1/groups/00000000-0000-0000-0000-000000000000/members", nil, admin)
+		if status != 404 {
+			t.Fatalf("members of unknown group = %d, want 404", status)
+		}
+
 		// A teacher id in the list rejects the whole set atomically.
 		status, _, _ = call(t, server, "PUT", "/api/v1/groups/"+groupID+"/members",
 			map[string]any{"student_ids": []string{studentA, teacher["id"].(string)}}, admin)

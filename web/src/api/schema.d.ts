@@ -204,7 +204,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read a cohort's current roster (admin)
+         * @description The read side of setGroupMembers - the membership editor loads this before showing a pre-checked picker, since PUT replaces the whole set rather than diffing against it.
+         */
+        get: operations["getGroupMembers"];
         /**
          * Replace a cohort's membership (admin)
          * @description Replaces the membership with exactly student_ids, validated and swapped in one transaction - a single bad id changes nothing. An empty list clears the cohort.
@@ -1793,6 +1797,33 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cohort's current members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        students: components["schemas"]["AssignedStudent"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     setGroupMembers: {

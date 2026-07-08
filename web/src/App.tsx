@@ -2,9 +2,9 @@ import { AuthProvider } from './auth/auth'
 import { useAuth } from './auth/context'
 import LoginScreen from './screens/LoginScreen'
 import ChangePasswordScreen from './screens/ChangePasswordScreen'
-import HomeScreen from './screens/HomeScreen'
 import AuthoringWorkspace from './authoring/AuthoringWorkspace'
 import StudentWorkspace from './player/StudentWorkspace'
+import AdminWorkspace from './admin/AdminWorkspace'
 import './App.css'
 
 function Screens() {
@@ -36,7 +36,7 @@ function Screens() {
     return <StudentWorkspace user={state.user} />
   }
 
-  return <HomeScreen user={state.user} />
+  return <AdminWorkspace user={state.user} />
 }
 
 export default function App() {

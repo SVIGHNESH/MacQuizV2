@@ -274,6 +274,50 @@ func (s *Service) SetGroupMembers(ctx context.Context, actor User, groupID strin
 // ids; the HTTP layer maps it to VALIDATION_FAILED.
 var errNotStudents = errors.New("group members must be student accounts")
 
+// GroupMember is one cohort member, shaped like quiz.AssignedStudent so the
+// admin console's membership picker and a teacher's audience picker render
+// from the same fields.
+type GroupMember struct {
+	ID       string `json:"id"`
+	FullName string `json:"full_name"`
+	Email    string `json:"email"`
+}
+
+// GroupMembers returns a cohort's current roster (docs/04-api.md: GET
+// /groups/:id/members) - the read side of SetGroupMembers. The admin console
+// needs this before it can show a membership editor pre-checked with what
+// the group already has, since PUT replaces the whole set rather than
+// diffing against it.
+func (s *Service) GroupMembers(ctx context.Context, groupID string) ([]GroupMember, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM groups WHERE id = $1)`, groupID).Scan(&exists); err != nil {
+		return nil, fmt.Errorf("check group: %w", err)
+	}
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT u.id, u.full_name, u.email FROM group_members m
+		 JOIN users u ON u.id = m.student_id
+		 WHERE m.group_id = $1 ORDER BY u.full_name, u.id`, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("list group members: %w", err)
+	}
+	defer rows.Close()
+
+	members := []GroupMember{}
+	for rows.Next() {
+		var m GroupMember
+		if err := rows.Scan(&m.ID, &m.FullName, &m.Email); err != nil {
+			return nil, fmt.Errorf("scan group member: %w", err)
+		}
+		members = append(members, m)
+	}
+	return members, rows.Err()
+}
+
 // ListGroups returns all cohorts with their member counts, newest-first.
 func (s *Service) ListGroups(ctx context.Context) ([]Group, error) {
 	rows, err := s.db.QueryContext(ctx,

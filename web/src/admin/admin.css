@@ -1,0 +1,107 @@
+/*
+ * Admin console (Milestone 1): user provisioning and cohort management.
+ * Reuses the workspace/rail/table-panel primitives from authoring.css and
+ * only adds what is genuinely admin-specific.
+ */
+
+.admin-user-form {
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-user-form .create-actions {
+  grid-column: 1 / -1;
+}
+
+.admin-credential-reveal {
+  display: grid;
+  gap: 10px;
+  background: var(--color-success-tint);
+  border: 1px solid var(--color-success);
+}
+
+.admin-credential-reveal .card-title {
+  margin: 0;
+  color: var(--color-success-on-tint);
+}
+
+.admin-credential-value {
+  font: 650 15px/1.4 var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  width: fit-content;
+  user-select: all;
+}
+
+.admin-filter-row {
+  display: flex;
+  gap: 12px;
+}
+
+.admin-filter-row .input {
+  width: 180px;
+}
+
+.admin-user-table .qt-head,
+.admin-user-table .qt-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 78px 92px 92px 128px;
+}
+
+.admin-user-table .qt-head > *,
+.admin-user-table .qt-row > * {
+  min-width: 0;
+}
+
+.admin-user-table .qt-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.admin-user-table .qt-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.admin-user-table .qt-actions .button {
+  width: 100%;
+}
+
+.admin-group-table .qt-head,
+.admin-group-table .qt-row {
+  grid-template-columns: minmax(0, 1fr) 100px 110px 140px;
+}
+
+.admin-group-table .qt-head > *,
+.admin-group-table .qt-row > * {
+  min-width: 0;
+}
+
+.admin-group-table .qt-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-members-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-members-panel .card-title {
+  margin: 0;
+}

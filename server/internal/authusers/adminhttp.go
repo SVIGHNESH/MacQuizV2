@@ -30,6 +30,7 @@ func (h *Handler) GroupRoutes() http.Handler {
 	r.Use(h.svc.RequireAuth, RequirePasswordChanged, requireCan(ActionGroupsManage))
 	r.Get("/", h.handleListGroups)
 	r.Post("/", h.handleCreateGroup)
+	r.Get("/{id}/members", h.handleGetGroupMembers)
 	r.Put("/{id}/members", h.handleSetGroupMembers)
 	return r
 }
@@ -233,6 +234,26 @@ func (h *Handler) handleSetGroupMembers(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"group": g})
+}
+
+// handleGetGroupMembers serves GET /groups/{id}/members: the cohort's
+// current roster, the read side of handleSetGroupMembers.
+func (h *Handler) handleGetGroupMembers(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(id) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such group")
+		return
+	}
+	members, err := h.svc.GroupMembers(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such group")
+		return
+	}
+	if err != nil {
+		h.internalError(w, "list group members", err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"students": members})
 }
 
 func (h *Handler) handleListGroups(w http.ResponseWriter, r *http.Request) {
