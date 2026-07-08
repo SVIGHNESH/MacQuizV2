@@ -44,6 +44,11 @@ The gateway checks `can()` once at subscribe and revalidates on token refresh.
 On connect, the dashboard first fetches `GET /quizzes/:id/live` (current roster state materialized from `attempts` plus recent `attempt_events`), then applies streamed deltas.
 Late joins and reconnects are therefore consistent; there is no missed-event drift.
 
+Implemented as `web/src/authoring/LiveMonitorPanel.tsx`: shown on a quiz's editor whenever it reads `live`, it fetches the snapshot, opens `quiz:{id}:monitor` over `/ws/quizzes/:id/monitor`, and applies `attempt.progress`/`violation`/`kicked`/`submitted`/`graded` deltas in place.
+`attempt.started` re-fetches the snapshot instead of patching, since the delta carries no question/version data and it fires only once per attempt.
+The kick and readmit escalations post to the existing `/attempts/:id/kick` and `/attempts/:id/readmit` endpoints from the same roster row.
+The `attempt:{id}` student-facing channel (heartbeat, disconnected state, current-question wiring) remains unimplemented, so the dashboard never shows "disconnected" and `current_question` stays null - the honest degradation the snapshot already documents.
+
 ## 5. Throttling and degradation
 
 - `attempt.progress` is coalesced per student to at most 1 event per 2 s.

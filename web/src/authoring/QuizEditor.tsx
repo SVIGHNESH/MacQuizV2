@@ -9,6 +9,7 @@ import {
   type TeacherQuestion,
 } from './model'
 import ImportPanel from './ImportPanel'
+import LiveMonitorPanel from './LiveMonitorPanel'
 import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import QuizStatsPanel from './QuizStatsPanel'
@@ -372,6 +373,8 @@ function LoadedEditor({
           onPublished={setQuiz}
         />
       )}
+
+      {quiz.status === 'live' && <LiveMonitorPanel quizId={quiz.id} />}
 
       {(quiz.status === 'closed' || quiz.status === 'archived') && (
         <QuizStatsPanel quizId={quiz.id} questions={questions} />
