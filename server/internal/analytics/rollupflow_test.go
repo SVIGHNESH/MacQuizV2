@@ -493,4 +493,80 @@ func TestRollupFlowE2E(t *testing.T) {
 			t.Fatalf("garbage GET analytics = %d %v, want 404", status, body)
 		}
 	})
+
+	// GET /analytics/students/:id serves the cross-quiz profile student_stats
+	// holds (docs/04 section 2). Its audience differs from the quiz endpoint: a
+	// student may read their own (so there is no staff gate), while a caller who
+	// may not see the subject 404s rather than 403 - existence never leaks.
+	scholarID := userID(t, ctx, sqlDB, "scholar@school.test")
+	learnerID := userID(t, ctx, sqlDB, "learner@school.test")
+
+	t.Run("a student reads their own profile", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+scholarID, nil, scholar)
+		if status != 200 {
+			t.Fatalf("scholar GET own analytics = %d %v, want 200", status, body)
+		}
+		if body["student_id"] != scholarID {
+			t.Fatalf("student_id = %v, want %s", body["student_id"], scholarID)
+		}
+		// scholar: three terminal quizzes graded of four assigned -> 0.75,
+		// three-point trend (all perfect), avg time 0 (see the rollup subtest).
+		if math.Abs(body["completion_rate"].(float64)-0.75) > 1e-9 {
+			t.Fatalf("completion_rate = %v, want 0.75", body["completion_rate"])
+		}
+		if len(body["accuracy_trend"].([]any)) != 3 {
+			t.Fatalf("accuracy_trend = %v, want three entries", body["accuracy_trend"])
+		}
+	})
+
+	t.Run("a student cannot read another student's profile - 404, not 403", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+learnerID, nil, scholar)
+		if status != 404 {
+			t.Fatalf("scholar GET learner analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a teacher reads an assigned student's profile", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+scholarID, nil, teacher)
+		if status != 200 {
+			t.Fatalf("owner GET assigned student = %d %v, want 200", status, body)
+		}
+		if body["student_id"] != scholarID {
+			t.Fatalf("student_id = %v, want %s", body["student_id"], scholarID)
+		}
+	})
+
+	t.Run("a non-owning teacher cannot read an unassigned student - 404", func(t *testing.T) {
+		// stranger owns no quiz scholar is assigned to, so the assignment EXISTS
+		// is false and Can denies -> the existence-safe 404.
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+scholarID, nil, stranger)
+		if status != 404 {
+			t.Fatalf("stranger GET unassigned student = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("an admin may read any student's profile", func(t *testing.T) {
+		if status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+scholarID, nil, admin); status != 200 {
+			t.Fatalf("admin GET student analytics = %d %v, want 200", status, body)
+		}
+	})
+
+	t.Run("a student with no rollup yet reads as 404", func(t *testing.T) {
+		// A fresh student assigned to nothing has no student_stats row; their own
+		// read is authorized but has nothing to show - the same 404 as unknown.
+		provision(t, ctx, sqlDB, "student", "newcomer@school.test")
+		newcomer := login(t, server, "newcomer@school.test", "account-password")
+		newcomerID := userID(t, ctx, sqlDB, "newcomer@school.test")
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/"+newcomerID, nil, newcomer)
+		if status != 404 {
+			t.Fatalf("newcomer GET own analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a malformed student id reads as 404", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/students/not-a-uuid", nil, admin)
+		if status != 404 {
+			t.Fatalf("garbage GET student analytics = %d %v, want 404", status, body)
+		}
+	})
 }

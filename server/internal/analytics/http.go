@@ -26,13 +26,18 @@ func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 }
 
 // Routes returns the /api/v1/analytics route group. Quiz analytics is
-// staff-only (docs/04 permission matrix: teacher/admin, never a student), so
-// the surface carries the same require-staff role gate live monitoring does;
-// the service decides owner-vs-admin and 404s a teacher who is not the owner.
+// staff-only (docs/04 permission matrix: teacher/admin, never a student), so it
+// carries the same require-staff role gate live monitoring does; the service
+// decides owner-vs-admin and 404s a teacher who is not the owner. Student
+// analytics is NOT staff-gated - a student may read their own profile - so it
+// gates on authentication alone and pushes the whole audience decision (self /
+// assigned / admin) into the service, where a caller who may not see the
+// subject answers 404, never 403.
 func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged, requireStaff)
-	r.Get("/quizzes/{id}", h.handleQuizStats)
+	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged)
+	r.With(requireStaff).Get("/quizzes/{id}", h.handleQuizStats)
+	r.Get("/students/{id}", h.handleStudentStats)
 	return r
 }
 
@@ -68,6 +73,31 @@ func (h *Handler) handleQuizStats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.svc.log.Error("quiz analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, stats)
+}
+
+// handleStudentStats serves GET /analytics/students/{id}: the student's
+// cross-quiz profile for the student themselves, a teacher who has them
+// assigned, or an admin. A caller who may not see the subject - or a subject
+// with no rollup yet - reads 404, so one student's existence never leaks.
+func (h *Handler) handleStudentStats(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(id) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such student")
+		return
+	}
+	stats, err := h.svc.StudentStats(r.Context(), actor, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound,
+				"no analytics for this student")
+			return
+		}
+		h.svc.log.Error("student analytics", "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
 		return
 	}

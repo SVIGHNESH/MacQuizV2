@@ -92,3 +92,61 @@ func (s *Service) QuizStats(ctx context.Context, actor authusers.User, quizID st
 	out.Integrity = json.RawMessage(integrity)
 	return out, nil
 }
+
+// StudentStats is the student_stats row shaped for the wire. The jsonb columns
+// pass through untouched (json.RawMessage); avg_time_per_question and
+// completion_rate are null for a student who has never had a quiz close over
+// them.
+type StudentStats struct {
+	StudentID          string          `json:"student_id"`
+	AccuracyTrend      json.RawMessage `json:"accuracy_trend"`
+	AvgTimePerQuestion *float64        `json:"avg_time_per_question"`
+	CompletionRate     *float64        `json:"completion_rate"`
+	TopicStrengths     json.RawMessage `json:"topic_strengths"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+}
+
+// StudentStats returns one student's cross-quiz performance profile
+// (docs/04 permission matrix: a student sees only themselves, a teacher sees
+// their assigned students, an admin sees all). The audience test is the only
+// fact Can needs beyond the actor: for a teacher it is whether the subject is
+// assigned to any quiz the teacher owns, resolved with one EXISTS query; admin
+// and student never consult it. Every "you cannot see this" outcome - not
+// authorized, unknown student, not yet rolled up - collapses to ErrNotFound so
+// a caller can never tell one student's existence from an authorization
+// failure (docs/08 section 3), mirroring QuizStats.
+func (s *Service) StudentStats(ctx context.Context, actor authusers.User, studentID string) (StudentStats, error) {
+	assigned := false
+	if actor.Role == "teacher" {
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT EXISTS (
+			   SELECT 1 FROM quiz_assignments a
+			   JOIN quizzes q ON q.id = a.quiz_id
+			   WHERE q.owner_id = $1 AND a.student_id = $2)`,
+			actor.ID, studentID).Scan(&assigned); err != nil {
+			return StudentStats{}, fmt.Errorf("check assignment: %w", err)
+		}
+	}
+	if !authusers.Can(actor, authusers.ActionAnalyticsStudent,
+		authusers.Resource{OwnerID: studentID, Assigned: assigned}) {
+		return StudentStats{}, ErrNotFound
+	}
+
+	out := StudentStats{StudentID: studentID}
+	var accuracyTrend, topicStrengths []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT accuracy_trend, avg_time_per_question, completion_rate, topic_strengths, updated_at
+		 FROM student_stats WHERE student_id = $1`, studentID).Scan(
+		&accuracyTrend, &out.AvgTimePerQuestion, &out.CompletionRate, &topicStrengths, &out.UpdatedAt)
+	if err == sql.ErrNoRows {
+		// The caller may see this student, but no quiz has closed over them yet
+		// (or the id is not a student at all). Same 404 - nothing to show.
+		return StudentStats{}, ErrNotFound
+	}
+	if err != nil {
+		return StudentStats{}, fmt.Errorf("load student_stats: %w", err)
+	}
+	out.AccuracyTrend = json.RawMessage(accuracyTrend)
+	out.TopicStrengths = json.RawMessage(topicStrengths)
+	return out, nil
+}
