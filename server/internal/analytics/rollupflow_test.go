@@ -45,10 +45,11 @@ func TestRollupFlowE2E(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authSvc := authusers.NewService(sqlDB, "test-secret", log)
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
-		DB:      sqlDB,
-		Auth:    authusers.NewHandler(authSvc, false),
-		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
-		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log), authSvc),
+		DB:        sqlDB,
+		Auth:      authusers.NewHandler(authSvc, false),
+		Quiz:      quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
+		Attempt:   attempt.NewHandler(attempt.NewService(sqlDB, log), authSvc),
+		Analytics: analytics.NewHandler(analytics.NewService(sqlDB, log), authSvc),
 	})
 	server := httptest.NewServer(router)
 	defer server.Close()
@@ -57,11 +58,14 @@ func TestRollupFlowE2E(t *testing.T) {
 		t.Fatalf("bootstrap admin: %v", err)
 	}
 	provision(t, ctx, sqlDB, "teacher", "owner@school.test")
+	provision(t, ctx, sqlDB, "teacher", "stranger@school.test")
 	provision(t, ctx, sqlDB, "student", "scholar@school.test")
 	provision(t, ctx, sqlDB, "student", "learner@school.test")
 	provision(t, ctx, sqlDB, "student", "absent@school.test")
 
 	teacher := login(t, server, "owner@school.test", "account-password")
+	stranger := login(t, server, "stranger@school.test", "account-password")
+	admin := login(t, server, "admin@school.test", "admin-password-1")
 	scholar := login(t, server, "scholar@school.test", "account-password")
 	learner := login(t, server, "learner@school.test", "account-password")
 
@@ -341,6 +345,70 @@ func TestRollupFlowE2E(t *testing.T) {
 		}
 		if !hasStats(ungradedQuiz) {
 			t.Fatalf("ungraded quiz still has no row after grading + rollup")
+		}
+	})
+
+	// GET /analytics/quizzes/:id serves the rolled-up row (docs/04 section 2).
+	// A live quiz never rolled up gives the read endpoint a genuine no-row
+	// case that is neither missing nor forbidden.
+	pendingQuiz, _, _ := buildQuiz("Pending", "scholar@school.test")
+
+	t.Run("the owner reads the graded quiz's rolled-up stats", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/"+gradedQuiz, nil, teacher)
+		if status != 200 {
+			t.Fatalf("owner GET analytics = %d %v, want 200", status, body)
+		}
+		if body["quiz_id"] != gradedQuiz {
+			t.Fatalf("quiz_id = %v, want %s", body["quiz_id"], gradedQuiz)
+		}
+		if body["mean"].(float64) != 7 || body["median"].(float64) != 7 {
+			t.Fatalf("mean/median = %v/%v, want 7/7", body["mean"], body["median"])
+		}
+		if math.Abs(body["participation"].(float64)-2.0/3.0) > 1e-9 {
+			t.Fatalf("participation = %v, want 0.6667", body["participation"])
+		}
+		// The jsonb columns pass through: item_analysis is the array and
+		// integrity the object RollupDue stored.
+		if len(body["item_analysis"].([]any)) != 2 {
+			t.Fatalf("item_analysis = %v, want two questions", body["item_analysis"])
+		}
+		integ := body["integrity"].(map[string]any)
+		if integ["kicked_attempts"].(float64) != 1 || integ["total_violations"].(float64) != 2 {
+			t.Fatalf("integrity = %v, want 1 kicked / 2 violations", integ)
+		}
+	})
+
+	t.Run("an admin may read any quiz's stats", func(t *testing.T) {
+		if status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/"+gradedQuiz, nil, admin); status != 200 {
+			t.Fatalf("admin GET analytics = %d %v, want 200", status, body)
+		}
+	})
+
+	t.Run("a non-owning teacher gets 404, not the stats", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/"+gradedQuiz, nil, stranger)
+		if status != 404 {
+			t.Fatalf("stranger GET analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a student is blocked at the role gate", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/"+gradedQuiz, nil, scholar)
+		if status != 403 {
+			t.Fatalf("student GET analytics = %d %v, want 403", status, body)
+		}
+	})
+
+	t.Run("a quiz not yet rolled up reads as 404", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/"+pendingQuiz, nil, teacher)
+		if status != 404 {
+			t.Fatalf("pending GET analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a malformed id reads as 404", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/quizzes/not-a-uuid", nil, teacher)
+		if status != 404 {
+			t.Fatalf("garbage GET analytics = %d %v, want 404", status, body)
 		}
 	})
 }

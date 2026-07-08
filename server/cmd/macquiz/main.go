@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"macquiz/server/internal/analytics"
 	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/config"
@@ -141,6 +142,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// The worker emits no progress, so its publisher stays unwrapped.
 	attemptSvc := attempt.NewService(sqlDB, log, attempt.NewProgressCoalescer(publisher))
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
+	analyticsHandler := analytics.NewHandler(analytics.NewService(sqlDB, log), authSvc)
 
 	// The gateway's socket lifetime is bound to ctx (the SIGTERM signal
 	// context): when the process is asked to stop, every open monitor socket's
@@ -151,7 +153,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Addr: cfg.Addr,
 		Handler: httpserver.New(
 			httpserver.BuildInfo{Version: version, Commit: commit},
-			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler, Realtime: gateway},
+			httpserver.Deps{DB: sqlDB, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler, Analytics: analyticsHandler, Realtime: gateway},
 		),
 	}
 
