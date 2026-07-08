@@ -22,9 +22,12 @@ Status: implementation baseline.
 - UptimeRobot pings `/healthz` every 5 min from outside, alerting by email/Telegram.
   `/healthz` checks DB connectivity, Redis connectivity, and queue depth.
   External probing catches the "VM died" failure class that self-hosted monitoring cannot see.
-- Grafana Cloud free tier receives OpenTelemetry metrics and logs from the app.
-  Key series: autosave p95, WebSocket connection count, queue lag, violation and kick event rates.
+- Grafana Cloud free tier receives OpenTelemetry metrics from the app.
+  Key series: autosave latency (`macquiz.attempt.autosave.duration`), WebSocket connection count (`macquiz.realtime.ws_connections`), queue lag (`macquiz.queue.lag_seconds`, the same query `/healthz` uses), and violation/kick event rates (`macquiz.attempt.violations`, `macquiz.attempt.kicks`).
+  Implemented as `server/internal/telemetry` (OTLP/HTTP export via `go.opentelemetry.io/otel`), wired into `serve()` only - `worker` does not yet export metrics.
+  Configured via `MACQUIZ_OTEL_EXPORTER_ENDPOINT`/`MACQUIZ_OTEL_EXPORTER_HEADERS`; blank (the default) disables telemetry, so every instrument is a no-op until a Grafana Cloud OTLP endpoint is set.
   14-day retention on the free tier is accepted.
+  OpenTelemetry log export is not implemented; the app logs structured JSON to stdout only (Compose/journald captured), not shipped to Grafana Cloud.
 - Watchtower is deliberately absent: images update only via the deploy pipeline, never automatically under a live quiz.
 
 ## 3. Alert thresholds (initial)

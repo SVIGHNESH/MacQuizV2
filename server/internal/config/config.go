@@ -42,6 +42,15 @@ type Config struct {
 	// replace it with an R2-backed config. serve and worker run as separate
 	// containers, so this directory must be a shared volume (docker-compose.yml).
 	ImportDir string
+	// OTelExporterEndpoint is the OTLP/HTTP endpoint (host:port, no scheme)
+	// metrics are exported to (docs/10-operations.md section 2's Grafana
+	// Cloud free tier). Empty (the dev/test default) disables telemetry
+	// entirely - every instrument becomes a no-op rather than dialing out.
+	OTelExporterEndpoint string
+	// OTelExporterHeaders carries request headers the OTLP exporter sends on
+	// every export, formatted as "key=value,key2=value2" (Grafana Cloud's
+	// OTLP gateway takes an "Authorization=Basic <token>" pair here).
+	OTelExporterHeaders string
 }
 
 // Load reads configuration from the environment, applying development defaults.
@@ -61,6 +70,9 @@ func Load() Config {
 		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
 
 		ImportDir: getenv("MACQUIZ_IMPORT_DIR", "/tmp/macquiz-imports"),
+
+		OTelExporterEndpoint: os.Getenv("MACQUIZ_OTEL_EXPORTER_ENDPOINT"),
+		OTelExporterHeaders:  os.Getenv("MACQUIZ_OTEL_EXPORTER_HEADERS"),
 	}
 }
 

@@ -156,7 +156,7 @@ func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger) http.HandlerFu
 				// Queue lag is a supplementary signal, not a liveness
 				// condition on its own - a query failure here does not flip
 				// the overall status, it just omits the field.
-				if lag, err := queueLagSeconds(ctx, db); err == nil {
+				if lag, err := QueueLagSeconds(ctx, db); err == nil {
 					checks.QueueLagSeconds = &lag
 				}
 			}
@@ -188,11 +188,11 @@ func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger) http.HandlerFu
 	}
 }
 
-// queueLagSeconds reports how overdue the oldest due-but-unfired River job
+// QueueLagSeconds reports how overdue the oldest due-but-unfired River job
 // is (docs/10-operations.md's "queue lag (delayed jobs overdue)" alert
 // signal): the age of the oldest job still available/scheduled at or before
 // now, or 0 if the queue has no backlog.
-func queueLagSeconds(ctx context.Context, db *sql.DB) (float64, error) {
+func QueueLagSeconds(ctx context.Context, db *sql.DB) (float64, error) {
 	var lag float64
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(scheduled_at))), 0)

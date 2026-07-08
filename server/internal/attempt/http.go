@@ -12,19 +12,28 @@ import (
 
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/httpapi"
+	"macquiz/server/internal/telemetry"
 )
 
 // Handler exposes the attempt player routes. Authentication and the
 // forced-reset gate come from authusers middleware; ownership checks live in
 // the service and read as 404.
 type Handler struct {
-	svc  *Service
-	auth *authusers.Service
+	svc     *Service
+	auth    *authusers.Service
+	metrics *telemetry.Metrics
 }
 
 // NewHandler wires the attempt routes.
 func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 	return &Handler{svc: svc, auth: auth}
+}
+
+// SetMetrics wires the docs/10-operations.md section 2 key-series metrics
+// (autosave latency, violation/kick rates). Optional: a Handler with no
+// metrics set records nothing, which is what every existing test gets.
+func (h *Handler) SetMetrics(m *telemetry.Metrics) {
+	h.metrics = m
 }
 
 // Routes returns the /api/v1/attempts route group: resume, autosave, and
@@ -155,7 +164,9 @@ func (h *Handler) handleSaveAnswer(w http.ResponseWriter, r *http.Request) {
 		timeSpent = *req.TimeSpentMs
 	}
 
+	start := time.Now()
 	answer, deadline, err := h.svc.SaveAnswer(r.Context(), actor, id, questionID, req.Response, timeSpent)
+	h.metrics.RecordAutosave(r.Context(), time.Since(start))
 	if h.writeAttemptError(w, "save answer", err, "no such question in this attempt") {
 		return
 	}
@@ -217,6 +228,7 @@ func (h *Handler) handleReportViolation(w http.ResponseWriter, r *http.Request) 
 	if h.writeAttemptError(w, "report violation", err, "no such attempt") {
 		return
 	}
+	h.metrics.RecordViolation(r.Context(), req.Type)
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt, "counted": counted})
 }
 
@@ -250,6 +262,7 @@ func (h *Handler) handleKick(w http.ResponseWriter, r *http.Request) {
 	if h.writeAttemptError(w, "kick attempt", err, "no such attempt") {
 		return
 	}
+	h.metrics.RecordKick(r.Context())
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
 }
 

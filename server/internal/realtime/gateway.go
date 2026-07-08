@@ -12,6 +12,7 @@ import (
 
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/httpapi"
+	"macquiz/server/internal/telemetry"
 )
 
 // This file owns hop 3 of the docs/05 section 1 pipeline: the gateway,
@@ -49,12 +50,20 @@ type Gateway struct {
 	owner   QuizOwnerFunc
 	origins []string
 	log     *slog.Logger
+	metrics *telemetry.Metrics
 
 	// baseCtx is the socket lifetime, derived from the serve process context
 	// so every open socket closes on shutdown. Critically it is NOT the
 	// request context: the root router's middleware.Timeout(30s) cancels the
 	// request context at 30 s, which would guillotine every monitor socket.
 	baseCtx context.Context
+}
+
+// SetMetrics wires the docs/10-operations.md section 2 WebSocket connection
+// count. Optional: a Gateway with no metrics set records nothing, which is
+// what every existing test gets.
+func (g *Gateway) SetMetrics(m *telemetry.Metrics) {
+	g.metrics = m
 }
 
 // NewGateway wires the gateway. ctx is the serve-process lifetime; when it is
@@ -125,6 +134,8 @@ func (g *Gateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.CloseNow()
+	g.metrics.IncWSConnections(g.baseCtx)
+	defer g.metrics.DecWSConnections(g.baseCtx)
 
 	// CloseRead drains and discards inbound frames (the monitor socket is
 	// write-only to the client) and returns a context canceled when the client

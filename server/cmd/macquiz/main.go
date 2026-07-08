@@ -29,6 +29,7 @@ import (
 	"macquiz/server/internal/httpserver"
 	"macquiz/server/internal/quiz"
 	"macquiz/server/internal/realtime"
+	"macquiz/server/internal/telemetry"
 	"macquiz/server/internal/worker"
 )
 
@@ -111,6 +112,20 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer sqlDB.Close()
 
+	// Grafana Cloud metrics export (docs/10-operations.md section 2). With no
+	// MACQUIZ_OTEL_EXPORTER_ENDPOINT set (dev/test), every instrument below is
+	// a no-op and this never dials out.
+	tel, err := telemetry.Setup(ctx, cfg, "macquiz-api")
+	if err != nil {
+		return fmt.Errorf("set up telemetry: %w", err)
+	}
+	defer tel.Shutdown(context.Background())
+	if err := tel.RegisterQueueLagGauge(func(ctx context.Context) (float64, error) {
+		return httpserver.QueueLagSeconds(ctx, sqlDB)
+	}); err != nil {
+		return fmt.Errorf("register queue lag gauge: %w", err)
+	}
+
 	// Production's Compose stack (docs/09-deployment.md section 4) has no
 	// standalone migrate service - only the dev stack does. So the app
 	// entrypoint must apply pending migrations itself before accepting
@@ -164,12 +179,14 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// The worker emits no progress, so its publisher stays unwrapped.
 	attemptSvc := attempt.NewService(sqlDB, log, attempt.NewProgressCoalescer(publisher))
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
+	attemptHandler.SetMetrics(tel.Metrics)
 	analyticsHandler := analytics.NewHandler(analytics.NewService(sqlDB, log), authSvc)
 
 	// The gateway's socket lifetime is bound to ctx (the SIGTERM signal
 	// context): when the process is asked to stop, every open monitor socket's
 	// pump returns, so graceful shutdown does not wait out the Timeout grace.
 	gateway := realtime.NewGateway(ctx, subscriber, authSvc, quizSvc.OwnerOf, cfg.WSAllowedOrigins, log)
+	gateway.SetMetrics(tel.Metrics)
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
