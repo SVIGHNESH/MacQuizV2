@@ -12,6 +12,7 @@ Status: implementation baseline.
   R2 object versioning protects against a bad prune (enabled once on the bucket at provisioning time, not by the script).
 - Restore drill once per term: pull the latest dump into a scratch container and run the smoke tests against it.
   An untested backup is a hope, not a backup.
+  Implemented as `scripts/backup/restore-drill.sh`: fetches the latest `daily/` dump from R2 (or drills a dump already on disk via `--dump-file`), restores it into a throwaway `postgres:16-alpine` container on an isolated Docker network, runs the app image's `migrate` command against it as a schema-compatibility check, then queries row counts on the core tables to prove the restored data is actually queryable. Exits non-zero and leaves nothing running on any failure. Run by hand (`MACQUIZ_IMAGE=... TAG=... scripts/backup/restore-drill.sh`); not on a cron.
 - Exam-day belt: a pre-quiz-window dump is triggered automatically by the scheduler when any quiz enters `scheduled` for the same day.
   Implemented via a `backup_triggers` table: `quiz.Service.Publish` upserts a same-UTC-day row when a quiz's `starts_at` is today, and the `backup` container's tighter `*/5 * * * *` cron (`check-trigger.sh`) polls it, runs the same dump/upload/prune as the nightly job, and marks the row fulfilled so later polls that day are no-ops.
 - Current RPO: 24 h (nightly) improving to near-zero on exam days via the pre-window dump.
