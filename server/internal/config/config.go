@@ -51,6 +51,15 @@ type Config struct {
 	// every export, formatted as "key=value,key2=value2" (Grafana Cloud's
 	// OTLP gateway takes an "Authorization=Basic <token>" pair here).
 	OTelExporterHeaders string
+	// EmailAPIKey authenticates against Resend (docs/09-deployment.md
+	// section 3) for the email leg of assignment-change notifications. Empty
+	// (the dev/test default) disables email delivery entirely - it degrades
+	// to a no-op, never a boot failure, since the in-app user:{id}:notify
+	// channel already delivers the same event.
+	EmailAPIKey string
+	// EmailFrom/EmailFromName set the From header on outgoing mail.
+	EmailFrom     string
+	EmailFromName string
 }
 
 // Load reads configuration from the environment, applying development defaults.
@@ -73,6 +82,10 @@ func Load() Config {
 
 		OTelExporterEndpoint: os.Getenv("MACQUIZ_OTEL_EXPORTER_ENDPOINT"),
 		OTelExporterHeaders:  os.Getenv("MACQUIZ_OTEL_EXPORTER_HEADERS"),
+
+		EmailAPIKey:   os.Getenv("MACQUIZ_EMAIL_API_KEY"),
+		EmailFrom:     getenv("MACQUIZ_EMAIL_FROM", "notify@macquiz.example.edu"),
+		EmailFromName: getenv("MACQUIZ_EMAIL_FROM_NAME", "MacQuiz"),
 	}
 }
 

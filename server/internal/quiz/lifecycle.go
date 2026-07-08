@@ -573,17 +573,100 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	// whose membership actually changed, never the whole new/old audience -
 	// a student re-listed on every save of an unrelated assignment tweak
 	// must not get a fresh "assigned" ping each time.
+	var newlyAssigned, newlyDropped []string
 	for id := range audience {
 		if !prevAudience[id] {
+			newlyAssigned = append(newlyAssigned, id)
 			s.events.PublishNotify(ctx, id, eventAssigned, assignmentPayload{QuizID: quizID, Title: q.Title})
 		}
 	}
 	for id := range prevAudience {
 		if !audience[id] {
+			newlyDropped = append(newlyDropped, id)
 			s.events.PublishNotify(ctx, id, eventUnassigned, assignmentPayload{QuizID: quizID, Title: q.Title})
 		}
 	}
+	s.emailAssignmentChanges(ctx, quizID, q.Title, students, newlyAssigned, newlyDropped)
 	return students, nil
+}
+
+// emailAssignmentChanges sends the email leg of an assignment change to
+// every newly-assigned/newly-dropped student that has an address on file.
+// students is the post-commit audience assignedStudents already loaded (so
+// the newlyAssigned recipients' name/email cost nothing extra); newlyDropped
+// students are no longer in that list, so their contact info is looked up
+// separately. One goroutine per recipient, each on its own bounded, detached
+// context (mirrors realtime.Publisher's "never let a slow relay stall the
+// request goroutine" contract, budgeted for a slower transport than Redis -
+// a request assigning a large group must not serialize N provider round
+// trips before it can respond).
+func (s *Service) emailAssignmentChanges(ctx context.Context, quizID, title string, students []AssignedStudent, newlyAssigned, newlyDropped []string) {
+	if len(newlyAssigned) == 0 && len(newlyDropped) == 0 {
+		return
+	}
+	byID := make(map[string]AssignedStudent, len(students)+len(newlyDropped))
+	for _, st := range students {
+		byID[st.ID] = st
+	}
+	if len(newlyDropped) > 0 {
+		dropped, err := usersByID(ctx, s.db, newlyDropped)
+		if err != nil {
+			s.log.Warn("load dropped-assignment email recipients", "quiz_id", quizID, "err", err)
+		} else {
+			for _, u := range dropped {
+				byID[u.ID] = u
+			}
+		}
+	}
+	for _, id := range newlyAssigned {
+		s.sendAssignmentEmail(ctx, byID[id], title, true)
+	}
+	for _, id := range newlyDropped {
+		s.sendAssignmentEmail(ctx, byID[id], title, false)
+	}
+}
+
+// sendAssignmentEmail fires one best-effort notification email in its own
+// goroutine. A student with no id (byID miss) or no email on file is
+// silently skipped.
+func (s *Service) sendAssignmentEmail(ctx context.Context, student AssignedStudent, quizTitle string, assigned bool) {
+	if student.ID == "" || student.Email == "" {
+		return
+	}
+	subject := fmt.Sprintf("Assigned: %s", quizTitle)
+	body := fmt.Sprintf("Hi %s,\n\nYou have been assigned the quiz %q. Sign in to MacQuiz to see it.\n", student.FullName, quizTitle)
+	if !assigned {
+		subject = fmt.Sprintf("Removed: %s", quizTitle)
+		body = fmt.Sprintf("Hi %s,\n\nYou have been removed from the quiz %q. No action is needed.\n", student.FullName, quizTitle)
+	}
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emailSendTimeout)
+		defer cancel()
+		if err := s.email.Send(sendCtx, student.Email, student.FullName, subject, body); err != nil {
+			s.log.Warn("send assignment email", "student_id", student.ID, "assigned", assigned, "err", err)
+		}
+	}()
+}
+
+// usersByID loads full_name/email for a specific set of student ids -
+// SetAssignments' dropped-student case, where assignedStudents' post-commit
+// audience query no longer includes them.
+func usersByID(ctx context.Context, db querier, ids []string) ([]AssignedStudent, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, full_name, email FROM users WHERE id = ANY($1::uuid[])`, uuidArray(ids))
+	if err != nil {
+		return nil, fmt.Errorf("load users by id: %w", err)
+	}
+	defer rows.Close()
+	var users []AssignedStudent
+	for rows.Next() {
+		var u AssignedStudent
+		if err := rows.Scan(&u.ID, &u.FullName, &u.Email); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
 }
 
 // ListAssignments returns the quiz's current audience to its owner.

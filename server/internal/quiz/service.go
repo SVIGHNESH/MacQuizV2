@@ -122,6 +122,11 @@ type Service struct {
 	// and ForceClose commit (docs/05 section 2). It defaults to a no-op, so
 	// the service works with no realtime layer wired.
 	events EventPublisher
+	// email delivers the email leg of assignment-change notifications
+	// (SetAssignments). It defaults to a no-op, so the service works with no
+	// provider configured - the in-app user:{id}:notify channel already
+	// covers the same event and never depends on this.
+	email EmailSender
 }
 
 // NewService wires the quiz authoring service. An optional EventPublisher
@@ -134,7 +139,18 @@ func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore, publisher
 		// to reject, so this cannot happen at runtime.
 		panic(fmt.Sprintf("build insert-only river client: %v", err))
 	}
-	return &Service{db: db, log: log, jobs: jobs, uploads: uploads, events: resolvePublisher(publishers)}
+	return &Service{db: db, log: log, jobs: jobs, uploads: uploads, events: resolvePublisher(publishers), email: noopEmailSender{}}
+}
+
+// SetEmailSender wires the email leg of assignment-change notifications
+// (email.NewResendSender in production). Mirrors the SetSnapshotCache setter
+// convention elsewhere in the codebase: optional, called once at boot,
+// nil-safe to omit entirely (the service keeps the no-op default and every
+// assignment change still delivers over the in-app channel).
+func (s *Service) SetEmailSender(e EmailSender) {
+	if e != nil {
+		s.email = e
+	}
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,

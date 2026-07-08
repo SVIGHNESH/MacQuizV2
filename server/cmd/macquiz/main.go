@@ -26,6 +26,7 @@ import (
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
+	"macquiz/server/internal/email"
 	"macquiz/server/internal/httpserver"
 	"macquiz/server/internal/quiz"
 	"macquiz/server/internal/realtime"
@@ -183,6 +184,13 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: cfg.ImportDir}, publisher)
+	// The email leg of "Notifications on assignment changes" (docs/09
+	// section 3): an unset API key leaves quizSvc on its no-op default, same
+	// "degrade rather than fail boot" contract as Redis above - the in-app
+	// user:{id}:notify channel already delivers the same event either way.
+	if cfg.EmailAPIKey != "" {
+		quizSvc.SetEmailSender(email.NewResendSender(cfg.EmailAPIKey, cfg.EmailFrom, cfg.EmailFromName))
+	}
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
 	// Coalesce serve-side attempt.progress to at most one relay per 2 s per
 	// attempt (docs/05 section 5): every autosave still persists its event row,

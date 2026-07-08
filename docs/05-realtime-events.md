@@ -52,6 +52,8 @@ The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pie
 
 `user:{id}:notify` is now implemented end to end: `quiz.Service.SetAssignments` diffs the audience before and after each `PUT /quizzes/:id/assignments` call and, after commit, publishes `quiz.assigned`/`quiz.unassigned` (quiz_id, title) to exactly the students whose membership changed - never the whole audience on an unrelated save. `web/src/player/StudentWorkspace.tsx` opens the channel for the whole signed-in session (a teacher can change assignments while the student is mid-attempt on something else) and renders each notification as a dismissable banner.
 
+The email leg of the same notification is also now implemented: `quiz.Service.emailAssignmentChanges` (`server/internal/quiz/lifecycle.go`) sends one email per affected student through `quiz.EmailSender` - a "you were assigned" mail for a newly-added student, a "you were removed" mail for a dropped one - each fired from its own detached, timeout-bounded goroutine so a slow or unreachable provider never adds latency to the `PUT /quizzes/:id/assignments` request. `email.ResendSender` (`server/internal/email`) is the concrete Resend-backed implementation, wired in `main.go` only when `MACQUIZ_EMAIL_API_KEY` is set; leaving it unset degrades to the package's `noopEmailSender` default, never a boot failure, since the in-app channel above already delivers the same event.
+
 ## 5. Throttling and degradation
 
 - `attempt.progress` is coalesced per student to at most 1 event per 2 s.
