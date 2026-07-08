@@ -18,6 +18,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 
+	"macquiz/server/internal/analytics"
 	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
@@ -132,12 +133,21 @@ func sweepDue(ctx context.Context, sqlDB *sql.DB, log *slog.Logger, pub attempt.
 	if err != nil {
 		return err
 	}
-	if opened > 0 || closed > 0 || auto > 0 || forced > 0 || graded > 0 || released > 0 {
+	// The analytics rollup runs after grading has settled: a quiz closed in
+	// this pass has every attempt graded above, so its quiz_stats row is
+	// computed here in the same pass (docs/07 section 4). A rollup error is
+	// deliberately last, so it can never wedge the grading/release chain.
+	rolled, err := analytics.RollupDue(ctx, sqlDB)
+	if err != nil {
+		return err
+	}
+	if opened > 0 || closed > 0 || auto > 0 || forced > 0 || graded > 0 || released > 0 || rolled > 0 {
 		log.Info("due transitions applied",
 			"trigger", trigger, "subject", subject,
 			"quizzes_opened", opened, "quizzes_closed", closed,
 			"attempts_auto_submitted", auto, "attempts_force_submitted", forced,
-			"attempts_graded", graded, "results_released", released)
+			"attempts_graded", graded, "results_released", released,
+			"quizzes_rolled_up", rolled)
 	}
 	return nil
 }
