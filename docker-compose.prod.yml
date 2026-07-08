@@ -1,0 +1,114 @@
+# MacQuiz v2 production stack (docs/09-deployment.md section 4).
+#
+# This file (plus ./Caddyfile) is copied to the VM's /opt/macquiz as a
+# one-time provisioning step and becomes that host's docker-compose.yml.
+# .github/workflows/deploy.yml never manages this file - on every deploy it
+# only runs `docker compose pull app worker && docker compose up -d app
+# worker` against whatever is already at /opt/macquiz, so postgres/redis/
+# caddy start once at provisioning time and are left running across deploys.
+#
+# Container env vars: see .env.production.example. Copy it to
+# .env.production on the VM and fill in real secrets before first `up` - it
+# is loaded via each service's env_file: below, separately from the
+# MACQUIZ_IMAGE/TAG substitution below, which docker compose resolves from
+# a project-root .env (auto-loaded) or the shell environment (deploy.yml
+# exports TAG before every `docker compose up`).
+#
+# One-time step after the stack is up for the first time (not run by CI):
+#   docker compose run --rm app bootstrap
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    env_file: .env.production
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  app:
+    image: ${MACQUIZ_IMAGE:-ghcr.io/ORG/macquiz-app}:${TAG:-latest}
+    command: ["serve"]
+    env_file: .env.production
+    volumes:
+      - import_data:/var/lib/macquiz/imports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      import-dir-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: unless-stopped
+
+  worker: # River: scheduler, grading, imports, rollups
+    image: ${MACQUIZ_IMAGE:-ghcr.io/ORG/macquiz-app}:${TAG:-latest}
+    command: ["worker"]
+    env_file: .env.production
+    volumes:
+      - import_data:/var/lib/macquiz/imports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      import-dir-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env.production
+    environment:
+      POSTGRES_DB: macquiz
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-macquiz} -d macquiz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"] # session durability; queue lives in Postgres
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot: the app/worker images run as the distroless "nonroot" user
+  # (uid/gid 65532), but Docker creates a brand-new named volume's mount
+  # point owned by root, so the first write into it fails "permission
+  # denied" - chown it once, as root, before app/worker start (matches
+  # docker-compose.yml's dev-stack import-dir-init).
+  import-dir-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "mkdir -p /var/lib/macquiz/imports && chown -R 65532:65532 /var/lib/macquiz/imports"]
+    volumes:
+      - import_data:/var/lib/macquiz/imports
+    restart: "no"
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  # Bulk-upload files shared between app (register-import) and worker
+  # (import_validate job) - LocalImportStorage's single-VM stand-in for
+  # object storage (docs/07 section 2; docs/09 section 4).
+  import_data:

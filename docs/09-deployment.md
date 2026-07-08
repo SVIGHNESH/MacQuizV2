@@ -84,6 +84,9 @@ services:
 volumes: { pg_data: {}, redis_data: {}, caddy_data: {} }
 ```
 
+This is checked into the repo as `docker-compose.prod.yml` plus a `Caddyfile`, with `.env.production.example` documenting every required env var.
+Initial VM provisioning copies both files to `/opt/macquiz` (as `docker-compose.yml` and `Caddyfile`) and fills in `.env.production` from the example; every later deploy (section 5) only ever runs `docker compose pull app worker && docker compose up -d app worker` against what is already there, so postgres/redis/caddy start once and are left running across deploys.
+
 Notes:
 
 - API and realtime gateway share one process at this tier; splitting later is a Compose edit.

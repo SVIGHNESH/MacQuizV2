@@ -1,0 +1,20 @@
+# MacQuiz v2 production reverse proxy (docs/09-deployment.md section 4).
+#
+# The React frontend is a static build on Cloudflare Pages (docs/09 section
+# 3), so this VM only ever serves the API + realtime gateway; Caddy's only
+# job is edge TLS (Let's Encrypt at origin, behind Cloudflare) and proxying
+# every path - including the /ws upgrade - to the app container.
+#
+# DOMAIN comes from .env.production, e.g. DOMAIN=quiz-api.example.edu.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# reverse_proxy upgrades WebSocket connections (Connection: Upgrade)
+	# transparently; no separate config is needed for the /ws path.
+	reverse_proxy app:8080
+
+	log {
+		output stdout
+		format json
+	}
+}

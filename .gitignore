@@ -4,3 +4,4 @@ web/dist/
 .env
 .env.*
 !.env.example
+!.env.production.example
