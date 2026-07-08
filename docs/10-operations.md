@@ -31,6 +31,7 @@ Status: implementation baseline.
   14-day retention on the free tier is accepted.
   OpenTelemetry log export is not implemented; the app logs structured JSON to stdout only (Compose/journald captured), not shipped to Grafana Cloud.
 - Watchtower is deliberately absent: images update only via the deploy pipeline, never automatically under a live quiz.
+- Dashboard and alert-rule definitions are checked in as `scripts/grafana/{dashboard.json,alert-rules.json}` (see `scripts/grafana/README.md`): a Grafana dashboard for the four key series above, plus alert rules for the two section 3 thresholds that are derived from metrics this app emits (autosave p95, queue lag). Grafana Cloud's free tier has no filesystem provisioning, so these are imported once by hand via the UI or the alert-provisioning HTTP API, the same "run by hand" convention `restore-drill.sh` uses. Disk-usage and backup-job alerting are host/cron-level concerns with no app-emitted metric behind them and are out of scope for these files (see the README's "Not covered here").
 
 ## 3. Alert thresholds (initial)
 

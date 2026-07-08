@@ -1,0 +1,173 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "macquiz-autosave-latency",
+      "folder": "MacQuiz",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "macquiz-autosave-warn",
+          "title": "MacQuiz: autosave p95 > 200ms (5m)",
+          "condition": "B",
+          "for": "5m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "warning" },
+          "annotations": {
+            "summary": "Autosave p95 latency has exceeded 200ms for 5 minutes (docs/10-operations.md section 3, warn threshold).",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 600, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "histogram_quantile(0.95, sum(rate(macquiz_attempt_autosave_duration_seconds_bucket[5m])) by (le))"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 600, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [0.2] } }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "macquiz-autosave-page",
+          "title": "MacQuiz: autosave p95 > 300ms during a live window (5m)",
+          "condition": "B",
+          "for": "5m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "page" },
+          "annotations": {
+            "summary": "Autosave p95 latency has exceeded 300ms for 5 minutes - the docs/01 NFR threshold - during a live quiz window (docs/10-operations.md section 3, page threshold).",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 600, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "histogram_quantile(0.95, sum(rate(macquiz_attempt_autosave_duration_seconds_bucket[5m])) by (le))"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 600, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [0.3] } }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "orgId": 1,
+      "name": "macquiz-queue-lag",
+      "folder": "MacQuiz",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "macquiz-queue-lag-warn",
+          "title": "MacQuiz: queue lag > 10s",
+          "condition": "B",
+          "for": "1m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "warning" },
+          "annotations": {
+            "summary": "The oldest due-but-unfired River job is more than 10s overdue (docs/10-operations.md section 3, warn threshold). Same signal /healthz checks.",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "max(macquiz_queue_lag_seconds)"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [10] } }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "macquiz-queue-lag-page",
+          "title": "MacQuiz: queue lag > 60s (deadline timers at risk)",
+          "condition": "B",
+          "for": "1m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "page" },
+          "annotations": {
+            "summary": "The oldest due-but-unfired River job is more than 60s overdue (docs/10-operations.md section 3, page threshold) - quiz open/close and attempt deadline timers are at risk of firing late.",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "max(macquiz_queue_lag_seconds)"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [60] } }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
