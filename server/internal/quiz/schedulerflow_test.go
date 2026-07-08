@@ -204,6 +204,46 @@ func TestSchedulerFlowE2E(t *testing.T) {
 			t.Fatalf("stored status = %q, want closed", got)
 		}
 	})
+
+	t.Run("publishing for today requests an exam-day backup, a future date does not", func(t *testing.T) {
+		todayQuiz := authorMinimalQuiz(t, server, teacher, "Exam Today")
+		assign(t, server, teacher, todayQuiz, pupilID)
+		status, body, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+todayQuiz+"/publish",
+			window(time.Hour, 2*time.Hour), teacher)
+		if status != 200 {
+			t.Fatalf("publish = %d %v", status, body)
+		}
+		if !backupTriggerExists(t, ctx, sqlDB, time.Now().UTC()) {
+			t.Fatalf("expected a backup_triggers row for today's UTC date after publishing a quiz starting today")
+		}
+
+		// Republishing the same day-of quiz must not error on the trigger's
+		// primary key - ON CONFLICT DO NOTHING keeps exactly one row.
+		status, body, _ = itest.Call(t, server, "POST", "/api/v1/quizzes/"+todayQuiz+"/publish",
+			window(90*time.Minute, 3*time.Hour), teacher)
+		if status != 200 {
+			t.Fatalf("republish = %d %v", status, body)
+		}
+		if got := backupTriggerCount(t, ctx, sqlDB, time.Now().UTC()); got != 1 {
+			t.Fatalf("backup_triggers rows for today after republish = %d, want 1", got)
+		}
+
+		futureQuiz := authorMinimalQuiz(t, server, teacher, "Exam Next Month")
+		assign(t, server, teacher, futureQuiz, pupilID)
+		futureStart := time.Now().Add(30 * 24 * time.Hour)
+		status, body, _ = itest.Call(t, server, "POST", "/api/v1/quizzes/"+futureQuiz+"/publish",
+			map[string]any{
+				"starts_at":    futureStart.UTC().Format(time.RFC3339),
+				"ends_at":      futureStart.Add(time.Hour).UTC().Format(time.RFC3339),
+				"duration_sec": 600,
+			}, teacher)
+		if status != 200 {
+			t.Fatalf("publish future = %d %v", status, body)
+		}
+		if backupTriggerExists(t, ctx, sqlDB, futureStart.UTC()) {
+			t.Fatalf("did not expect a backup_triggers row for a quiz starting 30 days out")
+		}
+	})
 }
 
 // authorMinimalQuiz creates a publishable one-question draft over HTTP.
@@ -243,6 +283,22 @@ func countWindowJobs(t *testing.T, ctx context.Context, sqlDB *sql.DB, quizID st
 		t.Fatalf("count window jobs: %v", err)
 	}
 	return n
+}
+
+func backupTriggerCount(t *testing.T, ctx context.Context, sqlDB *sql.DB, day time.Time) int {
+	t.Helper()
+	var n int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM backup_triggers WHERE trigger_date = $1::date`,
+		day.Format("2006-01-02")).Scan(&n); err != nil {
+		t.Fatalf("count backup_triggers: %v", err)
+	}
+	return n
+}
+
+func backupTriggerExists(t *testing.T, ctx context.Context, sqlDB *sql.DB, day time.Time) bool {
+	t.Helper()
+	return backupTriggerCount(t, ctx, sqlDB, day) > 0
 }
 
 func storedStatus(t *testing.T, ctx context.Context, sqlDB *sql.DB, quizID string) string {

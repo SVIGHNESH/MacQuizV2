@@ -2,3 +2,9 @@
 # container's stdout/stderr (PID 1's fds) so `docker compose logs backup`
 # shows dump/upload/prune progress and failures.
 0 2 * * * /backup.sh >>/proc/1/fd/1 2>>/proc/1/fd/2
+
+# Exam-day belt: poll every 5 minutes for a same-day trigger row written by
+# quiz.Service.Publish. A no-op query when nothing is pending, so this is
+# cheap enough to run tightly; runs the same dump/upload/prune as above when
+# a quiz was published to start today.
+*/5 * * * * /check-trigger.sh >>/proc/1/fd/1 2>>/proc/1/fd/2

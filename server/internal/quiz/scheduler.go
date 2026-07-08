@@ -94,6 +94,29 @@ func (s *Service) enqueueWindowJobs(ctx context.Context, tx *sql.Tx, quizID stri
 	return nil
 }
 
+// requestExamDayBackup upserts a same-day marker row (docs/10-operations.md
+// section 1's "exam-day belt") when the quiz's starts_at falls on today's
+// date. "Today" is judged on the database clock in UTC - the same clock
+// scripts/backup/backup.sh's `date -u +%F` uses - rather than the app
+// server's clock, so the two sides of the belt never disagree about which
+// day it is. A future-dated publish leaves no row; publishing (or
+// rescheduling) more than once for the same day still leaves exactly one row
+// via ON CONFLICT DO NOTHING. The backup container's tighter cron
+// (check-trigger.sh) polls this table and runs the extra pre-window dump;
+// this function only ever writes the request.
+func (s *Service) requestExamDayBackup(ctx context.Context, tx *sql.Tx, startsAt time.Time) error {
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO backup_triggers (trigger_date)
+		 SELECT ($1 AT TIME ZONE 'UTC')::date
+		 WHERE ($1 AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date
+		 ON CONFLICT (trigger_date) DO NOTHING`,
+		startsAt)
+	if err != nil {
+		return fmt.Errorf("request exam-day backup: %w", err)
+	}
+	return nil
+}
+
 // enqueueCloseJob schedules a single close_quiz job to fire at the given time.
 // Extend uses it to run the close chain at the new ends_at; the stale
 // close_quiz job left at the old ends_at no-ops when it fires (the sweep needs

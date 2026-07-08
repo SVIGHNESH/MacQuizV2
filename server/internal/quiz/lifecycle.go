@@ -177,6 +177,13 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 		return Quiz{}, err
 	}
 
+	// Exam-day backup belt (docs/10 section 1): a quiz starting today gets a
+	// pre-window dump request alongside its open/close jobs, in the same
+	// transaction so a rolled-back publish never leaves an orphan trigger.
+	if err := s.requestExamDayBackup(ctx, tx, in.StartsAt); err != nil {
+		return Quiz{}, err
+	}
+
 	if err := audit.Write(ctx, tx, actor.ID, "quizzes.published", "quiz", id, map[string]any{
 		"version":      newVersion,
 		"starts_at":    in.StartsAt,

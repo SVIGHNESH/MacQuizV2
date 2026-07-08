@@ -104,10 +104,12 @@ services:
       - import_data:/var/lib/macquiz/imports
     restart: "no"
 
-  # Nightly pg_dump -> R2, 7 daily + 8 weekly retention (docs/10-operations.md
-  # section 1). Built from ./scripts/backup, which must be copied to the VM
-  # alongside this file and .env.production for `docker compose up` to build
-  # it. See .env.production.example for the required BACKUP_R2_*/AWS_* vars.
+  # Nightly pg_dump -> R2, 7 daily + 8 weekly retention, plus a tighter
+  # exam-day poll that fires an extra pre-window dump when a quiz is
+  # published to start today (docs/10-operations.md section 1). Built from
+  # ./scripts/backup, which must be copied to the VM alongside this file and
+  # .env.production for `docker compose up` to build it. See
+  # .env.production.example for the required BACKUP_R2_*/AWS_* vars.
   backup:
     build: ./scripts/backup
     env_file: .env.production

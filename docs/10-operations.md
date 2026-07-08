@@ -13,7 +13,7 @@ Status: implementation baseline.
 - Restore drill once per term: pull the latest dump into a scratch container and run the smoke tests against it.
   An untested backup is a hope, not a backup.
 - Exam-day belt: a pre-quiz-window dump is triggered automatically by the scheduler when any quiz enters `scheduled` for the same day.
-  Not yet implemented - the nightly job above is the only trigger today.
+  Implemented via a `backup_triggers` table: `quiz.Service.Publish` upserts a same-UTC-day row when a quiz's `starts_at` is today, and the `backup` container's tighter `*/5 * * * *` cron (`check-trigger.sh`) polls it, runs the same dump/upload/prune as the nightly job, and marks the row fulfilled so later polls that day are no-ops.
 - Current RPO: 24 h (nightly) improving to near-zero on exam days via the pre-window dump.
   When 24 h stops being acceptable, add WAL archiving to R2 with pgBackRest for point-in-time recovery (effort, not money).
 

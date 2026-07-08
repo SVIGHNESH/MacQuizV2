@@ -6,8 +6,9 @@ FROM postgres:16-alpine
 RUN apk add --no-cache aws-cli bash
 
 COPY backup.sh /backup.sh
+COPY check-trigger.sh /check-trigger.sh
 COPY crontab /etc/crontabs/root
-RUN chmod +x /backup.sh
+RUN chmod +x /backup.sh /check-trigger.sh
 
 # Foreground, non-daemonizing crond so the container stays up and its exit
 # is visible to Compose/restart policies; -l 2 logs job start/end.
