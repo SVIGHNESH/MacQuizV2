@@ -208,8 +208,14 @@ func TestSchedulerFlowE2E(t *testing.T) {
 	t.Run("publishing for today requests an exam-day backup, a future date does not", func(t *testing.T) {
 		todayQuiz := authorMinimalQuiz(t, server, teacher, "Exam Today")
 		assign(t, server, teacher, todayQuiz, pupilID)
+		// A minute-scale offset, not window()'s usual hour scale: this
+		// subtest's whole point is "starts_at falls on today's UTC date",
+		// which an hours-long offset can silently violate (and flake) when
+		// the suite happens to run within the last hour or two of the UTC
+		// day - now()+2h would land after midnight UTC and no longer be
+		// "today" by the time requestExamDayBackup checks it.
 		status, body, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+todayQuiz+"/publish",
-			window(time.Hour, 2*time.Hour), teacher)
+			window(2*time.Minute, 5*time.Minute), teacher)
 		if status != 200 {
 			t.Fatalf("publish = %d %v", status, body)
 		}
@@ -220,7 +226,7 @@ func TestSchedulerFlowE2E(t *testing.T) {
 		// Republishing the same day-of quiz must not error on the trigger's
 		// primary key - ON CONFLICT DO NOTHING keeps exactly one row.
 		status, body, _ = itest.Call(t, server, "POST", "/api/v1/quizzes/"+todayQuiz+"/publish",
-			window(90*time.Minute, 3*time.Hour), teacher)
+			window(3*time.Minute, 6*time.Minute), teacher)
 		if status != 200 {
 			t.Fatalf("republish = %d %v", status, body)
 		}

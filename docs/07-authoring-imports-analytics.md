@@ -39,6 +39,8 @@ Student and quiz analytics are visible to the owning teacher and the admin; teac
 | Per teacher | Quizzes created/conducted, total student attempts, average participation, average class score, publish-to-results latency | Admin (teacher sees own) |
 | Org-wide | Active users, quizzes per week, platform participation, cohort comparisons across groups | Admin |
 
+Score and percentile per quiz is served by `GET /attempts/:id/result` (`Result.percentile`, `server/internal/attempt/results.go`): a percentile-rank derived from the quiz's already-computed `quiz_stats.distribution` histogram (below-bucket count plus half the attempt's own bucket, over the total), not a fresh full-population query - consistent with section 4's "no separate analytics store" rule. It is bucket-granular (10 buckets), not an exact rank, and is `null` until the quiz's `quiz_stats` rollup lands or when the quiz has no points. Strength/weakness by topic tag is not implemented: the schema carries no per-question topic taxonomy to strengthen against (`student_stats.topic_strengths` is always an empty object), so this sub-metric is out of scope for v1 pending a topic-tagging data model, not merely deferred.
+
 ## 4. How analytics are computed
 
 No separate analytics store in v1; two mechanisms cover everything:

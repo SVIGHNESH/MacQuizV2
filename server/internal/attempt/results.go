@@ -46,6 +46,7 @@ type Result struct {
 	QuizTitle  string           `json:"quiz_title"`
 	Score      float64          `json:"score"`
 	MaxScore   float64          `json:"max_score"`
+	Percentile *float64         `json:"percentile"`
 	ReleasedAt time.Time        `json:"released_at"`
 	Questions  []ResultQuestion `json:"questions"`
 }
@@ -143,5 +144,56 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 		res.Questions[i] = rq
 		res.MaxScore += q.Points
 	}
+
+	res.Percentile = quizPercentile(ctx, s.db, a.QuizID, res.Score, res.MaxScore)
 	return res, nil
+}
+
+// distributionBuckets mirrors analytics.distributionBuckets: quiz_stats.
+// distribution is 10 equal-width percentage-of-max-score buckets, bucket i
+// covering [i*10, (i+1)*10)% with a perfect 100% folded into the last one.
+const distributionBuckets = 10
+
+// quizPercentile answers docs/07 section 3's "score and percentile per quiz"
+// (docs/07-authoring-imports-analytics.md line 37) from the already-computed
+// quiz_stats.distribution histogram - no separate query against every other
+// attempt, matching docs/07 section 4's "no separate analytics store, read
+// the precomputed rows" discipline. It is necessarily bucket-granular (10
+// buckets), not an exact rank, and returns nil whenever a precise answer
+// isn't available yet: no points on the quiz, no quiz_stats row (results
+// were released a moment before the same worker pass's rollup step ran), or
+// zero attempts counted in it.
+func quizPercentile(ctx context.Context, db querier, quizID string, score, maxScore float64) *float64 {
+	if maxScore <= 0 {
+		return nil
+	}
+	var raw []byte
+	if err := db.QueryRowContext(ctx,
+		`SELECT distribution FROM quiz_stats WHERE quiz_id = $1`, quizID).Scan(&raw); err != nil {
+		return nil
+	}
+	var buckets []int
+	if err := json.Unmarshal(raw, &buckets); err != nil || len(buckets) != distributionBuckets {
+		return nil
+	}
+	total := 0
+	for _, c := range buckets {
+		total += c
+	}
+	if total == 0 {
+		return nil
+	}
+	idx := int(score / maxScore * distributionBuckets)
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= distributionBuckets {
+		idx = distributionBuckets - 1
+	}
+	below := 0
+	for _, c := range buckets[:idx] {
+		below += c
+	}
+	pct := (float64(below) + 0.5*float64(buckets[idx])) / float64(total) * 100
+	return &pct
 }

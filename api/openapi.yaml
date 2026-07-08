@@ -2969,7 +2969,8 @@ components:
         The released results payload for one attempt. The attempt keeps its
         usual score-free shape; the released score rides at the top level.
       required:
-        [attempt, quiz_title, score, max_score, released_at, questions]
+        [attempt, quiz_title, score, max_score, percentile, released_at,
+         questions]
       properties:
         attempt:
           $ref: "#/components/schemas/Attempt"
@@ -2979,6 +2980,15 @@ components:
           type: number
         max_score:
           type: number
+        percentile:
+          type: number
+          nullable: true
+          description: >-
+            This attempt's score, ranked against the quiz's score
+            distribution (docs/07 section 3, "score and percentile per
+            quiz"). Bucket-granular (derived from the 10-bucket quiz_stats
+            histogram, not an exact rank) and null when no points are
+            possible on the quiz or the quiz_stats rollup hasn't landed yet.
         released_at:
           type: string
           format: date-time

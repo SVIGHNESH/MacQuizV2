@@ -108,6 +108,12 @@ export default function ResultReview({
         </span>
         <span className="score-caption">
           points
+          {result.percentile !== null && (
+            <>
+              <span className="meta-dot" aria-hidden="true" />
+              {formatPercentile(result.percentile)} percentile
+            </>
+          )}
           <span className="meta-dot" aria-hidden="true" />
           released {formatWhen(result.released_at)}
         </span>
@@ -122,6 +128,17 @@ export default function ResultReview({
       </ol>
     </div>
   )
+}
+
+/** Renders a percentile (0-100) as an ordinal, e.g. 92 -> "92nd". */
+function formatPercentile(percentile: number): string {
+  const rounded = Math.round(percentile)
+  const mod100 = rounded % 100
+  const suffix =
+    mod100 >= 11 && mod100 <= 13
+      ? 'th'
+      : (['th', 'st', 'nd', 'rd'][rounded % 10] ?? 'th')
+  return `${rounded}${suffix}`
 }
 
 function verdictOf(q: ResultQuestion): {

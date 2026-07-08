@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"macquiz/server/internal/analytics"
 	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/db"
@@ -162,6 +163,9 @@ func TestReleaseFlowE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("release due results: %v", err)
 		}
+		if _, err := analytics.RollupDue(ctx, sqlDB); err != nil {
+			t.Fatalf("rollup due: %v", err)
+		}
 		return released
 	}
 
@@ -297,6 +301,13 @@ func TestReleaseFlowE2E(t *testing.T) {
 		}
 		if body["score"].(float64) != 3 || body["max_score"].(float64) != 3 {
 			t.Fatalf("score = %v/%v, want 3/3", body["score"], body["max_score"])
+		}
+		// The quiz_stats rollup ran in the earlier "never auto-releases"
+		// subtest's workerPass(). Alpha (3/3) lands in the top bucket, beta
+		// (1/3) in a lower one: percentile-rank = (below + 0.5*same) / total
+		// * 100 = (1 + 0.5) / 2 * 100 = 75.
+		if percentile, ok := body["percentile"].(float64); !ok || percentile != 75 {
+			t.Fatalf("percentile = %v, want 75", body["percentile"])
 		}
 		for _, raw := range body["questions"].([]any) {
 			q := raw.(map[string]any)

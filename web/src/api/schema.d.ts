@@ -1491,6 +1491,8 @@ export interface components {
             quiz_title: string;
             score: number;
             max_score: number;
+            /** @description This attempt's score, ranked against the quiz's score distribution (docs/07 section 3, "score and percentile per quiz"). Bucket-granular (derived from the 10-bucket quiz_stats histogram, not an exact rank) and null when no points are possible on the quiz or the quiz_stats rollup hasn't landed yet. */
+            percentile: number | null;
             /** Format: date-time */
             released_at: string;
             questions: components["schemas"]["ResultQuestion"][];
