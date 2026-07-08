@@ -801,6 +801,18 @@
   gap: 18px;
 }
 
+.stats-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stats-panel-head .button {
+  text-decoration: none;
+}
+
 .stats-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

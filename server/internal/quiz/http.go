@@ -60,6 +60,7 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Get("/{id}/assignments", h.handleListAssignments)
 		r.Put("/{id}/assignments", h.handleSetAssignments)
 		r.Get("/{id}/results", h.handleResults)
+		r.Get("/{id}/results.csv", h.handleResultsCSV)
 		r.Post("/{id}/release-results", h.handleReleaseResults)
 	})
 	r.Group(func(r chi.Router) {

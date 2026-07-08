@@ -85,7 +85,16 @@ export default function QuizStatsPanel({
 
   return (
     <section className="panel stats-panel" aria-label="Quiz analytics">
-      <span className="card-title">Analytics</span>
+      <div className="stats-panel-head">
+        <span className="card-title">Analytics</span>
+        <a
+          className="button button-quiet"
+          href={`/api/v1/quizzes/${quizId}/results.csv`}
+          download
+        >
+          Download results CSV
+        </a>
+      </div>
 
       <div className="stats-summary">
         <div className="stat-tile">

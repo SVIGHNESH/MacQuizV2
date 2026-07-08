@@ -535,6 +535,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/results.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-student results table as a downloadable CSV (owner)
+         * @description docs/07 section 4's "CSV exports": the same rows as GET /quizzes/:id/results, one line per assigned student per attempt, rendered as text/csv with a Content-Disposition attachment header instead of JSON. Reuses the same read as the JSON view, so the two can never disagree.
+         */
+        get: operations["exportQuizResultsCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/release-results": {
         parameters: {
             query?: never;
@@ -2473,6 +2493,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuizResultsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportQuizResultsCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The results table as a CSV file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             401: components["responses"]["Unauthorized"];

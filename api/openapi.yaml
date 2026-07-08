@@ -1026,6 +1026,37 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/quizzes/{id}/results.csv:
+    get:
+      operationId: exportQuizResultsCsv
+      summary: Per-student results table as a downloadable CSV (owner)
+      description: >-
+        docs/07 section 4's "CSV exports": the same rows as GET
+        /quizzes/:id/results, one line per assigned student per attempt,
+        rendered as text/csv with a Content-Disposition attachment header
+        instead of JSON. Reuses the same read as the JSON view, so the two
+        can never disagree.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The results table as a CSV file.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/quizzes/{id}/release-results:
     post:
       operationId: releaseResults
