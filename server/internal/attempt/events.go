@@ -23,12 +23,13 @@ import (
 // and disconnected/reconnected arrive with the heartbeat brick that does not
 // exist yet.
 const (
-	eventStarted   = "attempt.started"
-	eventProgress  = "attempt.progress"
-	eventSubmitted = "attempt.submitted"
-	eventGraded    = "attempt.graded"
-	eventKicked    = "attempt.kicked"
-	eventViolation = "attempt.violation"
+	eventStarted            = "attempt.started"
+	eventProgress           = "attempt.progress"
+	eventSubmitted          = "attempt.submitted"
+	eventGraded             = "attempt.graded"
+	eventKicked             = "attempt.kicked"
+	eventViolation          = "attempt.violation"
+	eventSessionInvalidated = "attempt.session_invalidated"
 )
 
 // startedPayload is the attempt.started delta: the dashboard moves the row to
@@ -84,6 +85,13 @@ type violationPayload struct {
 	DurationMs     *int   `json:"duration_ms"`
 	ViolationCount int    `json:"violation_count"`
 }
+
+// sessionInvalidatedPayload is the attempt.session_invalidated delta (docs/08
+// section 1, docs/06 section 3 "Single active session"): recorded when a
+// second device's attempt:{id} socket connects and the gateway force-closes
+// the first. It carries no payload - the row's existence and timestamp are
+// the whole record the teacher can see.
+type sessionInvalidatedPayload struct{}
 
 // execer abstracts *sql.Tx (and, for the sweep's per-row inserts, anything
 // that can exec) so appendEvent can run inside whatever transaction owns the

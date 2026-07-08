@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,8 +29,11 @@ import (
 // the attempt's owning student subscribes to the same quiz:{id}:events stream
 // and receives only the events scoped to their own attempt (today: the kick
 // lockout message, docs/06 section 4 step 4) plus any quiz-wide banner
-// events. The user:{id}:notify channel, heartbeat/disconnect tracking, and
-// the current question wiring are separate bricks that still layer on top.
+// events. It also enforces docs/08 section 1's single active session: only
+// one attempt:{id} socket per attempt may be open at a time, a second
+// device's connect force-closes the first. The user:{id}:notify channel and
+// heartbeat/disconnect/current-question tracking are separate bricks that
+// still layer on top.
 
 const (
 	// pingInterval keeps the socket (and any intermediate proxy) alive across
@@ -58,23 +62,50 @@ type AttemptOwnerFunc func(ctx context.Context, attemptID string) (studentID, qu
 // depend on - the gateway only ever relays the envelope it is handed.
 const eventKicked = "attempt.kicked"
 
+// statusSessionReplaced is the close code the gateway uses to force-close a
+// student's stale attempt:{id} socket when a second device's connects for the
+// same attempt (docs/08 section 1 "single active session"). RFC 6455 section
+// 7.4.2 reserves 4000-4999 for private application use. The client
+// (web/src/player/AttemptPlayer.tsx) checks for this code to skip the
+// reconnect it otherwise always attempts on close - without it, each device's
+// reconnect would boot the other in an endless loop.
+const statusSessionReplaced websocket.StatusCode = 4001
+
+// SessionInvalidatedFunc records that an attempt's stale socket was replaced
+// by a newer connection (docs/08 section 1: "...logged as an event the
+// teacher can see"). Called after the old socket has already been told to
+// close - it is a best-effort audit write, never a gate on the new
+// connection - so a slow or failing implementation only delays the log
+// entry, not the student who just reconnected.
+type SessionInvalidatedFunc func(ctx context.Context, attemptID string)
+
 // Gateway is the WebSocket monitor endpoint. It holds no quiz state: the
 // snapshot the dashboard reconciles against comes from GET /quizzes/:id/live,
 // and the gateway only streams the deltas published after it.
 type Gateway struct {
-	sub          Subscriber
-	auth         *authusers.Service
-	owner        QuizOwnerFunc
-	attemptOwner AttemptOwnerFunc
-	origins      []string
-	log          *slog.Logger
-	metrics      *telemetry.Metrics
+	sub                Subscriber
+	auth               *authusers.Service
+	owner              QuizOwnerFunc
+	attemptOwner       AttemptOwnerFunc
+	sessionInvalidated SessionInvalidatedFunc
+	origins            []string
+	log                *slog.Logger
+	metrics            *telemetry.Metrics
 
 	// baseCtx is the socket lifetime, derived from the serve process context
 	// so every open socket closes on shutdown. Critically it is NOT the
 	// request context: the root router's middleware.Timeout(30s) cancels the
 	// request context at 30 s, which would guillotine every monitor socket.
 	baseCtx context.Context
+
+	// activeAttempts tracks the one open attempt:{id} socket per attempt
+	// (docs/08 section 1 "single active session"), keyed by attempt ID. A
+	// second device's connection force-closes whatever conn is currently
+	// registered before replacing it; this map is the only quiz state the
+	// gateway holds (everything else is either request-scoped or fetched from
+	// the snapshot endpoint).
+	attemptsMu     sync.Mutex
+	activeAttempts map[string]*websocket.Conn
 }
 
 // SetMetrics wires the docs/10-operations.md section 2 WebSocket connection
@@ -94,13 +125,24 @@ func (g *Gateway) SetAttemptOwner(f AttemptOwnerFunc) {
 	g.attemptOwner = f
 }
 
+// SetSessionInvalidated wires the single-active-session audit log (docs/08
+// section 1). Optional, a setter like SetMetrics: a Gateway with none set
+// still enforces one socket per attempt, it just does not log it, which is
+// what every existing test gets.
+func (g *Gateway) SetSessionInvalidated(f SessionInvalidatedFunc) {
+	g.sessionInvalidated = f
+}
+
 // NewGateway wires the gateway. ctx is the serve-process lifetime; when it is
 // canceled (SIGTERM) every open socket's pump returns, so graceful shutdown
 // does not block on the router's Timeout grace. origins is the allowed set of
 // WebSocket Origin patterns (coder/websocket rejects cross-origin by default);
 // an empty list means same-origin only.
 func NewGateway(ctx context.Context, sub Subscriber, auth *authusers.Service, owner QuizOwnerFunc, origins []string, log *slog.Logger) *Gateway {
-	return &Gateway{sub: sub, auth: auth, owner: owner, origins: origins, log: log, baseCtx: ctx}
+	return &Gateway{
+		sub: sub, auth: auth, owner: owner, origins: origins, log: log, baseCtx: ctx,
+		activeAttempts: make(map[string]*websocket.Conn),
+	}
 }
 
 // Routes returns the /ws route group. Authentication rides the same
@@ -256,8 +298,44 @@ func (g *Gateway) handleAttempt(w http.ResponseWriter, r *http.Request) {
 	g.metrics.IncWSConnections(g.baseCtx)
 	defer g.metrics.DecWSConnections(g.baseCtx)
 
+	g.replaceActiveAttempt(attemptID, c)
+	defer g.clearActiveAttempt(attemptID, c)
+
 	ctx := c.CloseRead(connCtx)
 	g.pumpAttempt(ctx, c, sub.Messages(), attemptID)
+}
+
+// replaceActiveAttempt registers c as the one open socket for attemptID,
+// force-closing (and logging) whatever connection held that slot before it -
+// docs/08 section 1's "single active session": a second device's connect
+// invalidates the first. The close runs in its own goroutine since the close
+// handshake can block up to 5s waiting for the stale peer, and that must
+// never delay accepting the new connection.
+func (g *Gateway) replaceActiveAttempt(attemptID string, c *websocket.Conn) {
+	g.attemptsMu.Lock()
+	prev := g.activeAttempts[attemptID]
+	g.activeAttempts[attemptID] = c
+	g.attemptsMu.Unlock()
+	if prev == nil {
+		return
+	}
+	go func() {
+		_ = prev.Close(statusSessionReplaced, "opened in another window or device")
+	}()
+	if g.sessionInvalidated != nil {
+		go g.sessionInvalidated(g.baseCtx, attemptID)
+	}
+}
+
+// clearActiveAttempt removes c's registration on socket teardown, but only if
+// it is still the current holder: a socket that was itself replaced must not
+// clobber the newer connection's entry when its own handler unwinds later.
+func (g *Gateway) clearActiveAttempt(attemptID string, c *websocket.Conn) {
+	g.attemptsMu.Lock()
+	defer g.attemptsMu.Unlock()
+	if g.activeAttempts[attemptID] == c {
+		delete(g.activeAttempts, attemptID)
+	}
 }
 
 // pumpAttempt relays only what the docs/05 section 3 attempt:{id} channel

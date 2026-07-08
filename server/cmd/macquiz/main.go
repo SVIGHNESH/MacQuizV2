@@ -188,6 +188,13 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	gateway := realtime.NewGateway(ctx, subscriber, authSvc, quizSvc.OwnerOf, cfg.WSAllowedOrigins, log)
 	gateway.SetMetrics(tel.Metrics)
 	gateway.SetAttemptOwner(attemptSvc.OwnerOf)
+	// docs/08 section 1: a second device's attempt:{id} socket invalidates
+	// the first; that invalidation gets logged as its own attempt_events row.
+	gateway.SetSessionInvalidated(func(ctx context.Context, attemptID string) {
+		if err := attemptSvc.LogSessionInvalidated(ctx, attemptID); err != nil {
+			log.Error("log session invalidated", "attempt_id", attemptID, "err", err)
+		}
+	})
 
 	srv := &http.Server{
 		Addr: cfg.Addr,

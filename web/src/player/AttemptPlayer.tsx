@@ -29,6 +29,10 @@ const GUARDRAIL_WARN_NOTICE: Record<GuardrailType, string> = {
 
 const VIOLATION_NOTICE_MS = 6_000
 const ATTEMPT_SOCKET_RECONNECT_MS = 3_000
+// Matches server/internal/realtime/gateway.go's statusSessionReplaced: the
+// close code the gateway force-closes a stale attempt:{id} socket with when
+// a second device connects (docs/08 section 1 "single active session").
+const SESSION_REPLACED_CLOSE_CODE = 4001
 
 type Phase =
   | { kind: 'loading' }
@@ -371,8 +375,16 @@ export default function AttemptPlayer({
             break
         }
       }
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (cancelled) return
+        // docs/08 section 1 "single active session": the server closes this
+        // socket with 4001 when the same attempt was opened elsewhere.
+        // Reconnecting would just re-invalidate that other tab/device right
+        // back, so this socket stays down instead of racing it forever.
+        if (event.code === SESSION_REPLACED_CLOSE_CODE) {
+          setQuizBanner('This attempt was opened in another window or device. This window is no longer live.')
+          return
+        }
         reconnectTimer = setTimeout(connect, ATTEMPT_SOCKET_RECONNECT_MS)
       }
       socket.onerror = () => {

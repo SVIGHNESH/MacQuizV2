@@ -304,6 +304,29 @@ func (s *Service) OwnerOf(ctx context.Context, attemptID string) (studentID, qui
 	return studentID, quizID, true, nil
 }
 
+// LogSessionInvalidated appends and publishes attempt.session_invalidated
+// (docs/08 section 1: "single active session... logged as an event the
+// teacher can see"). The realtime gateway calls this - not a REST handler -
+// when a second device's attempt:{id} socket connects and it force-closes the
+// first: the invalidation happens at the socket layer, so there is no request
+// transaction to append this to, and it gets its own narrow one instead.
+func (s *Service) LogSessionInvalidated(ctx context.Context, attemptID string) error {
+	var quizID string
+	err := s.db.QueryRowContext(ctx, `SELECT quiz_id FROM attempts WHERE id = $1`, attemptID).Scan(&quizID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The socket race lost to the attempt no longer existing; nothing to log.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("resolve attempt for session invalidation: %w", err)
+	}
+	if err := appendEvent(ctx, s.db, attemptID, eventSessionInvalidated, sessionInvalidatedPayload{}); err != nil {
+		return err
+	}
+	s.events.Publish(ctx, quizID, attemptID, eventSessionInvalidated, sessionInvalidatedPayload{})
+	return nil
+}
+
 // SaveAnswer upserts one response (docs/04: PUT /attempts/:id/answers/:qid).
 // Idempotent on (attempt_id, question_id); refused once the deadline plus
 // grace has passed or the attempt has left in_progress - the same checks
