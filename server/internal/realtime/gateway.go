@@ -38,8 +38,16 @@ import (
 // the authorization decision - "the user themselves" (docs/04-api.md section
 // 6) needs no owner lookup, just comparing the URL id to the authenticated
 // actor. It carries quiz.assigned/quiz.unassigned (quiz/events.go), the only
-// notifications the codebase produces today. Heartbeat/disconnect tracking
-// is a separate brick that still layers on top.
+// notifications the codebase produces today.
+//
+// Finally, this file owns heartbeat/disconnect tracking (docs/05 section 5):
+// the attempt:{id} socket now runs a real read loop instead of CloseRead's
+// discard-everything drain, treating any inbound frame from the student
+// client as a heartbeat. If heartbeatTimeout elapses with no heartbeat, the
+// gateway calls AttemptDisconnectedFunc (attempt.disconnected); a heartbeat
+// that arrives afterward calls AttemptReconnectedFunc (attempt.reconnected).
+// Both land on the same quiz:{quiz_id}:events stream the monitor dashboard
+// already watches, so the amber "disconnected" row needs no new channel.
 
 const (
 	// pingInterval keeps the socket (and any intermediate proxy) alive across
@@ -49,6 +57,14 @@ const (
 	// never wedge its pump goroutine.
 	writeTimeout = 10 * time.Second
 )
+
+// heartbeatTimeout is how long the attempt:{id} socket waits for an inbound
+// frame before the gateway marks the attempt disconnected. docs/05 section 5
+// fixes the client's heartbeat cadence at 10s; 2.5x that absorbs a couple of
+// missed beats (a slow network tick, a backgrounded tab throttling timers)
+// without flapping the dashboard on every minor hiccup. A var, not a const,
+// so tests can shrink it rather than sleeping 25s real time.
+var heartbeatTimeout = 25 * time.Second
 
 // QuizOwnerFunc resolves a quiz's owning teacher for the subscribe-time
 // authorization decision. found is false for an unknown quiz, which the
@@ -85,18 +101,32 @@ const statusSessionReplaced websocket.StatusCode = 4001
 // entry, not the student who just reconnected.
 type SessionInvalidatedFunc func(ctx context.Context, attemptID string)
 
+// AttemptDisconnectedFunc records that an attempt:{id} socket has gone quiet
+// past heartbeatTimeout (docs/05 section 5). lastSeenAt is the time of the
+// last heartbeat frame the gateway actually received (or the connect time, if
+// none ever arrived). Best-effort, like SessionInvalidatedFunc: it runs after
+// the dashboard-facing publish is already in flight, never a gate on it.
+type AttemptDisconnectedFunc func(ctx context.Context, attemptID string, lastSeenAt time.Time)
+
+// AttemptReconnectedFunc records that a heartbeat arrived on a socket the
+// gateway had already marked disconnected (docs/05 section 2: "Flag
+// cleared").
+type AttemptReconnectedFunc func(ctx context.Context, attemptID string)
+
 // Gateway is the WebSocket monitor endpoint. It holds no quiz state: the
 // snapshot the dashboard reconciles against comes from GET /quizzes/:id/live,
 // and the gateway only streams the deltas published after it.
 type Gateway struct {
-	sub                Subscriber
-	auth               *authusers.Service
-	owner              QuizOwnerFunc
-	attemptOwner       AttemptOwnerFunc
-	sessionInvalidated SessionInvalidatedFunc
-	origins            []string
-	log                *slog.Logger
-	metrics            *telemetry.Metrics
+	sub                 Subscriber
+	auth                *authusers.Service
+	owner               QuizOwnerFunc
+	attemptOwner        AttemptOwnerFunc
+	sessionInvalidated  SessionInvalidatedFunc
+	attemptDisconnected AttemptDisconnectedFunc
+	attemptReconnected  AttemptReconnectedFunc
+	origins             []string
+	log                 *slog.Logger
+	metrics             *telemetry.Metrics
 
 	// baseCtx is the socket lifetime, derived from the serve process context
 	// so every open socket closes on shutdown. Critically it is NOT the
@@ -137,6 +167,23 @@ func (g *Gateway) SetAttemptOwner(f AttemptOwnerFunc) {
 // what every existing test gets.
 func (g *Gateway) SetSessionInvalidated(f SessionInvalidatedFunc) {
 	g.sessionInvalidated = f
+}
+
+// SetAttemptDisconnected wires the heartbeat-timeout handler (docs/05 section
+// 5). Unlike SessionInvalidatedFunc (a pure audit log layered on top of a
+// close the gateway always performs), this callback is the only thing that
+// appends the attempt_events row *and* publishes attempt.disconnected to the
+// dashboard - a Gateway with none set still tracks heartbeats but the
+// dashboard never learns about a lapse, which is what every existing test
+// gets.
+func (g *Gateway) SetAttemptDisconnected(f AttemptDisconnectedFunc) {
+	g.attemptDisconnected = f
+}
+
+// SetAttemptReconnected wires the reconnect handler, the counterpart to
+// SetAttemptDisconnected.
+func (g *Gateway) SetAttemptReconnected(f AttemptReconnectedFunc) {
+	g.attemptReconnected = f
 }
 
 // NewGateway wires the gateway. ctx is the serve-process lifetime; when it is
@@ -308,8 +355,34 @@ func (g *Gateway) handleAttempt(w http.ResponseWriter, r *http.Request) {
 	g.replaceActiveAttempt(attemptID, c)
 	defer g.clearActiveAttempt(attemptID, c)
 
-	ctx := c.CloseRead(connCtx)
-	g.pumpAttempt(ctx, c, sub.Messages(), attemptID)
+	// A real read loop, not CloseRead's discard-and-reject-on-data-frame drain:
+	// docs/05 section 5's heartbeat is a genuine inbound frame this channel
+	// must now accept. Reading still keeps coder/websocket's internal
+	// ping/pong handling alive, CloseRead's other job.
+	hb := make(chan struct{})
+	go g.readAttemptHeartbeats(connCtx, c, cancel, hb)
+	g.pumpAttempt(connCtx, c, sub.Messages(), attemptID, hb)
+}
+
+// readAttemptHeartbeats is the attempt:{id} socket's read loop. Any inbound
+// frame at all counts as a heartbeat (docs/05 section 5: the client's
+// heartbeat is the only thing it ever sends on this channel) - the content is
+// deliberately unchecked, since the read itself is the whole signal. cancel
+// is called on a read error (peer gone, or our own side force-closing the
+// conn elsewhere) so pumpAttempt's ctx.Done() unblocks and the handler
+// unwinds the same way a CloseRead-driven disconnect used to.
+func (g *Gateway) readAttemptHeartbeats(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc, hb chan<- struct{}) {
+	for {
+		if _, _, err := c.Read(ctx); err != nil {
+			cancel()
+			return
+		}
+		select {
+		case hb <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // replaceActiveAttempt registers c as the one open socket for attemptID,
@@ -345,18 +418,30 @@ func (g *Gateway) clearActiveAttempt(attemptID string, c *websocket.Conn) {
 	}
 }
 
-// pumpAttempt relays only what the docs/05 section 3 attempt:{id} channel
+// pumpAttempt relays what the docs/05 section 3 attempt:{id} channel
 // promises: the kick lockout message for this attempt, and any quiz-wide
-// banner event (a "quiz." prefix, e.g. the still-unbuilt quiz.extended/
-// quiz.closed). It deliberately drops every other event on the shared
-// quiz:{quiz_id}:events stream - attempt.progress/submitted/graded/violation
-// are for the teacher's monitor, not an echo back to the student who already
-// knows their own state. It returns after delivering a kick for this
-// attempt: docs/06 section 4 step 4, "delivers a lockout message... then
-// force-closes it" - a kicked attempt has nothing further to receive.
-func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-chan string, attemptID string) {
+// banner event (a "quiz." prefix, e.g. quiz.extended/quiz.closed). It
+// deliberately drops every other event on the shared quiz:{quiz_id}:events
+// stream - attempt.progress/submitted/graded/violation are for the teacher's
+// monitor, not an echo back to the student who already knows their own
+// state; attempt.disconnected/reconnected (below) are the same - the
+// dashboard's concern, not this socket's own client. It returns after
+// delivering a kick for this attempt: docs/06 section 4 step 4, "delivers a
+// lockout message... then force-closes it" - a kicked attempt has nothing
+// further to receive.
+//
+// It also owns the docs/05 section 5 heartbeat: hb fires once per inbound
+// frame (readAttemptHeartbeats). heartbeatTimeout without one calls
+// AttemptDisconnectedFunc exactly once (disconnected latches until a
+// heartbeat resets it - no repeat firing on an already-flagged row); the next
+// heartbeat after that calls AttemptReconnectedFunc.
+func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-chan string, attemptID string, hb <-chan struct{}) {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
+	lastSeen := time.Now()
+	hbTimer := time.NewTimer(heartbeatTimeout)
+	defer hbTimer.Stop()
+	disconnected := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -367,6 +452,26 @@ func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-cha
 			cancel()
 			if err != nil {
 				return
+			}
+		case <-hb:
+			lastSeen = time.Now()
+			if !hbTimer.Stop() {
+				select {
+				case <-hbTimer.C:
+				default:
+				}
+			}
+			hbTimer.Reset(heartbeatTimeout)
+			if disconnected {
+				disconnected = false
+				if g.attemptReconnected != nil {
+					go g.attemptReconnected(g.baseCtx, attemptID)
+				}
+			}
+		case <-hbTimer.C:
+			disconnected = true
+			if g.attemptDisconnected != nil {
+				go g.attemptDisconnected(g.baseCtx, attemptID, lastSeen)
 			}
 		case payload, ok := <-msgs:
 			if !ok {

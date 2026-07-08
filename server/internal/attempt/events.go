@@ -18,10 +18,12 @@ import (
 // them. attempt_events is append-only (schema trigger forbid_update_delete),
 // so this module only ever INSERTs.
 
-// The docs/05 section 2 event vocabulary. Only the events the server can
-// source from a REST/worker write are emitted here; disconnected, reconnected,
-// and disconnected/reconnected arrive with the heartbeat brick that does not
-// exist yet.
+// The docs/05 section 2 event vocabulary. Most are sourced from a REST/worker
+// write; attempt.disconnected/attempt.reconnected are the exception - they
+// originate in the realtime gateway's heartbeat tracking on the attempt:{id}
+// socket (docs/05 section 5), not a request transaction, so they are logged
+// through LogAttemptDisconnected/LogAttemptReconnected instead of appendEvent
+// being called inline from a handler.
 const (
 	eventStarted            = "attempt.started"
 	eventProgress           = "attempt.progress"
@@ -30,6 +32,8 @@ const (
 	eventKicked             = "attempt.kicked"
 	eventViolation          = "attempt.violation"
 	eventSessionInvalidated = "attempt.session_invalidated"
+	eventDisconnected       = "attempt.disconnected"
+	eventReconnected        = "attempt.reconnected"
 )
 
 // startedPayload is the attempt.started delta: the dashboard moves the row to
@@ -93,6 +97,19 @@ type violationPayload struct {
 // the first. It carries no payload - the row's existence and timestamp are
 // the whole record the teacher can see.
 type sessionInvalidatedPayload struct{}
+
+// disconnectedPayload is the attempt.disconnected delta (docs/05 section 2):
+// the monitor row flags amber "disconnected" (the deadline clock keeps
+// running). LastSeenAt is the last heartbeat the gateway received before the
+// heartbeatTimeout elapsed.
+type disconnectedPayload struct {
+	LastSeenAt time.Time `json:"last_seen_at"`
+}
+
+// reconnectedPayload is the attempt.reconnected delta (docs/05 section 2):
+// the monitor row's disconnected flag clears. It carries no payload, same as
+// sessionInvalidatedPayload.
+type reconnectedPayload struct{}
 
 // execer abstracts *sql.Tx (and, for the sweep's per-row inserts, anything
 // that can exec) so appendEvent can run inside whatever transaction owns the

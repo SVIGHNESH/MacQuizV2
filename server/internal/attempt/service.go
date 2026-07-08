@@ -342,6 +342,50 @@ func (s *Service) LogSessionInvalidated(ctx context.Context, attemptID string) e
 	return nil
 }
 
+// LogAttemptDisconnected appends and publishes attempt.disconnected (docs/05
+// section 5: "missed heartbeats mark the student disconnected on the
+// dashboard"). The realtime gateway calls this - not a REST handler - when
+// its heartbeat timeout elapses with no heartbeat frame on an attempt:{id}
+// socket; like LogSessionInvalidated, the detection happens at the socket
+// layer, so it gets its own narrow transaction rather than riding a
+// request's.
+func (s *Service) LogAttemptDisconnected(ctx context.Context, attemptID string, lastSeenAt time.Time) error {
+	var quizID string
+	err := s.db.QueryRowContext(ctx, `SELECT quiz_id FROM attempts WHERE id = $1`, attemptID).Scan(&quizID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("resolve attempt for disconnect: %w", err)
+	}
+	payload := disconnectedPayload{LastSeenAt: lastSeenAt}
+	if err := appendEvent(ctx, s.db, attemptID, eventDisconnected, payload); err != nil {
+		return err
+	}
+	s.events.Publish(ctx, quizID, attemptID, eventDisconnected, payload)
+	return nil
+}
+
+// LogAttemptReconnected appends and publishes attempt.reconnected (docs/05
+// section 2: "Flag cleared"), the counterpart to LogAttemptDisconnected -
+// called when a heartbeat arrives on a socket the gateway had already marked
+// disconnected.
+func (s *Service) LogAttemptReconnected(ctx context.Context, attemptID string) error {
+	var quizID string
+	err := s.db.QueryRowContext(ctx, `SELECT quiz_id FROM attempts WHERE id = $1`, attemptID).Scan(&quizID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("resolve attempt for reconnect: %w", err)
+	}
+	if err := appendEvent(ctx, s.db, attemptID, eventReconnected, reconnectedPayload{}); err != nil {
+		return err
+	}
+	s.events.Publish(ctx, quizID, attemptID, eventReconnected, reconnectedPayload{})
+	return nil
+}
+
 // SaveAnswer upserts one response (docs/04: PUT /attempts/:id/answers/:qid).
 // Idempotent on (attempt_id, question_id); refused once the deadline plus
 // grace has passed or the attempt has left in_progress - the same checks

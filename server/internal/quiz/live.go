@@ -26,10 +26,11 @@ type LiveRow struct {
 	FullName  string `json:"full_name"`
 	Email     string `json:"email"`
 	// State is the dashboard roster state derived from the attempt status:
-	// not_started, in_progress, submitted (covers graded), or kicked. The
-	// "disconnected" state is intentionally absent here - it depends on the
-	// heartbeat the attempt WebSocket will send, which does not exist yet, so
-	// the snapshot never invents it.
+	// not_started, in_progress, disconnected, submitted (covers graded), or
+	// kicked. disconnected is in_progress plus one wrinkle: the attempt's most
+	// recent attempt.disconnected/attempt.reconnected event (docs/05 section
+	// 4's "materialized from attempts plus recent attempt_events") says the
+	// heartbeat lapsed and nothing has cleared it since.
 	State string `json:"state"`
 
 	AttemptID  *string    `json:"attempt_id"`
@@ -88,7 +89,8 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		        a.current_question,
 		        jsonb_array_length(v.questions),
 		        (SELECT sum((qq->>'points')::float8)
-		         FROM jsonb_array_elements(v.questions) qq)
+		         FROM jsonb_array_elements(v.questions) qq),
+		        ce.type
 		 FROM quiz_assignments s
 		 JOIN users u ON u.id = s.student_id
 		 LEFT JOIN LATERAL (
@@ -98,6 +100,12 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		     LIMIT 1
 		 ) a ON true
 		 LEFT JOIN quiz_versions v ON v.quiz_id = a.quiz_id AND v.version = a.quiz_version
+		 LEFT JOIN LATERAL (
+		     SELECT type FROM attempt_events
+		     WHERE attempt_id = a.id AND type IN ('attempt.disconnected', 'attempt.reconnected')
+		     ORDER BY id DESC
+		     LIMIT 1
+		 ) ce ON true
 		 WHERE s.quiz_id = $1
 		 ORDER BY u.full_name, u.id`, quizID)
 	if err != nil {
@@ -108,13 +116,15 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 	roster := []LiveRow{}
 	for rows.Next() {
 		var r LiveRow
+		var lastConnEvent *string
 		if err := rows.Scan(&r.StudentID, &r.FullName, &r.Email,
 			&r.AttemptID, &r.AttemptNo, &r.Status, &r.SubmitKind, &r.StartedAt,
 			&r.DeadlineAt, &r.ViolationCount, &r.Score, &r.AnsweredCount,
-			&r.CurrentQuestion, &r.QuestionCount, &r.MaxScore); err != nil {
+			&r.CurrentQuestion, &r.QuestionCount, &r.MaxScore, &lastConnEvent); err != nil {
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("scan live row: %w", err)
 		}
-		r.State = rosterState(r.Status, r.SubmitKind)
+		disconnected := lastConnEvent != nil && *lastConnEvent == "attempt.disconnected"
+		r.State = rosterState(r.Status, r.SubmitKind, disconnected)
 		roster = append(roster, r)
 	}
 	return q, roster, now, rows.Err()
@@ -144,8 +154,11 @@ func (s *Service) OwnerOf(ctx context.Context, quizID string) (ownerID string, f
 // same ("submitted", score shown per policy) once work stops. A kick is
 // permanent: it is read off submit_kind, not status, because a kicked
 // attempt's work is still graded (its status advances to 'graded'), so only
-// submit_kind = 'kicked' survives to mark the removal forever.
-func rosterState(status, submitKind *string) string {
+// submit_kind = 'kicked' survives to mark the removal forever. disconnected
+// only ever applies on top of in_progress (docs/05 section 5: "the clock
+// keeps running") - a submitted, graded, or kicked attempt's last
+// connectivity event is stale history, not a live state.
+func rosterState(status, submitKind *string, disconnected bool) string {
 	if status == nil {
 		return "not_started"
 	}
@@ -154,6 +167,9 @@ func rosterState(status, submitKind *string) string {
 	}
 	switch *status {
 	case "in_progress":
+		if disconnected {
+			return "disconnected"
+		}
 		return "in_progress"
 	case "submitted", "graded":
 		return "submitted"

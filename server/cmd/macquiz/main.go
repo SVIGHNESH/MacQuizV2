@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"macquiz/server/internal/analytics"
 	"macquiz/server/internal/attempt"
@@ -217,6 +218,18 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	gateway.SetSessionInvalidated(func(ctx context.Context, attemptID string) {
 		if err := attemptSvc.LogSessionInvalidated(ctx, attemptID); err != nil {
 			log.Error("log session invalidated", "attempt_id", attemptID, "err", err)
+		}
+	})
+	// docs/05 section 5: a missed heartbeat on the attempt:{id} socket flags
+	// the dashboard row amber "disconnected"; the next heartbeat clears it.
+	gateway.SetAttemptDisconnected(func(ctx context.Context, attemptID string, lastSeenAt time.Time) {
+		if err := attemptSvc.LogAttemptDisconnected(ctx, attemptID, lastSeenAt); err != nil {
+			log.Error("log attempt disconnected", "attempt_id", attemptID, "err", err)
+		}
+	})
+	gateway.SetAttemptReconnected(func(ctx context.Context, attemptID string) {
+		if err := attemptSvc.LogAttemptReconnected(ctx, attemptID); err != nil {
+			log.Error("log attempt reconnected", "attempt_id", attemptID, "err", err)
 		}
 	})
 

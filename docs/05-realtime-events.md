@@ -45,10 +45,10 @@ The gateway checks `can()` once at subscribe and revalidates on token refresh.
 On connect, the dashboard first fetches `GET /quizzes/:id/live` (current roster state materialized from `attempts` plus recent `attempt_events`), then applies streamed deltas.
 Late joins and reconnects are therefore consistent; there is no missed-event drift.
 
-Implemented as `web/src/authoring/LiveMonitorPanel.tsx`: shown on a quiz's editor whenever it reads `live`, it fetches the snapshot, opens `quiz:{id}:monitor` over `/ws/quizzes/:id/monitor`, and applies `attempt.progress`/`violation`/`kicked`/`submitted`/`graded` deltas in place.
+Implemented as `web/src/authoring/LiveMonitorPanel.tsx`: shown on a quiz's editor whenever it reads `live`, it fetches the snapshot, opens `quiz:{id}:monitor` over `/ws/quizzes/:id/monitor`, and applies `attempt.progress`/`violation`/`kicked`/`submitted`/`graded`/`disconnected`/`reconnected` deltas in place.
 `attempt.started` re-fetches the snapshot instead of patching, since the delta carries no question/version data and it fires only once per attempt.
 The kick and readmit escalations post to the existing `/attempts/:id/kick` and `/attempts/:id/readmit` endpoints from the same roster row.
-The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pieces remain unimplemented, so the dashboard never shows "disconnected". `current_question` is now wired: it is the 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student's autosave resolved, persisted on `attempts.current_question` and carried by both the snapshot and the `attempt.progress` delta.
+The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pieces are now implemented: `web/src/player/AttemptPlayer.tsx` sends a heartbeat frame on that socket every 10 s (any frame counts - the content is unchecked), and `realtime.Gateway.handleAttempt` (`server/internal/realtime/gateway.go`) runs a real read loop instead of the old write-only `CloseRead` drain to receive it. 25 s (2.5x the client's cadence) without one calls `attempt.Service.LogAttemptDisconnected`, which appends and publishes `attempt.disconnected`; the next heartbeat calls `LogAttemptReconnected` for `attempt.reconnected`. `quiz.LiveRoster` derives the same state for a fresh snapshot from each attempt's most recent `attempt.disconnected`/`attempt.reconnected` row (docs/05 section 4's "materialized from attempts plus recent attempt_events"), so a late-joining dashboard sees a lapsed heartbeat too, not just a live delta. `current_question` is also wired: it is the 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student's autosave resolved, persisted on `attempts.current_question` and carried by both the snapshot and the `attempt.progress` delta.
 
 `user:{id}:notify` is now implemented end to end: `quiz.Service.SetAssignments` diffs the audience before and after each `PUT /quizzes/:id/assignments` call and, after commit, publishes `quiz.assigned`/`quiz.unassigned` (quiz_id, title) to exactly the students whose membership changed - never the whole audience on an unrelated save. `web/src/player/StudentWorkspace.tsx` opens the channel for the whole signed-in session (a teacher can change assignments while the student is mid-attempt on something else) and renders each notification as a dismissable banner.
 
@@ -60,6 +60,7 @@ The email leg of the same notification is also now implemented: `quiz.Service.em
   A 500-student quiz peaks around 250 events/s, trivial for Redis pub/sub and a single gateway node.
 - Heartbeat: the attempt WebSocket sends a heartbeat every 10 s.
   Missed heartbeats mark the student "disconnected" on the dashboard but do not pause the clock.
+  (Implemented: see section 4 above.)
 - If the WebSocket cannot connect (restrictive school network), the dashboard falls back to polling the snapshot endpoint every 10 s.
 - Students' attempts never depend on the socket; REST autosave is the primary write path.
 

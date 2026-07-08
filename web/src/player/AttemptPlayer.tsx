@@ -29,6 +29,10 @@ const GUARDRAIL_WARN_NOTICE: Record<GuardrailType, string> = {
 
 const VIOLATION_NOTICE_MS = 6_000
 const ATTEMPT_SOCKET_RECONNECT_MS = 3_000
+// docs/05 section 5: "the attempt WebSocket sends a heartbeat every 10s" -
+// matches server/internal/realtime/gateway.go's heartbeatTimeout (25s, 2.5x
+// this), which flags the dashboard row "disconnected" once it lapses.
+const HEARTBEAT_INTERVAL_MS = 10_000
 // Matches server/internal/realtime/gateway.go's statusSessionReplaced: the
 // close code the gateway force-closes a stale attempt:{id} socket with when
 // a second device connects (docs/08 section 1 "single active session").
@@ -332,10 +336,23 @@ export default function AttemptPlayer({
     let cancelled = false
     let socket: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
 
     const connect = () => {
       if (cancelled) return
       socket = new WebSocket(attemptSocketURL(attemptId))
+      // docs/05 section 5: any frame counts as the heartbeat on the server
+      // side, so the content itself carries no meaning.
+      socket.onopen = () => {
+        heartbeatTimer = setInterval(() => {
+          if (socket?.readyState === WebSocket.OPEN) socket.send('heartbeat')
+        }, HEARTBEAT_INTERVAL_MS)
+      }
       socket.onmessage = (event) => {
         if (typeof event.data !== 'string') return
         let msg: RealtimeEvent
@@ -376,6 +393,7 @@ export default function AttemptPlayer({
         }
       }
       socket.onclose = (event) => {
+        stopHeartbeat()
         if (cancelled) return
         // docs/08 section 1 "single active session": the server closes this
         // socket with 4001 when the same attempt was opened elsewhere.
@@ -395,6 +413,7 @@ export default function AttemptPlayer({
 
     return () => {
       cancelled = true
+      stopHeartbeat()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       socket?.close()
     }

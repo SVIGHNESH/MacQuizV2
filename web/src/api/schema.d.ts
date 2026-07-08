@@ -604,7 +604,7 @@ export interface paths {
         };
         /**
          * Live roster snapshot (owner or admin)
-         * @description The roster the teacher dashboard fetches on connect before applying streamed deltas. One row per assigned student, collapsed to their latest attempt (max attempt_no), so a student is in exactly one roster state. Authorization is the owning teacher or any admin; a non-owning teacher gets 404. server_time is the database clock the row timestamps were read against, so every client-side countdown shares one origin. current_question is the 1-based ordinal of the last question the student saved an answer for; the "disconnected" state is still absent until heartbeats exist.
+         * @description The roster the teacher dashboard fetches on connect before applying streamed deltas. One row per assigned student, collapsed to their latest attempt (max attempt_no), so a student is in exactly one roster state. Authorization is the owning teacher or any admin; a non-owning teacher gets 404. server_time is the database clock the row timestamps were read against, so every client-side countdown shares one origin. current_question is the 1-based ordinal of the last question the student saved an answer for; "disconnected" reflects the attempt's most recent heartbeat gap (docs/05 section 5) at the moment of this snapshot.
          */
         get: operations["getLiveRoster"];
         put?: never;
@@ -1428,7 +1428,7 @@ export interface components {
             quiz: components["schemas"]["Quiz"];
             results: components["schemas"]["ResultRow"][];
         };
-        /** @description One roster cell - an assigned student and their latest attempt. Students who never started read as not_started with the attempt fields null. state collapses the attempt status to the dashboard vocabulary; graded folds into submitted. */
+        /** @description One roster cell - an assigned student and their latest attempt. Students who never started read as not_started with the attempt fields null. state collapses the attempt status to the dashboard vocabulary; graded folds into submitted. disconnected is in_progress plus a stale heartbeat (docs/05 section 5) - the deadline clock keeps running. */
         LiveRosterRow: {
             /** Format: uuid */
             student_id: string;
@@ -1436,7 +1436,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            state: "not_started" | "in_progress" | "submitted" | "kicked";
+            state: "not_started" | "in_progress" | "disconnected" | "submitted" | "kicked";
             /** Format: uuid */
             attempt_id: string | null;
             attempt_no: number | null;

@@ -1139,8 +1139,9 @@ paths:
         teacher gets 404. server_time is the database clock the row timestamps
         were read against, so every client-side countdown shares one origin.
         current_question is the 1-based ordinal of the last question the
-        student saved an answer for; the "disconnected" state is still absent
-        until heartbeats exist.
+        student saved an answer for; "disconnected" reflects the attempt's
+        most recent heartbeat gap (docs/05 section 5) at the moment of this
+        snapshot.
       parameters:
         - name: id
           in: path
@@ -2843,7 +2844,9 @@ components:
         One roster cell - an assigned student and their latest attempt.
         Students who never started read as not_started with the attempt
         fields null. state collapses the attempt status to the dashboard
-        vocabulary; graded folds into submitted.
+        vocabulary; graded folds into submitted. disconnected is in_progress
+        plus a stale heartbeat (docs/05 section 5) - the deadline clock keeps
+        running.
       required:
         [student_id, full_name, email, state, attempt_id, attempt_no, status,
          submit_kind, started_at, deadline_at, answered_count,
@@ -2859,7 +2862,7 @@ components:
           format: email
         state:
           type: string
-          enum: [not_started, in_progress, submitted, kicked]
+          enum: [not_started, in_progress, disconnected, submitted, kicked]
         attempt_id:
           type: string
           format: uuid

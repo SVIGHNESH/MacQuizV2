@@ -303,6 +303,11 @@
   color: var(--color-primary-on-tint);
 }
 
+.chip-roster-disconnected {
+  background: var(--color-warning-tint);
+  color: var(--color-warning-on-tint);
+}
+
 .chip-roster-submitted {
   background: var(--color-success-tint);
   color: var(--color-success-on-tint);

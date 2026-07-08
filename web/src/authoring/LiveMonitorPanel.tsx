@@ -8,6 +8,7 @@ type LiveRosterRow = components['schemas']['LiveRosterRow']
 const STATE_LABEL: Record<LiveRosterRow['state'], string> = {
   not_started: 'Not started',
   in_progress: 'In progress',
+  disconnected: 'Disconnected',
   submitted: 'Submitted',
   kicked: 'Kicked',
 }
@@ -87,6 +88,20 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
           return prev.map((row) =>
             row.attempt_id === msg.attempt_id
               ? { ...row, violation_count: p.violation_count }
+              : row,
+          )
+        }
+        case 'attempt.disconnected': {
+          return prev.map((row) =>
+            row.attempt_id === msg.attempt_id && row.state === 'in_progress'
+              ? { ...row, state: 'disconnected' }
+              : row,
+          )
+        }
+        case 'attempt.reconnected': {
+          return prev.map((row) =>
+            row.attempt_id === msg.attempt_id && row.state === 'disconnected'
+              ? { ...row, state: 'in_progress' }
               : row,
           )
         }
@@ -251,7 +266,7 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
           </div>
           {roster.map((row) => {
             const remaining =
-              row.deadline_at && row.state === 'in_progress'
+              row.deadline_at && (row.state === 'in_progress' || row.state === 'disconnected')
                 ? Date.parse(row.deadline_at) - (Date.now() + clockOffset.current)
                 : null
             return (
@@ -272,7 +287,7 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
                   {remaining === null ? '—' : formatRemaining(remaining)}
                 </span>
                 <span className="qt-actions">
-                  {row.state === 'in_progress' && row.attempt_id && (
+                  {(row.state === 'in_progress' || row.state === 'disconnected') && row.attempt_id && (
                     <button
                       className="button button-quiet-danger button-small"
                       type="button"

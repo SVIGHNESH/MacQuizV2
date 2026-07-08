@@ -42,11 +42,12 @@ func TestLiveRosterE2E(t *testing.T) {
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authSvc := authusers.NewService(sqlDB, "test-secret", log)
+	attemptSvc := attempt.NewService(sqlDB, log)
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:      sqlDB,
 		Auth:    authusers.NewHandler(authSvc, false),
 		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}), authSvc),
-		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log), authSvc),
+		Attempt: attempt.NewHandler(attemptSvc, authSvc),
 	})
 	server := httptest.NewServer(router)
 	defer server.Close()
@@ -198,6 +199,47 @@ func TestLiveRosterE2E(t *testing.T) {
 		}
 		if roster[gammaID]["state"] != "submitted" || roster[gammaID]["answered_count"].(float64) != 2 {
 			t.Fatalf("gamma = %v, want submitted with answered_count 2", roster[gammaID])
+		}
+	})
+
+	t.Run("a heartbeat lapse flags the row disconnected until it reconnects", func(t *testing.T) {
+		// docs/05 section 4: the snapshot materializes state from attempts
+		// plus recent attempt_events - LogAttemptDisconnected/Reconnected are
+		// exactly what the realtime gateway calls on a heartbeat timeout/
+		// resume (docs/05 section 5), exercised here directly since this test
+		// has no live WebSocket.
+		if err := attemptSvc.LogAttemptDisconnected(ctx, alphaAttempt, time.Now()); err != nil {
+			t.Fatalf("LogAttemptDisconnected: %v", err)
+		}
+		roster, _ := rosterByStudent(teacher)
+		if roster[alphaID]["state"] != "disconnected" {
+			t.Fatalf("alpha state after disconnect = %v, want disconnected", roster[alphaID]["state"])
+		}
+		// The deadline clock keeps running (docs/05 section 5): the row still
+		// carries its deadline_at, only the state label changes.
+		if roster[alphaID]["deadline_at"] == nil {
+			t.Fatalf("alpha deadline_at went missing while disconnected: %v", roster[alphaID])
+		}
+
+		if err := attemptSvc.LogAttemptReconnected(ctx, alphaAttempt); err != nil {
+			t.Fatalf("LogAttemptReconnected: %v", err)
+		}
+		roster, _ = rosterByStudent(teacher)
+		if roster[alphaID]["state"] != "in_progress" {
+			t.Fatalf("alpha state after reconnect = %v, want in_progress", roster[alphaID]["state"])
+		}
+	})
+
+	t.Run("a stale disconnect on an already-submitted attempt never resurfaces", func(t *testing.T) {
+		// gamma submitted earlier in this test; a disconnect logged against
+		// that same attempt id (a race the client's last heartbeat could lose
+		// to the submit) must not flip a finished row back to "live".
+		if err := attemptSvc.LogAttemptDisconnected(ctx, gammaAttempt, time.Now()); err != nil {
+			t.Fatalf("LogAttemptDisconnected: %v", err)
+		}
+		roster, _ := rosterByStudent(teacher)
+		if roster[gammaID]["state"] != "submitted" {
+			t.Fatalf("gamma state after a stale disconnect = %v, want submitted", roster[gammaID]["state"])
 		}
 	})
 
