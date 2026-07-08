@@ -37,11 +37,20 @@ type Config struct {
 	BootstrapAdminName     string
 	// ImportDir is the local-disk directory bulk-upload files are written to
 	// by the register-import endpoint and read back from by the import
-	// validation worker (docs/07 section 2). It stands in for object storage
-	// until the pre-signed-upload brick lands; a production deployment will
-	// replace it with an R2-backed config. serve and worker run as separate
-	// containers, so this directory must be a shared volume (docker-compose.yml).
+	// validation worker (docs/07 section 2), used only when ImportR2Bucket
+	// is unset. serve and worker run as separate containers, so this
+	// directory must be a shared volume (docker-compose.yml) in that mode.
 	ImportDir string
+	// ImportR2Bucket, ImportR2Endpoint, ImportR2AccessKeyID, and
+	// ImportR2SecretAccessKey configure the production object-storage
+	// backend for bulk-import files (docs/02 section 3.5, docs/09 section
+	// 4): a Cloudflare R2 bucket, addressed via its S3-compatible API.
+	// ImportR2Bucket empty (the dev/test default) falls back to
+	// LocalImportStorage against ImportDir instead - never a boot failure.
+	ImportR2Bucket          string
+	ImportR2Endpoint        string
+	ImportR2AccessKeyID     string
+	ImportR2SecretAccessKey string
 	// OTelExporterEndpoint is the OTLP/HTTP endpoint (host:port, no scheme)
 	// metrics are exported to (docs/10-operations.md section 2's Grafana
 	// Cloud free tier). Empty (the dev/test default) disables telemetry
@@ -79,6 +88,11 @@ func Load() Config {
 		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
 
 		ImportDir: getenv("MACQUIZ_IMPORT_DIR", "/tmp/macquiz-imports"),
+
+		ImportR2Bucket:          os.Getenv("MACQUIZ_IMPORT_R2_BUCKET"),
+		ImportR2Endpoint:        os.Getenv("MACQUIZ_IMPORT_R2_ENDPOINT"),
+		ImportR2AccessKeyID:     os.Getenv("MACQUIZ_IMPORT_R2_ACCESS_KEY_ID"),
+		ImportR2SecretAccessKey: os.Getenv("MACQUIZ_IMPORT_R2_SECRET_ACCESS_KEY"),
 
 		OTelExporterEndpoint: os.Getenv("MACQUIZ_OTEL_EXPORTER_ENDPOINT"),
 		OTelExporterHeaders:  os.Getenv("MACQUIZ_OTEL_EXPORTER_HEADERS"),

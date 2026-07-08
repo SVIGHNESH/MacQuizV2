@@ -211,9 +211,12 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer pub.Close()
 
-	if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
-		return fmt.Errorf("create import dir: %w", err)
+	if cfg.ImportR2Bucket == "" {
+		if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
+			return fmt.Errorf("create import dir: %w", err)
+		}
 	}
+	importStore := quiz.NewImportFileStore(cfg.ImportDir, cfg.ImportR2Bucket, cfg.ImportR2Endpoint, cfg.ImportR2AccessKeyID, cfg.ImportR2SecretAccessKey)
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log, pub: pub, metrics: tel.Metrics})
@@ -221,7 +224,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	river.AddWorker(workers, &sweepQuizzesWorker{db: sqlDB, log: log, pub: pub, metrics: tel.Metrics})
 	river.AddWorker(workers, &attemptDeadlineWorker{db: sqlDB, log: log, pub: pub, metrics: tel.Metrics})
 	river.AddWorker(workers, &gradeAttemptWorker{db: sqlDB, log: log, pub: pub, metrics: tel.Metrics})
-	river.AddWorker(workers, &importValidateWorker{db: sqlDB, log: log, storage: quiz.LocalImportStorage{Dir: cfg.ImportDir}})
+	river.AddWorker(workers, &importValidateWorker{db: sqlDB, log: log, storage: importStore})
 
 	client, err := river.NewClient(riverdatabasesql.New(sqlDB), &river.Config{
 		Logger:  log,

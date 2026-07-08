@@ -174,16 +174,20 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	defer snapshotCache.Close()
 
 	// The register-import endpoint (docs/04-api.md: POST /quizzes/:id/imports)
-	// writes uploaded files here; the worker process reads them back through
-	// its own LocalImportStorage pointed at the same directory (docs/09
-	// section 4: single-VM deployment shares one disk across containers).
-	if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
-		return fmt.Errorf("create import dir: %w", err)
+	// writes uploaded files through importStore; the worker process reads
+	// them back through its own instance of the same backend. With
+	// ImportR2Bucket unset (the dev/single-VM default) that's a shared-volume
+	// LocalImportStorage (docs/09 section 4), so the directory must exist.
+	importStore := quiz.NewImportFileStore(cfg.ImportDir, cfg.ImportR2Bucket, cfg.ImportR2Endpoint, cfg.ImportR2AccessKeyID, cfg.ImportR2SecretAccessKey)
+	if cfg.ImportR2Bucket == "" {
+		if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
+			return fmt.Errorf("create import dir: %w", err)
+		}
 	}
 
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
-	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: cfg.ImportDir}, publisher)
+	quizSvc := quiz.NewService(sqlDB, log, importStore, publisher)
 	// The email leg of "Notifications on assignment changes" (docs/09
 	// section 3): an unset API key leaves quizSvc on its no-op default, same
 	// "degrade rather than fail boot" contract as Redis above - the in-app

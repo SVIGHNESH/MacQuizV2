@@ -44,6 +44,19 @@ type ImportFileStore interface {
 	ImportStorage
 }
 
+// NewImportFileStore selects the ImportFileStore backend: an R2ImportStorage
+// against r2Bucket when set (docs/02 section 3.5, docs/09 section 4),
+// otherwise LocalImportStorage against dir (the dev/single-VM default).
+// An unset r2Bucket falling back to disk - rather than a boot failure -
+// matches the "unconfigured optional backend degrades gracefully" contract
+// used throughout this codebase (Redis publisher/cache, email sender).
+func NewImportFileStore(dir, r2Bucket, r2Endpoint, r2AccessKeyID, r2SecretAccessKey string) ImportFileStore {
+	if r2Bucket != "" {
+		return NewR2ImportStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey)
+	}
+	return LocalImportStorage{Dir: dir}
+}
+
 // LocalImportStorage is the dev/single-VM ImportStorage: files live as
 // plain files under Dir, named by their file_ref. It stands in for the R2
 // pre-signed-upload flow (docs/02 section 3.5, docs/09 section 4) until
