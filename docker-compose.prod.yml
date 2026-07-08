@@ -1,7 +1,8 @@
 # MacQuiz v2 production stack (docs/09-deployment.md section 4).
 #
-# This file (plus ./Caddyfile) is copied to the VM's /opt/macquiz as a
-# one-time provisioning step and becomes that host's docker-compose.yml.
+# This file (plus ./Caddyfile and ./scripts/backup) is copied to the VM's
+# /opt/macquiz as a one-time provisioning step and becomes that host's
+# docker-compose.yml.
 # .github/workflows/deploy.yml never manages this file - on every deploy it
 # only runs `docker compose pull app worker && docker compose up -d app
 # worker` against whatever is already at /opt/macquiz, so postgres/redis/
@@ -102,6 +103,18 @@ services:
     volumes:
       - import_data:/var/lib/macquiz/imports
     restart: "no"
+
+  # Nightly pg_dump -> R2, 7 daily + 8 weekly retention (docs/10-operations.md
+  # section 1). Built from ./scripts/backup, which must be copied to the VM
+  # alongside this file and .env.production for `docker compose up` to build
+  # it. See .env.production.example for the required BACKUP_R2_*/AWS_* vars.
+  backup:
+    build: ./scripts/backup
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pg_data:

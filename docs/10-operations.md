@@ -7,11 +7,13 @@ Status: implementation baseline.
 
 - Nightly `pg_dump` (custom format, compressed) from a cron container, uploaded to a versioned R2 bucket.
   A full academic year of attempt data fits in single-digit GB, well under the free 10 GB.
+  Implemented as `scripts/backup` (Dockerfile + `backup.sh` + crontab), run as the `backup` service in `docker-compose.prod.yml`; configured via the `BACKUP_R2_*`/`AWS_*` vars in `.env.production.example`.
 - Retention: 7 daily + 8 weekly dumps, pruned by the same job.
-  R2 object versioning protects against a bad prune.
+  R2 object versioning protects against a bad prune (enabled once on the bucket at provisioning time, not by the script).
 - Restore drill once per term: pull the latest dump into a scratch container and run the smoke tests against it.
   An untested backup is a hope, not a backup.
 - Exam-day belt: a pre-quiz-window dump is triggered automatically by the scheduler when any quiz enters `scheduled` for the same day.
+  Not yet implemented - the nightly job above is the only trigger today.
 - Current RPO: 24 h (nightly) improving to near-zero on exam days via the pre-window dump.
   When 24 h stops being acceptable, add WAL archiving to R2 with pgBackRest for point-in-time recovery (effort, not money).
 
