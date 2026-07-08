@@ -604,7 +604,7 @@ export interface paths {
         };
         /**
          * Live roster snapshot (owner or admin)
-         * @description The roster the teacher dashboard fetches on connect before applying streamed deltas. One row per assigned student, collapsed to their latest attempt (max attempt_no), so a student is in exactly one roster state. Authorization is the owning teacher or any admin; a non-owning teacher gets 404. server_time is the database clock the row timestamps were read against, so every client-side countdown shares one origin. current_question is always null for now - no server column tracks it (it will arrive via the attempt.progress delta over the WebSocket); the "disconnected" state is likewise absent until heartbeats exist.
+         * @description The roster the teacher dashboard fetches on connect before applying streamed deltas. One row per assigned student, collapsed to their latest attempt (max attempt_no), so a student is in exactly one roster state. Authorization is the owning teacher or any admin; a non-owning teacher gets 404. server_time is the database clock the row timestamps were read against, so every client-side countdown shares one origin. current_question is the 1-based ordinal of the last question the student saved an answer for; the "disconnected" state is still absent until heartbeats exist.
          */
         get: operations["getLiveRoster"];
         put?: never;
@@ -1450,7 +1450,7 @@ export interface components {
             deadline_at: string | null;
             /** @description Questions with a non-null saved response. */
             answered_count: number | null;
-            /** @description Always null - no server column tracks it yet. */
+            /** @description 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student saved an answer for. Null until the first autosave. */
             current_question: number | null;
             /** @description Question count of the snapshot version this attempt pinned. */
             question_count: number | null;

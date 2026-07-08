@@ -201,8 +201,8 @@ func TestEventPublishE2E(t *testing.T) {
 		if progress[0].quizID != quizID || progress[0].payload["answered_count"] != float64(1) {
 			t.Fatalf("progress[0] = %v, want quiz %q answered_count 1", progress[0], quizID)
 		}
-		if got, ok := progress[0].payload["current_question"]; !ok || got != nil {
-			t.Fatalf("progress current_question = %v, want explicit null", got)
+		if progress[0].payload["current_question"] != float64(1) {
+			t.Fatalf("progress current_question = %v, want 1", progress[0].payload["current_question"])
 		}
 
 		// Push the deadline into the past, then autosave: the write gate rejects

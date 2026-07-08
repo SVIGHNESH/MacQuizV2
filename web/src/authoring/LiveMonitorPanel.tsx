@@ -75,10 +75,10 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
       if (!prev) return prev
       switch (msg.type) {
         case 'attempt.progress': {
-          const p = msg.payload as { answered_count: number }
+          const p = msg.payload as { answered_count: number; current_question: number | null }
           return prev.map((row) =>
             row.attempt_id === msg.attempt_id
-              ? { ...row, answered_count: p.answered_count }
+              ? { ...row, answered_count: p.answered_count, current_question: p.current_question }
               : row,
           )
         }
@@ -264,7 +264,7 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
                 </span>
                 <span className="tabular">
                   {row.answered_count !== null && row.question_count !== null
-                    ? `${row.answered_count} / ${row.question_count}`
+                    ? `${row.current_question !== null ? `Q${row.current_question} · ` : ''}${row.answered_count} / ${row.question_count}`
                     : '—'}
                 </span>
                 <span className="tabular">{row.violation_count ?? 0}</span>

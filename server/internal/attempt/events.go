@@ -40,10 +40,11 @@ type startedPayload struct {
 	DeadlineAt time.Time `json:"deadline_at"`
 }
 
-// progressPayload is the attempt.progress delta. CurrentQuestion is always
-// null from a REST autosave: no server column tracks the student's cursor (the
-// same honest degradation quiz.LiveRow documents), so the dashboard advances
-// only the answered count until the attempt socket can carry a real position.
+// progressPayload is the attempt.progress delta. CurrentQuestion is the
+// 1-based ordinal position (within the pinned quiz_version's questions array)
+// of the last question SaveAnswer resolved - the closest proxy REST autosave
+// has to a navigation cursor, since there is no separate "viewing question N"
+// signal.
 type progressPayload struct {
 	CurrentQuestion *int `json:"current_question"`
 	AnsweredCount   int  `json:"answered_count"`

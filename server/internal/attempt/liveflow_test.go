@@ -193,8 +193,8 @@ func TestLiveRosterE2E(t *testing.T) {
 			t.Fatalf("alpha question_count/max_score = %v/%v, want 2/3",
 				roster[alphaID]["question_count"], roster[alphaID]["max_score"])
 		}
-		if roster[alphaID]["current_question"] != nil {
-			t.Fatalf("alpha current_question = %v, want null (untracked)", roster[alphaID]["current_question"])
+		if roster[alphaID]["current_question"] != float64(1) {
+			t.Fatalf("alpha current_question = %v, want 1 (ordinal of the saved question)", roster[alphaID]["current_question"])
 		}
 		if roster[gammaID]["state"] != "submitted" || roster[gammaID]["answered_count"].(float64) != 2 {
 			t.Fatalf("gamma = %v, want submitted with answered_count 2", roster[gammaID])

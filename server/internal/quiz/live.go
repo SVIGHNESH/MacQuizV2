@@ -40,9 +40,9 @@ type LiveRow struct {
 	DeadlineAt *time.Time `json:"deadline_at"`
 	// AnsweredCount is how many of the attempt's questions have a non-null
 	// saved response; the client pairs it with QuestionCount for a progress
-	// bar. CurrentQuestion is null on purpose: no server column tracks it
-	// (it arrives via the attempt.progress delta over the socket later), so
-	// the snapshot degrades honestly rather than faking a position.
+	// bar. CurrentQuestion is the 1-based ordinal of the last question the
+	// student saved an answer for (attempts.current_question), the same
+	// cursor the attempt.progress delta carries.
 	AnsweredCount   *int     `json:"answered_count"`
 	CurrentQuestion *int     `json:"current_question"`
 	QuestionCount   *int     `json:"question_count"`
@@ -85,6 +85,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		        a.deadline_at, a.violation_count, a.score,
 		        (SELECT count(*) FROM attempt_answers aa
 		         WHERE aa.attempt_id = a.id AND aa.response IS NOT NULL),
+		        a.current_question,
 		        jsonb_array_length(v.questions),
 		        (SELECT sum((qq->>'points')::float8)
 		         FROM jsonb_array_elements(v.questions) qq)
@@ -110,7 +111,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		if err := rows.Scan(&r.StudentID, &r.FullName, &r.Email,
 			&r.AttemptID, &r.AttemptNo, &r.Status, &r.SubmitKind, &r.StartedAt,
 			&r.DeadlineAt, &r.ViolationCount, &r.Score, &r.AnsweredCount,
-			&r.QuestionCount, &r.MaxScore); err != nil {
+			&r.CurrentQuestion, &r.QuestionCount, &r.MaxScore); err != nil {
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("scan live row: %w", err)
 		}
 		r.State = rosterState(r.Status, r.SubmitKind)

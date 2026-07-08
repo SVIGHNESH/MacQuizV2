@@ -149,13 +149,14 @@ func TestEventFlowE2E(t *testing.T) {
 			t.Fatalf("progress events = %d, want 3", len(progress))
 		}
 		wantCounts := []float64{1, 2, 2}
+		wantCurrent := []float64{1, 2, 1}
 		for i, ev := range progress {
 			if ev.payload["answered_count"] != wantCounts[i] {
 				t.Fatalf("progress[%d] answered_count = %v, want %v", i, ev.payload["answered_count"], wantCounts[i])
 			}
-			// current_question is deliberately null over REST (no server cursor).
-			if got, ok := ev.payload["current_question"]; !ok || got != nil {
-				t.Fatalf("progress[%d] current_question = %v, want explicit null", i, got)
+			// current_question tracks the ordinal of the just-saved question.
+			if ev.payload["current_question"] != wantCurrent[i] {
+				t.Fatalf("progress[%d] current_question = %v, want %v", i, ev.payload["current_question"], wantCurrent[i])
 			}
 		}
 	})

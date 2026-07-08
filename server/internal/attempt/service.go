@@ -345,17 +345,21 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 
 	// The question must exist in the snapshot version this attempt pinned;
 	// a mid-window republish can never make a stale player write outside
-	// what its student actually saw.
-	var inSnapshot bool
-	if err := tx.QueryRowContext(ctx,
-		`SELECT EXISTS (
-		    SELECT 1 FROM quiz_versions v, jsonb_array_elements(v.questions) q
-		    WHERE v.quiz_id = $1 AND v.version = $2 AND q->>'id' = $3)`,
-		a.QuizID, a.QuizVersion, questionID).Scan(&inSnapshot); err != nil {
-		return Answer{}, time.Time{}, fmt.Errorf("check snapshot membership: %w", err)
-	}
-	if !inSnapshot {
+	// what its student actually saw. The same lookup also resolves the
+	// question's 1-based ordinal position, which doubles as the student's
+	// current_question cursor (docs/05 section 4) - the last question they
+	// saved an answer for, since REST autosave carries no separate
+	// navigation signal.
+	var ordinal int
+	err = tx.QueryRowContext(ctx,
+		`SELECT ord FROM quiz_versions v, jsonb_array_elements(v.questions) WITH ORDINALITY elems(q, ord)
+		 WHERE v.quiz_id = $1 AND v.version = $2 AND elems.q->>'id' = $3`,
+		a.QuizID, a.QuizVersion, questionID).Scan(&ordinal)
+	if err == sql.ErrNoRows {
 		return Answer{}, time.Time{}, ErrNotFound
+	}
+	if err != nil {
+		return Answer{}, time.Time{}, fmt.Errorf("check snapshot membership: %w", err)
 	}
 
 	var ans Answer
@@ -370,15 +374,19 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 		&ans.Response, &ans.TimeSpentMs, &ans.SavedAt); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("upsert answer: %w", err)
 	}
-	// The progress delta rides the autosave transaction. It carries only the
-	// answered count read after this upsert; the cursor stays null because the
-	// server never learns the student's position over REST (see progressPayload).
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE attempts SET current_question = $1 WHERE id = $2`, ordinal, attemptID); err != nil {
+		return Answer{}, time.Time{}, fmt.Errorf("update current_question: %w", err)
+	}
+	// The progress delta rides the autosave transaction. It carries the
+	// answered count and the just-resolved cursor read after this upsert.
 	answered, err := countAnswered(ctx, tx, attemptID)
 	if err != nil {
 		return Answer{}, time.Time{}, err
 	}
 	if err := appendEvent(ctx, tx, attemptID, eventProgress, progressPayload{
-		AnsweredCount: answered,
+		CurrentQuestion: &ordinal,
+		AnsweredCount:   answered,
 	}); err != nil {
 		return Answer{}, time.Time{}, err
 	}
@@ -386,10 +394,10 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 		return Answer{}, time.Time{}, fmt.Errorf("commit save: %w", err)
 	}
 	// Publish second: the progress row is durable, so relay the answered-count
-	// delta. current_question stays null for the same reason the row does - no
-	// server cursor over REST (see progressPayload).
+	// and cursor delta.
 	s.events.Publish(ctx, a.QuizID, attemptID, eventProgress, progressPayload{
-		AnsweredCount: answered,
+		CurrentQuestion: &ordinal,
+		AnsweredCount:   answered,
 	})
 	return ans, a.DeadlineAt, nil
 }

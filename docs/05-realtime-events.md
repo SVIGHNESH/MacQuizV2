@@ -47,7 +47,7 @@ Late joins and reconnects are therefore consistent; there is no missed-event dri
 Implemented as `web/src/authoring/LiveMonitorPanel.tsx`: shown on a quiz's editor whenever it reads `live`, it fetches the snapshot, opens `quiz:{id}:monitor` over `/ws/quizzes/:id/monitor`, and applies `attempt.progress`/`violation`/`kicked`/`submitted`/`graded` deltas in place.
 `attempt.started` re-fetches the snapshot instead of patching, since the delta carries no question/version data and it fires only once per attempt.
 The kick and readmit escalations post to the existing `/attempts/:id/kick` and `/attempts/:id/readmit` endpoints from the same roster row.
-The `attempt:{id}` student-facing channel (heartbeat, disconnected state, current-question wiring) remains unimplemented, so the dashboard never shows "disconnected" and `current_question` stays null - the honest degradation the snapshot already documents.
+The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pieces remain unimplemented, so the dashboard never shows "disconnected". `current_question` is now wired: it is the 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student's autosave resolved, persisted on `attempts.current_question` and carried by both the snapshot and the `attempt.progress` delta.
 
 ## 5. Throttling and degradation
 
