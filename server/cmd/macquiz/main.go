@@ -161,6 +161,17 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer subscriber.Close()
 
+	// docs/01 "Go-live herd": a start storm re-serializes one immutable
+	// per-version questions/guardrails payload out of Postgres once, not once
+	// per start, once the cache is warm. Like the publisher/subscriber above,
+	// an unreachable Redis degrades every Get/Set to a miss - never a boot
+	// failure or a request-path error.
+	snapshotCache, err := realtime.NewSnapshotCache(cfg.RedisURL, log)
+	if err != nil {
+		return err
+	}
+	defer snapshotCache.Close()
+
 	// The register-import endpoint (docs/04-api.md: POST /quizzes/:id/imports)
 	// writes uploaded files here; the worker process reads them back through
 	// its own LocalImportStorage pointed at the same directory (docs/09
@@ -178,6 +189,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// only the best-effort Redis relay is thinned to the doc's events/s budget.
 	// The worker emits no progress, so its publisher stays unwrapped.
 	attemptSvc := attempt.NewService(sqlDB, log, attempt.NewProgressCoalescer(publisher))
+	attemptSvc.SetSnapshotCache(snapshotCache)
 	attemptHandler := attempt.NewHandler(attemptSvc, authSvc)
 	attemptHandler.SetMetrics(tel.Metrics)
 	analyticsHandler := analytics.NewHandler(analytics.NewService(sqlDB, log), authSvc)

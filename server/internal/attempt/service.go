@@ -115,6 +115,10 @@ type Service struct {
 	// transaction commits (docs/05 section 1). It defaults to a no-op, so the
 	// service works with no realtime layer wired.
 	events EventPublisher
+	// snapshots is the read-through cache for buildDetail's per-version
+	// questions/guardrails read (docs/01 "Go-live herd"). It defaults to a
+	// no-op, so the service works with no Redis wired.
+	snapshots SnapshotCache
 }
 
 // NewService wires the attempt service. An optional EventPublisher relays
@@ -128,7 +132,18 @@ func NewService(db *sql.DB, log *slog.Logger, publishers ...EventPublisher) *Ser
 		// to reject, so this cannot happen at runtime.
 		panic(fmt.Sprintf("build insert-only river client: %v", err))
 	}
-	return &Service{db: db, log: log, jobs: jobs, events: resolvePublisher(publishers)}
+	return &Service{db: db, log: log, jobs: jobs, events: resolvePublisher(publishers), snapshots: noopSnapshotCache{}}
+}
+
+// SetSnapshotCache wires the Redis-backed question/guardrail snapshot cache
+// (realtime.NewSnapshotCache in production). Mirrors the Handler/Gateway
+// SetMetrics setter convention elsewhere in the codebase: optional, called
+// once at boot, nil-safe to omit entirely (the service keeps the no-op
+// default and every read falls back to Postgres).
+func (s *Service) SetSnapshotCache(c SnapshotCache) {
+	if c != nil {
+		s.snapshots = c
+	}
 }
 
 const attemptColumns = `id, quiz_id, student_id, attempt_no, quiz_version,
@@ -906,15 +921,29 @@ type querier interface {
 func (s *Service) buildDetail(ctx context.Context, db querier, a Attempt) (Detail, error) {
 	d := Detail{Attempt: a, Answers: []Answer{}}
 
-	var questionsJSON []byte
 	var shuffle bool
 	if err := db.QueryRowContext(ctx,
-		`SELECT z.title, z.shuffle_questions, v.questions, v.guardrails, now()
-		 FROM quizzes z JOIN quiz_versions v ON v.quiz_id = z.id AND v.version = $2
-		 WHERE z.id = $1`, a.QuizID, a.QuizVersion).Scan(
-		&d.QuizTitle, &shuffle, &questionsJSON, &d.Guardrails, &d.Now); err != nil {
-		return Detail{}, fmt.Errorf("load snapshot: %w", err)
+		`SELECT title, shuffle_questions, now() FROM quizzes WHERE id = $1`,
+		a.QuizID).Scan(&d.QuizTitle, &shuffle, &d.Now); err != nil {
+		return Detail{}, fmt.Errorf("load quiz: %w", err)
 	}
+
+	// The questions/guardrails snapshot is pinned to a.QuizVersion and never
+	// changes once quiz_versions inserts the row, so it is the one part of
+	// this read worth caching (docs/01 "Go-live herd"): a miss here just
+	// falls back to the query buildDetail always ran before this cache
+	// existed, populating the cache for the next reader.
+	var questionsJSON, guardrails []byte
+	questionsJSON, guardrails, ok := s.snapshots.Get(ctx, a.QuizID, a.QuizVersion)
+	if !ok {
+		if err := db.QueryRowContext(ctx,
+			`SELECT questions, guardrails FROM quiz_versions WHERE quiz_id = $1 AND version = $2`,
+			a.QuizID, a.QuizVersion).Scan(&questionsJSON, &guardrails); err != nil {
+			return Detail{}, fmt.Errorf("load snapshot: %w", err)
+		}
+		s.snapshots.Set(ctx, a.QuizID, a.QuizVersion, questionsJSON, guardrails)
+	}
+	d.Guardrails = guardrails
 	questions, err := decodeSnapshot(questionsJSON)
 	if err != nil {
 		return Detail{}, err
