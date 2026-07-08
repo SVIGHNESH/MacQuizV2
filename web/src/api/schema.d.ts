@@ -2889,6 +2889,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["AttemptConflict"];
             422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["RateLimited"];
         };
     };
     submitAttempt: {

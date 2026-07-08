@@ -1407,6 +1407,8 @@ paths:
           $ref: "#/components/responses/AttemptConflict"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/attempts/{id}/submit:
     post:
       operationId: submitAttempt

@@ -17,17 +17,19 @@ import (
 	"macquiz/server/internal/quiz"
 )
 
-// TestKickAndReadmitRateLimitPerTeacher pins the docs/08-security.md section 4
-// / docs/04-api.md section 5 requirement that kick and readmit are
-// rate-limited per teacher, to prevent kick storms. It hammers each endpoint
-// well past the configured per-teacher limit (repeat calls on an
-// already-kicked/-readmitted attempt are idempotent 200s, so the limiter -
-// not the business logic - is what eventually answers 429 RATE_LIMITED)
-// and checks the two endpoints' limiters are independent (a readmit-storm on
-// one teacher does not also throttle that teacher's kicks).
+// TestAttemptRateLimits pins the docs/08-security.md section 4 / docs/04-api.md
+// section 5 requirement that answer autosave, kick, and readmit are all
+// rate-limited - autosave per attempt, kick and readmit per teacher - to
+// bound a direct API call bypassing the client's own throttling (autosave's
+// 2s debounce) or a moderation storm. It hammers each endpoint well past its
+// configured limit (repeat calls on an already-kicked/-readmitted attempt
+// are idempotent 200s, so the limiter - not the business logic - is what
+// eventually answers 429 RATE_LIMITED) and checks the kick/readmit limiters
+// are independent (a readmit-storm on one teacher does not also throttle
+// that teacher's kicks).
 //
 // It runs in its own database (macquiz_ratelimittest) - see itest.FreshDatabase.
-func TestKickAndReadmitRateLimitPerTeacher(t *testing.T) {
+func TestAttemptRateLimits(t *testing.T) {
 	baseURL := os.Getenv("MACQUIZ_TEST_DATABASE_URL")
 	if baseURL == "" {
 		t.Skip("MACQUIZ_TEST_DATABASE_URL not set")
@@ -74,6 +76,7 @@ func TestKickAndReadmitRateLimitPerTeacher(t *testing.T) {
 	}, teacher); status != 201 {
 		t.Fatalf("add question = %d %v", status, body)
 	}
+	questionID := body["question"].(map[string]any)["id"].(string)
 	if status, _, _ = itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
 		map[string]any{"student_ids": []string{takerID}}, teacher); status != 200 {
 		t.Fatalf("assign = %d", status)
@@ -90,6 +93,25 @@ func TestKickAndReadmitRateLimitPerTeacher(t *testing.T) {
 		t.Fatalf("backdate starts_at: %v", err)
 	}
 	attemptID := start(t, server, quizID, taker)
+
+	t.Run("answer autosave is rate-limited per attempt", func(t *testing.T) {
+		var status int
+		var body map[string]any
+		for i := range 121 {
+			status, body, _ = itest.Call(t, server, "PUT",
+				"/api/v1/attempts/"+attemptID+"/answers/"+questionID,
+				map[string]any{"response": i%2 == 0}, taker)
+			if i < 120 && status != 200 {
+				t.Fatalf("save answer %d = %d %v, want 200", i+1, status, body)
+			}
+		}
+		if status != 429 {
+			t.Fatalf("121st save within a minute = %d %v, want 429 RATE_LIMITED", status, body)
+		}
+		if body["code"] != "RATE_LIMITED" {
+			t.Fatalf("121st save body = %v, want code RATE_LIMITED", body)
+		}
+	})
 
 	t.Run("kick is rate-limited per teacher", func(t *testing.T) {
 		var status int

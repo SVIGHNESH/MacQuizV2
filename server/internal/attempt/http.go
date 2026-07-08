@@ -29,6 +29,11 @@ type Handler struct {
 	kickByTeacher          *ratelimit.Limiter
 	readmitByTeacher       *ratelimit.Limiter
 	overrideScoreByTeacher *ratelimit.Limiter
+	// saveAnswerByAttempt is a generous per-attempt limit (docs/04-api.md
+	// section 5, docs/08-security.md section 4): the client already
+	// debounces autosave 2s per question, so this only needs to bound a
+	// direct API call bypassing that debounce, not normal play.
+	saveAnswerByAttempt *ratelimit.Limiter
 }
 
 // NewHandler wires the attempt routes.
@@ -39,6 +44,7 @@ func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 		kickByTeacher:          ratelimit.New(20, time.Minute),
 		readmitByTeacher:       ratelimit.New(20, time.Minute),
 		overrideScoreByTeacher: ratelimit.New(20, time.Minute),
+		saveAnswerByAttempt:    ratelimit.New(120, time.Minute),
 	}
 }
 
@@ -158,6 +164,10 @@ func (h *Handler) handleSaveAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	questionID, ok := pathUUID(w, r, "questionID", "no such question in this attempt")
 	if !ok {
+		return
+	}
+	if ok, retry := h.saveAnswerByAttempt.Allow(id, time.Now()); !ok {
+		httpapi.WriteRateLimited(w, retry)
 		return
 	}
 	var req saveAnswerRequest
