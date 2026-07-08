@@ -219,15 +219,6 @@
 
 /* --- Guardrails --------------------------------------------------------- */
 
-.guardrail-notice {
-  margin: 0;
-  font: var(--text-secondary);
-  color: var(--color-warning-on-tint);
-  background: var(--color-warning-tint);
-  border-radius: var(--radius-button);
-  padding: 10px 14px;
-}
-
 .quiz-banner {
   margin: 0;
   display: flex;

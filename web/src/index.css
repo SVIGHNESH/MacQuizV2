@@ -22,6 +22,66 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Toast (docs/11 section 4): one style app-wide, top-center, ink surface,
+   semantic dot, auto-dismiss. ------------------------------------------- */
+
+.toast-viewport {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  pointer-events: none;
+}
+
+.toast {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-button);
+  background: var(--color-ink);
+  color: #fff;
+  font: var(--text-secondary);
+  box-shadow: var(--shadow-floating);
+  animation: toast-in var(--motion-entrance);
+}
+
+.toast-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.toast-success .toast-dot {
+  background: var(--color-success-dot);
+}
+
+.toast-info .toast-dot {
+  background: var(--color-primary);
+}
+
+.toast-warning .toast-dot {
+  background: var(--color-warning-dot);
+}
+
+.toast-danger .toast-dot {
+  background: var(--color-danger);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

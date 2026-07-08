@@ -1,5 +1,6 @@
 import { AuthProvider } from './auth/auth'
 import { useAuth } from './auth/context'
+import { ToastProvider } from './toast/Toast'
 import LoginScreen from './screens/LoginScreen'
 import ChangePasswordScreen from './screens/ChangePasswordScreen'
 import AuthoringWorkspace from './authoring/AuthoringWorkspace'
@@ -41,8 +42,10 @@ function Screens() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Screens />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <Screens />
+      </AuthProvider>
+    </ToastProvider>
   )
 }

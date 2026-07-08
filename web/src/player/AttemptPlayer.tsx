@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { useToast } from '../toast/context'
 import {
   coerceResponse,
   formatRemaining,
@@ -27,7 +28,6 @@ const GUARDRAIL_WARN_NOTICE: Record<GuardrailType, string> = {
   clipboard: 'Copy, cut, and paste are disabled during this quiz.',
 }
 
-const VIOLATION_NOTICE_MS = 6_000
 const ATTEMPT_SOCKET_RECONNECT_MS = 3_000
 // docs/05 section 5: "the attempt WebSocket sends a heartbeat every 10s" -
 // matches server/internal/realtime/gateway.go's heartbeatTimeout (25s, 2.5x
@@ -77,6 +77,7 @@ export default function AttemptPlayer({
   entry: PlayerEntry
   onExit: () => void
 }) {
+  const { showToast } = useToast()
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   const [detail, setDetail] = useState<AttemptDetail | null>(null)
   const [answers, setAnswers] = useState<Record<string, ResponseValue>>({})
@@ -98,8 +99,6 @@ export default function AttemptPlayer({
   // fullscreen target and the scope for the clipboard/context-menu block.
   const playerRoot = useRef<HTMLDivElement>(null)
   const [fullscreenOk, setFullscreenOk] = useState(true)
-  const [violationNotice, setViolationNotice] = useState<string | null>(null)
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const awaySince = useRef<number | null>(null)
   // Guardrail event listeners close over the phase at mount time; this ref
   // lets reportViolation see the current phase without re-subscribing them.
@@ -196,12 +195,6 @@ export default function AttemptPlayer({
     setPhase({ kind: 'done', reason })
   }
 
-  const showNotice = (message: string) => {
-    if (noticeTimer.current) clearTimeout(noticeTimer.current)
-    setViolationNotice(message)
-    noticeTimer.current = setTimeout(() => setViolationNotice(null), VIOLATION_NOTICE_MS)
-  }
-
   // The REST fallback the docs call for (the attempt socket does not exist
   // yet): one request is one violation, no client-side dedup. The server is
   // the ladder's authority - a counted report that crosses max_violations
@@ -222,10 +215,11 @@ export default function AttemptPlayer({
         lock('closed')
         return
       }
-      showNotice(
+      showToast(
         result.data.counted
           ? `Violation ${nextAttempt.violation_count} of ${detail.guardrails.max_violations} - stay in the quiz window.`
           : GUARDRAIL_WARN_NOTICE[type],
+        'warning',
       )
       return
     }
@@ -316,13 +310,6 @@ export default function AttemptPlayer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.kind])
-
-  // Pending notice timer dies with the player.
-  useEffect(() => {
-    return () => {
-      if (noticeTimer.current) clearTimeout(noticeTimer.current)
-    }
-  }, [])
 
   // The attempt:{id} socket (docs/05 section 3): the primary delivery path
   // for the kick lockout and quiz.extended/closed banners, with the REST
@@ -492,6 +479,9 @@ export default function AttemptPlayer({
     if (result?.data || result?.response.status === 409) {
       // 200 is the idempotent funnel; 409 means past grace, where the
       // deadline job owns the submission - either way the attempt is done.
+      if (reason === 'manual') {
+        showToast('Quiz submitted - graded instantly.', 'success')
+      }
       setPhase({ kind: 'done', reason })
       return
     }
@@ -603,11 +593,6 @@ export default function AttemptPlayer({
           >
             ×
           </button>
-        </p>
-      )}
-      {violationNotice && (
-        <p className="guardrail-notice" role="alert">
-          {violationNotice}
         </p>
       )}
 
