@@ -6,6 +6,8 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 // Error codes from docs/04-api.md section 3 plus the auth-flow codes.
@@ -58,4 +60,11 @@ func WriteFieldErrors(w http.ResponseWriter, fields map[string]string) {
 		Message: "validation failed",
 		Fields:  fields,
 	})
+}
+
+// WriteRateLimited writes a 429 RATE_LIMITED with a Retry-After header set
+// from retry (rounded up to the next whole second).
+func WriteRateLimited(w http.ResponseWriter, retry time.Duration) {
+	w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+	WriteError(w, http.StatusTooManyRequests, CodeRateLimited, "too many attempts; slow down")
 }

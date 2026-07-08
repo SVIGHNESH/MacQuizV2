@@ -12,6 +12,7 @@ import (
 
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/httpapi"
+	"macquiz/server/internal/ratelimit"
 	"macquiz/server/internal/telemetry"
 )
 
@@ -22,11 +23,20 @@ type Handler struct {
 	svc     *Service
 	auth    *authusers.Service
 	metrics *telemetry.Metrics
+	// Kick and readmit are rate-limited per teacher, keyed by actor ID, to
+	// prevent kick storms (docs/04-api.md section 5, docs/08 section 4).
+	kickByTeacher    *ratelimit.Limiter
+	readmitByTeacher *ratelimit.Limiter
 }
 
 // NewHandler wires the attempt routes.
 func NewHandler(svc *Service, auth *authusers.Service) *Handler {
-	return &Handler{svc: svc, auth: auth}
+	return &Handler{
+		svc:              svc,
+		auth:             auth,
+		kickByTeacher:    ratelimit.New(20, time.Minute),
+		readmitByTeacher: ratelimit.New(20, time.Minute),
+	}
 }
 
 // SetMetrics wires the docs/10-operations.md section 2 key-series metrics
@@ -248,6 +258,10 @@ func (h *Handler) handleKick(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if ok, retry := h.kickByTeacher.Allow(actor.ID, time.Now()); !ok {
+		httpapi.WriteRateLimited(w, retry)
+		return
+	}
 	var req kickRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReasonBytes)).Decode(&req); err != nil {
 		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
@@ -274,6 +288,10 @@ func (h *Handler) handleReadmit(w http.ResponseWriter, r *http.Request) {
 	actor, _ := authusers.ActorFrom(r.Context())
 	id, ok := pathUUID(w, r, "id", "no such attempt")
 	if !ok {
+		return
+	}
+	if ok, retry := h.readmitByTeacher.Allow(actor.ID, time.Now()); !ok {
+		httpapi.WriteRateLimited(w, retry)
 		return
 	}
 	var req kickRequest

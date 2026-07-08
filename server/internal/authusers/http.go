@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"macquiz/server/internal/httpapi"
+	"macquiz/server/internal/ratelimit"
 )
 
 // Both tokens travel in httpOnly cookies (docs/08-security.md section 1):
@@ -26,8 +26,8 @@ const (
 type Handler struct {
 	svc           *Service
 	secureCookies bool
-	loginByIP     *rateLimiter
-	loginByEmail  *rateLimiter
+	loginByIP     *ratelimit.Limiter
+	loginByEmail  *ratelimit.Limiter
 }
 
 // NewHandler wires the auth routes. secureCookies must be true in production
@@ -37,8 +37,8 @@ func NewHandler(svc *Service, secureCookies bool) *Handler {
 		svc:           svc,
 		secureCookies: secureCookies,
 		// Login limits per IP and per account (docs/04-api.md section 5).
-		loginByIP:    newRateLimiter(20, time.Minute),
-		loginByEmail: newRateLimiter(5, time.Minute),
+		loginByIP:    ratelimit.New(20, time.Minute),
+		loginByEmail: ratelimit.New(5, time.Minute),
 	}
 }
 
@@ -72,12 +72,12 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	if ok, retry := h.loginByIP.allow(r.RemoteAddr, now); !ok {
-		writeRateLimited(w, retry)
+	if ok, retry := h.loginByIP.Allow(r.RemoteAddr, now); !ok {
+		httpapi.WriteRateLimited(w, retry)
 		return
 	}
-	if ok, retry := h.loginByEmail.allow(req.Email, now); !ok {
-		writeRateLimited(w, retry)
+	if ok, retry := h.loginByEmail.Allow(req.Email, now); !ok {
+		httpapi.WriteRateLimited(w, retry)
 		return
 	}
 
@@ -188,10 +188,4 @@ func (h *Handler) clearSessionCookies(w http.ResponseWriter) {
 func (h *Handler) internalError(w http.ResponseWriter, op string, err error) {
 	h.svc.log.Error(op, "err", err)
 	httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
-}
-
-func writeRateLimited(w http.ResponseWriter, retry time.Duration) {
-	secs := int(retry.Seconds()) + 1
-	w.Header().Set("Retry-After", strconv.Itoa(secs))
-	httpapi.WriteError(w, http.StatusTooManyRequests, httpapi.CodeRateLimited, "too many attempts; slow down")
 }

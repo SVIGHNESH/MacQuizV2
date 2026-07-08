@@ -1,20 +1,20 @@
-package authusers
+package ratelimit
 
 import (
 	"testing"
 	"time"
 )
 
-func TestRateLimiterBlocksOverLimitThenRecovers(t *testing.T) {
-	rl := newRateLimiter(3, time.Minute)
+func TestLimiterBlocksOverLimitThenRecovers(t *testing.T) {
+	rl := New(3, time.Minute)
 	now := time.Now()
 
 	for i := range 3 {
-		if ok, _ := rl.allow("k", now.Add(time.Duration(i)*time.Second)); !ok {
+		if ok, _ := rl.Allow("k", now.Add(time.Duration(i)*time.Second)); !ok {
 			t.Fatalf("hit %d refused, want allowed", i+1)
 		}
 	}
-	ok, retry := rl.allow("k", now.Add(3*time.Second))
+	ok, retry := rl.Allow("k", now.Add(3*time.Second))
 	if ok {
 		t.Fatal("4th hit inside the window allowed, want refused")
 	}
@@ -23,12 +23,12 @@ func TestRateLimiterBlocksOverLimitThenRecovers(t *testing.T) {
 	}
 
 	// Other keys are independent.
-	if ok, _ := rl.allow("other", now); !ok {
+	if ok, _ := rl.Allow("other", now); !ok {
 		t.Fatal("independent key refused")
 	}
 
 	// After the window slides past the oldest hits, the key recovers.
-	if ok, _ := rl.allow("k", now.Add(2*time.Minute)); !ok {
+	if ok, _ := rl.Allow("k", now.Add(2*time.Minute)); !ok {
 		t.Fatal("hit after window elapsed refused, want allowed")
 	}
 }
