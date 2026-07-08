@@ -304,13 +304,23 @@ async function teacherSeesProgressThenKicks(teacherPage) {
 }
 
 async function studentIsLockedOut(studentPage) {
-  await pickOption(studentPage, 1, 'Venus')
-  // The kicked attempt is terminal server-side: the next autosave answers
-  // 409, which the player already turns into a full lockout screen (docs/06
-  // section 4), not just a save-error badge.
+  // The player's attempt:{id} socket delivers the kick lockout message
+  // (docs/06 section 4 step 4) as soon as the teacher's Kick lands - well
+  // before any further student action - so the done screen already shows
+  // the reason-aware "removed" copy rather than the generic REST-fallback
+  // "closed" text.
   check(
-    await waitForText(studentPage, '.player-done', 'This attempt is closed', 8000),
-    "the kicked student's next autosave is refused and locks the player out",
+    await waitForText(studentPage, '.player-done', 'You were removed from this quiz', 8000),
+    "the kicked student's attempt socket delivers the lockout screen",
+  )
+  check(
+    await waitForText(
+      studentPage,
+      '.player-done',
+      'Reason given: Not following instructions',
+      2000,
+    ),
+    'the lockout screen shows the reason the teacher gave',
   )
 }
 

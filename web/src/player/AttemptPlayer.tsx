@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import {
   coerceResponse,
   formatRemaining,
+  formatWhen,
   isAnswered,
   type AttemptDetail,
   type AttemptQuestion,
@@ -27,6 +28,7 @@ const GUARDRAIL_WARN_NOTICE: Record<GuardrailType, string> = {
 }
 
 const VIOLATION_NOTICE_MS = 6_000
+const ATTEMPT_SOCKET_RECONNECT_MS = 3_000
 
 type Phase =
   | { kind: 'loading' }
@@ -34,9 +36,24 @@ type Phase =
   | { kind: 'playing' }
   | { kind: 'submitting' }
   // The attempt reached a terminal state under us: the student submitted,
-  // the clock ran out, or the server refused a write because the attempt
-  // is already terminal (submitted from another tab, force-closed).
-  | { kind: 'done'; reason: 'manual' | 'timeup' | 'closed' }
+  // the clock ran out, the teacher removed them, or the server refused a
+  // write because the attempt is already terminal (submitted from another
+  // tab, force-closed).
+  | { kind: 'done'; reason: 'manual' | 'timeup' | 'closed' | 'kicked' }
+
+// The docs/05 section 1 envelope every event on the attempt:{id} channel
+// arrives in, same shape LiveMonitorPanel already decodes on the teacher
+// side.
+interface RealtimeEvent {
+  type: string
+  attempt_id: string
+  payload: unknown
+}
+
+function attemptSocketURL(attemptId: string): string {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}/ws/attempts/${attemptId}`
+}
 
 /**
  * The attempt player (docs/08): the snapshot questions without the key, a
@@ -82,6 +99,13 @@ export default function AttemptPlayer({
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
+
+  // docs/05 section 3 / docs/06 section 4 step 4: the attempt:{id} socket
+  // carries the kick lockout's reason text and quiz-wide extend/close
+  // banners. kickReason backs the 'kicked' done screen; quizBanner is a
+  // dismissable strip shown while still playing.
+  const [kickReason, setKickReason] = useState<string | null>(null)
+  const [quizBanner, setQuizBanner] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -158,7 +182,7 @@ export default function AttemptPlayer({
     return () => pending.forEach((t) => clearTimeout(t))
   }, [])
 
-  const lock = (reason: 'timeup' | 'closed') => {
+  const lock = (reason: 'timeup' | 'closed' | 'kicked') => {
     timers.current.forEach((t) => clearTimeout(t))
     timers.current.clear()
     setPhase({ kind: 'done', reason })
@@ -198,7 +222,9 @@ export default function AttemptPlayer({
       return
     }
     const code = result?.error?.code
-    if (code === 'ATTEMPT_KICKED' || code === 'ATTEMPT_ALREADY_SUBMITTED') {
+    if (code === 'ATTEMPT_KICKED') {
+      lock('kicked')
+    } else if (code === 'ATTEMPT_ALREADY_SUBMITTED') {
       lock('closed')
     }
     // GUARDRAIL_OFF and network failures are not worth surfacing: the report
@@ -290,6 +316,82 @@ export default function AttemptPlayer({
     }
   }, [])
 
+  // The attempt:{id} socket (docs/05 section 3): the primary delivery path
+  // for the kick lockout and quiz.extended/closed banners, with the REST
+  // 409 fallback above covering a dropped connection. Reconnects on its own
+  // timer, entirely outside React state, so a flaky socket never leaks
+  // overlapping connections; it only runs while still playing; a lock via
+  // any other path unmounts this effect and the socket is closed.
+  useEffect(() => {
+    if (phase.kind !== 'playing' || !detail) return
+    const attemptId = detail.attempt.id
+    let cancelled = false
+    let socket: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      if (cancelled) return
+      socket = new WebSocket(attemptSocketURL(attemptId))
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        let msg: RealtimeEvent
+        try {
+          msg = JSON.parse(event.data) as RealtimeEvent
+        } catch {
+          return
+        }
+        switch (msg.type) {
+          case 'attempt.kicked': {
+            const p = msg.payload as { reason?: string }
+            setKickReason(p.reason?.trim() || null)
+            lock('kicked')
+            break
+          }
+          case 'quiz.extended': {
+            const p = msg.payload as { ends_at: string }
+            setQuizBanner(`Your teacher extended this quiz - new end time ${formatWhen(p.ends_at)}.`)
+            // Refresh so the countdown reflects any deadline_at the
+            // extension pulled forward (docs/06: least(started_at +
+            // duration, new ends_at)).
+            void api
+              .GET('/api/v1/attempts/{id}', { params: { path: { id: attemptId } } })
+              .then((result) => {
+                if (cancelled || !result.data) return
+                clockOffset.current = Date.parse(result.data.now) - Date.now()
+                setDetail(result.data)
+              })
+              .catch(() => {})
+            break
+          }
+          case 'quiz.closed': {
+            setQuizBanner('Your teacher closed this quiz. Any saved answers will be submitted shortly.')
+            break
+          }
+          default:
+            break
+        }
+      }
+      socket.onclose = () => {
+        if (cancelled) return
+        reconnectTimer = setTimeout(connect, ATTEMPT_SOCKET_RECONNECT_MS)
+      }
+      socket.onerror = () => {
+        socket?.close()
+      }
+    }
+    connect()
+
+    return () => {
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      socket?.close()
+    }
+    // Keyed on the attempt id, not the whole `detail` object: reportViolation
+    // and the quiz.extended refresh above both call setDetail while playing,
+    // and neither should tear down and reconnect a perfectly good socket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.kind, detail?.attempt.id])
+
   const saveOne = async (questionId: string): Promise<boolean> => {
     if (!detail) return false
     const value = latest.current.get(questionId)
@@ -314,7 +416,7 @@ export default function AttemptPlayer({
     }
     if (result?.response.status === 409) {
       // The attempt is terminal server-side; nothing more can be written.
-      lock('closed')
+      lock(result?.error?.code === 'ATTEMPT_KICKED' ? 'kicked' : 'closed')
       return false
     }
     dirty.current.add(questionId)
@@ -398,16 +500,22 @@ export default function AttemptPlayer({
           <h1 className="card-title">
             {phase.reason === 'timeup'
               ? 'Time is up'
-              : phase.reason === 'closed'
-                ? 'This attempt is closed'
-                : 'Attempt submitted'}
+              : phase.reason === 'kicked'
+                ? 'You were removed from this quiz'
+                : phase.reason === 'closed'
+                  ? 'This attempt is closed'
+                  : 'Attempt submitted'}
           </h1>
           <p className="hint">
             {phase.reason === 'timeup'
               ? 'The time limit ran out, so your saved answers were submitted for you.'
-              : phase.reason === 'closed'
-                ? 'The attempt already ended - your saved answers stand as the submission.'
-                : 'Your answers are in. Scores appear on your quiz list once results are released.'}
+              : phase.reason === 'kicked'
+                ? kickReason
+                  ? `Reason given: ${kickReason}. Your saved answers stand as the submission.`
+                  : 'Your teacher removed you from this quiz. Your saved answers stand as the submission.'
+                : phase.reason === 'closed'
+                  ? 'The attempt already ended - your saved answers stand as the submission.'
+                  : 'Your answers are in. Scores appear on your quiz list once results are released.'}
           </p>
           <button
             className="button button-primary"
@@ -453,6 +561,19 @@ export default function AttemptPlayer({
       </header>
 
       {saveError && <p className="form-error">{saveError}</p>}
+      {quizBanner && (
+        <p className="quiz-banner" role="status">
+          <span>{quizBanner}</span>
+          <button
+            className="quiz-banner-dismiss"
+            type="button"
+            onClick={() => setQuizBanner(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </p>
+      )}
       {violationNotice && (
         <p className="guardrail-notice" role="alert">
           {violationNotice}

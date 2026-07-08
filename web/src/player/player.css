@@ -219,6 +219,29 @@
   padding: 10px 14px;
 }
 
+.quiz-banner {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: var(--text-secondary);
+  color: var(--color-primary-on-tint);
+  background: var(--color-primary-tint);
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+}
+
+.quiz-banner-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 .fullscreen-lock-overlay {
   position: fixed;
   inset: 0;
