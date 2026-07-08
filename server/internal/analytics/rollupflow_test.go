@@ -147,11 +147,14 @@ func TestRollupFlowE2E(t *testing.T) {
 		}
 	}
 
-	// The graded quiz under test: scholar aces it (10/10), learner gets the
-	// single only (4/10), absent never attempts. Assigned 3, attempted 2.
+	// The graded quiz under test: scholar aces it (10/10); learner answers
+	// the single right (b) but the truefalse wrong (false), so learner keeps
+	// 4/10 while the truefalse question gains a right/wrong split - real
+	// discrimination to measure. absent never attempts. Assigned 3,
+	// attempted 2.
 	gradedQuiz, gSingle, gTF := buildQuiz("Graded", "scholar@school.test", "learner@school.test", "absent@school.test")
 	attemptQuiz(scholar, gradedQuiz, map[string]any{gSingle: "b", gTF: true})
-	attemptQuiz(learner, gradedQuiz, map[string]any{gSingle: "b"})
+	learnerAttempt := attemptQuiz(learner, gradedQuiz, map[string]any{gSingle: "b", gTF: false})
 
 	// An archived quiz is a terminal superset of closed and must roll up too.
 	archivedQuiz, aSingle, aTF := buildQuiz("Archived", "scholar@school.test")
@@ -159,6 +162,14 @@ func TestRollupFlowE2E(t *testing.T) {
 
 	if graded, err := attempt.GradeSubmitted(ctx, sqlDB); err != nil || graded != 3 {
 		t.Fatalf("grade = (%d, %v), want (3, nil)", graded, err)
+	}
+	// Stamp integrity events on learner's (already-graded) attempt: two
+	// violations and a kick. submit_kind, not status, marks the kick - grading
+	// has flipped the attempt to 'graded'. This exercises the integrity tally
+	// and the flagged/kicked counters that a clean run leaves at zero.
+	if _, err := sqlDB.ExecContext(ctx,
+		`UPDATE attempts SET violation_count = 2, submit_kind = 'kicked' WHERE id = $1`, learnerAttempt); err != nil {
+		t.Fatalf("stamp integrity: %v", err)
 	}
 	setStatus(gradedQuiz, "closed")
 	setStatus(archivedQuiz, "archived")
@@ -206,9 +217,53 @@ func TestRollupFlowE2E(t *testing.T) {
 			&distribution, &mean, &median, &participation, &itemAnalysis, &integrity); err != nil {
 			t.Fatalf("read quiz_stats: %v", err)
 		}
-		// item_analysis and integrity are a follow-up brick: left NULL for now.
-		if itemAnalysis != nil || integrity != nil {
-			t.Fatalf("item_analysis/integrity = %s/%s, want null/null (deferred)", itemAnalysis, integrity)
+		// item_analysis: one row per answered question, over each student's
+		// best graded attempt. The single (both answered 'b' correctly) has a
+		// perfect p-value and a null point-biserial - no right/wrong split to
+		// correlate. The truefalse splits scholar-right(score 10)/learner-wrong
+		// (score 4), so p-value is 0.5 and point-biserial is a perfect +1 (the
+		// higher scorer got it right).
+		var items []map[string]any
+		if err := json.Unmarshal(itemAnalysis, &items); err != nil {
+			t.Fatalf("decode item_analysis: %v", err)
+		}
+		byQ := map[string]map[string]any{}
+		for _, it := range items {
+			byQ[it["question_id"].(string)] = it
+		}
+		single, tf := byQ[gSingle], byQ[gTF]
+		if single == nil || tf == nil {
+			t.Fatalf("item_analysis missing a question: %v", items)
+		}
+		if single["p_value"].(float64) != 1 || single["point_biserial"] != nil {
+			t.Fatalf("single item = %v, want p_value 1 point_biserial null", single)
+		}
+		if tf["p_value"].(float64) != 0.5 || math.Abs(tf["point_biserial"].(float64)-1) > 1e-9 {
+			t.Fatalf("truefalse item = %v, want p_value 0.5 point_biserial 1", tf)
+		}
+		// The truefalse's option-pick tallies one 'true' and one 'false'.
+		picks := tf["option_pick_rates"].(map[string]any)
+		if picks["true"].(float64) != 1 || picks["false"].(float64) != 1 {
+			t.Fatalf("truefalse picks = %v, want one true one false", picks)
+		}
+
+		// integrity: learner's attempt carries two violations and a kick.
+		var integ map[string]any
+		if err := json.Unmarshal(integrity, &integ); err != nil {
+			t.Fatalf("decode integrity: %v", err)
+		}
+		if integ["kicked_attempts"].(float64) != 1 ||
+			integ["flagged_students"].(float64) != 1 ||
+			integ["total_violations"].(float64) != 2 {
+			t.Fatalf("integrity = %v, want 1 kicked / 1 flagged / 2 violations", integ)
+		}
+		perStudent := integ["per_student"].([]any)
+		if len(perStudent) != 1 {
+			t.Fatalf("integrity per_student = %v, want one entry", perStudent)
+		}
+		flagged := perStudent[0].(map[string]any)
+		if flagged["violations"].(float64) != 2 || flagged["kicked"] != true {
+			t.Fatalf("flagged student = %v, want 2 violations kicked", flagged)
 		}
 		// Scores 10 and 4 -> mean 7, median 7.
 		if !mean.Valid || mean.Float64 != 7 {
@@ -233,11 +288,24 @@ func TestRollupFlowE2E(t *testing.T) {
 
 	t.Run("the empty quiz row is null-scored with zero participation", func(t *testing.T) {
 		var mean, median, participation sql.NullFloat64
-		var distribution []byte
+		var distribution, itemAnalysis, integrity []byte
 		if err := sqlDB.QueryRowContext(ctx,
-			`SELECT distribution, mean, median, participation FROM quiz_stats WHERE quiz_id = $1`,
-			emptyQuiz).Scan(&distribution, &mean, &median, &participation); err != nil {
+			`SELECT distribution, mean, median, participation, item_analysis, integrity
+			 FROM quiz_stats WHERE quiz_id = $1`,
+			emptyQuiz).Scan(&distribution, &mean, &median, &participation, &itemAnalysis, &integrity); err != nil {
 			t.Fatalf("read quiz_stats: %v", err)
+		}
+		// No answers and no attempts: item_analysis is an empty array (never
+		// null) and integrity is present with every counter zero.
+		if string(itemAnalysis) != "[]" {
+			t.Fatalf("empty quiz item_analysis = %s, want []", itemAnalysis)
+		}
+		var integ map[string]any
+		if err := json.Unmarshal(integrity, &integ); err != nil {
+			t.Fatalf("decode integrity: %v", err)
+		}
+		if integ["kicked_attempts"].(float64) != 0 || len(integ["per_student"].([]any)) != 0 {
+			t.Fatalf("empty quiz integrity = %v, want zero counters", integ)
 		}
 		if mean.Valid || median.Valid {
 			t.Fatalf("empty quiz mean/median = %v/%v, want null/null", mean, median)
