@@ -56,6 +56,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Ready"
+  /deploy-check:
+    get:
+      operationId: getDeployCheck
+      summary: Pre-deploy safety check
+      description: >-
+        Reports whether it is safe to roll out a new image right now
+        (docs/10-operations.md section 4: "deploys are refused while any
+        quiz is live"). The deploy pipeline polls this before pulling and
+        restarting the app/worker containers. A quiz counts as live if its
+        effective status - including a still-"scheduled" row whose starts_at
+        has already passed but has not yet been flipped by the scheduler
+        job - is live.
+      responses:
+        "200":
+          description: No quiz is live; safe to deploy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeployCheck"
+        "409":
+          description: A quiz is live; deploy is refused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeployCheck"
+        "503":
+          description: Could not determine deploy safety (database unreachable).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeployCheck"
   /api/v1/auth/login:
     post:
       operationId: login
@@ -1809,6 +1840,16 @@ components:
       required: [status]
       properties:
         status:
+          type: string
+    DeployCheck:
+      type: object
+      required: [safe_to_deploy, live_quiz_count]
+      properties:
+        safe_to_deploy:
+          type: boolean
+        live_quiz_count:
+          type: integer
+        reason:
           type: string
     Error:
       type: object

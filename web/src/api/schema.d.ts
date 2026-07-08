@@ -44,6 +44,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deploy-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pre-deploy safety check
+         * @description Reports whether it is safe to roll out a new image right now (docs/10-operations.md section 4: "deploys are refused while any quiz is live"). The deploy pipeline polls this before pulling and restarting the app/worker containers. A quiz counts as live if its effective status - including a still-"scheduled" row whose starts_at has already passed but has not yet been flipped by the scheduler job - is live.
+         */
+        get: operations["getDeployCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -933,6 +953,11 @@ export interface components {
         Ready: {
             status: string;
         };
+        DeployCheck: {
+            safe_to_deploy: boolean;
+            live_quiz_count: number;
+            reason?: string;
+        };
         Error: {
             /** @description Stable machine-readable code from the docs/04-api.md vocabulary, e.g. INVALID_CREDENTIALS, UNAUTHENTICATED, VALIDATION_FAILED, RATE_LIMITED, PASSWORD_CHANGE_REQUIRED, NOT_FOUND. */
             code: string;
@@ -1626,6 +1651,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ready"];
+                };
+            };
+        };
+    };
+    getDeployCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No quiz is live; safe to deploy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCheck"];
+                };
+            };
+            /** @description A quiz is live; deploy is refused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCheck"];
+                };
+            };
+            /** @description Could not determine deploy safety (database unreachable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCheck"];
                 };
             };
         };

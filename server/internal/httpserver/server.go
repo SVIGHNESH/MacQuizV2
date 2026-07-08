@@ -76,6 +76,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 
 		r.Get("/healthz", handleHealth(build, deps.DB, deps.Redis))
 		r.Get("/readyz", handleReady(deps.DB))
+		r.Get("/deploy-check", handleDeployCheck(deps.DB))
 
 		// Module routes are mounted under /api/v1 as milestones land:
 		//   authusers -> /api/v1/auth, /api/v1/users, /api/v1/groups
@@ -219,5 +220,54 @@ func handleReady(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+	}
+}
+
+type deployCheckResponse struct {
+	SafeToDeploy  bool   `json:"safe_to_deploy"`
+	LiveQuizCount int    `json:"live_quiz_count"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+// handleDeployCheck backs docs/10-operations.md section 4's deploy policy:
+// "Deploys are refused while any quiz is live (pre-deploy check)". The
+// GitHub Actions deploy workflow curls this before rolling out a new image
+// and aborts if safe_to_deploy is false - the cheapest possible prevention
+// of shipping a rollout in the middle of a live exam.
+//
+// "Live" here means effectively live, matching the lazy status derivation
+// the rest of the app uses (docs/06): a quiz still marked 'scheduled' in the
+// row but whose starts_at has already passed counts as live even before the
+// scheduler job flips the column, so a deploy landing in that narrow window
+// is refused too.
+func handleDeployCheck(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(deployCheckResponse{Reason: "no database"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
+		defer cancel()
+
+		var count int
+		err := db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM quizzes
+			WHERE (status = 'live' AND (ends_at IS NULL OR ends_at > now()))
+			   OR (status = 'scheduled' AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now()))
+		`).Scan(&count)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(deployCheckResponse{Reason: "database unreachable"})
+			return
+		}
+
+		resp := deployCheckResponse{SafeToDeploy: count == 0, LiveQuizCount: count}
+		if count > 0 {
+			resp.Reason = "quizzes are live"
+			w.WriteHeader(http.StatusConflict)
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
