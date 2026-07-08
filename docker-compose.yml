@@ -72,8 +72,11 @@ services:
       MACQUIZ_REDIS_URL: redis://redis:6379/0
       MACQUIZ_ENV: development
       MACQUIZ_AUTH_SECRET: dev-only-insecure-secret
+      MACQUIZ_IMPORT_DIR: /var/lib/macquiz/imports
     ports:
       - "8080:8080"
+    volumes:
+      - import_data:/var/lib/macquiz/imports
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +93,9 @@ services:
       MACQUIZ_DATABASE_URL: postgres://macquiz:macquiz@postgres:5432/macquiz?sslmode=disable
       MACQUIZ_REDIS_URL: redis://redis:6379/0
       MACQUIZ_ENV: development
+      MACQUIZ_IMPORT_DIR: /var/lib/macquiz/imports
+    volumes:
+      - import_data:/var/lib/macquiz/imports
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,3 +108,8 @@ services:
 volumes:
   pg_data:
   redis_data:
+  # Bulk-upload files registered by app (POST /quizzes/:id/imports) and read
+  # back by worker (the import_validate job) - LocalImportStorage's
+  # single-VM stand-in for object storage needs one disk shared across both
+  # containers (docs/07 section 2; docs/09 section 4).
+  import_data:

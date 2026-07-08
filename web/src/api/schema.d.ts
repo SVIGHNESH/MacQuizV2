@@ -348,6 +348,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a bulk upload for a draft quiz (owner)
+         * @description docs/07 section 2 step 2: the request body is the raw CSV template (docs/07 section 2 step 1); the API stores it, creates the imports row in status "validating", and enqueues the import_validate worker job. Nothing is written to questions here - see POST /imports/{id}/commit once the worker resolves the import to "ready". Limit: 10 MB.
+         */
+        post: operations["registerImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/publish": {
         parameters: {
             query?: never;
@@ -903,6 +923,28 @@ export interface components {
         };
         QuestionResponse: {
             question: components["schemas"]["TeacherQuestion"];
+        };
+        /** @description A registered bulk upload (docs/07 section 2). status moves validating -> ready|failed -> committed; row_count and error_report are null until the worker's validation pass resolves it. */
+        Import: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            quiz_id: string;
+            /** Format: uuid */
+            uploaded_by: string;
+            /** @enum {string} */
+            status: "validating" | "ready" | "failed" | "committed";
+            row_count?: number | null;
+            error_report?: {
+                row: number;
+                column: string;
+                message: string;
+            }[] | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ImportResponse: {
+            import: components["schemas"]["Import"];
         };
         Group: {
             /** Format: uuid */
@@ -1851,6 +1893,37 @@ export interface operations {
                     "application/json": {
                         questions: components["schemas"]["TeacherQuestion"][];
                     };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["NotEditable"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    registerImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description Import registered and queued for validation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

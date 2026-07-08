@@ -626,6 +626,48 @@ paths:
           $ref: "#/components/responses/NotEditable"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/quizzes/{id}/imports:
+    post:
+      operationId: registerImport
+      summary: Register a bulk upload for a draft quiz (owner)
+      description: >-
+        docs/07 section 2 step 2: the request body is the raw CSV template
+        (docs/07 section 2 step 1); the API stores it, creates the imports
+        row in status "validating", and enqueues the import_validate worker
+        job. Nothing is written to questions here - see POST
+        /imports/{id}/commit once the worker resolves the import to "ready".
+        Limit: 10 MB.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Import registered and queued for validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/NotEditable"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/quizzes/{id}/publish:
     post:
       operationId: publishQuiz
@@ -1790,6 +1832,51 @@ components:
       properties:
         question:
           $ref: "#/components/schemas/TeacherQuestion"
+    Import:
+      type: object
+      description: >-
+        A registered bulk upload (docs/07 section 2). status moves
+        validating -> ready|failed -> committed; row_count and error_report
+        are null until the worker's validation pass resolves it.
+      required: [id, quiz_id, uploaded_by, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        quiz_id:
+          type: string
+          format: uuid
+        uploaded_by:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [validating, ready, failed, committed]
+        row_count:
+          type: integer
+          nullable: true
+        error_report:
+          type: array
+          nullable: true
+          items:
+            type: object
+            required: [row, column, message]
+            properties:
+              row:
+                type: integer
+              column:
+                type: string
+              message:
+                type: string
+        created_at:
+          type: string
+          format: date-time
+    ImportResponse:
+      type: object
+      required: [import]
+      properties:
+        import:
+          $ref: "#/components/schemas/Import"
     Group:
       type: object
       required: [id, name, member_count, created_at]

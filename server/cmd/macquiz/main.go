@@ -132,9 +132,17 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer subscriber.Close()
 
+	// The register-import endpoint (docs/04-api.md: POST /quizzes/:id/imports)
+	// writes uploaded files here; the worker process reads them back through
+	// its own LocalImportStorage pointed at the same directory (docs/09
+	// section 4: single-VM deployment shares one disk across containers).
+	if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
+		return fmt.Errorf("create import dir: %w", err)
+	}
+
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
-	quizSvc := quiz.NewService(sqlDB, log)
+	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: cfg.ImportDir})
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
 	// Coalesce serve-side attempt.progress to at most one relay per 2 s per
 	// attempt (docs/05 section 5): every autosave still persists its event row,

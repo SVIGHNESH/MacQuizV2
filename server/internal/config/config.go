@@ -35,10 +35,12 @@ type Config struct {
 	BootstrapAdminEmail    string
 	BootstrapAdminPassword string
 	BootstrapAdminName     string
-	// ImportDir is the local-disk directory bulk-upload files are read from
-	// by the import validation worker (docs/07 section 2). It stands in for
-	// object storage until the pre-signed-upload brick lands; a production
-	// deployment will replace it with an R2-backed config.
+	// ImportDir is the local-disk directory bulk-upload files are written to
+	// by the register-import endpoint and read back from by the import
+	// validation worker (docs/07 section 2). It stands in for object storage
+	// until the pre-signed-upload brick lands; a production deployment will
+	// replace it with an R2-backed config. serve and worker run as separate
+	// containers, so this directory must be a shared volume (docker-compose.yml).
 	ImportDir string
 }
 

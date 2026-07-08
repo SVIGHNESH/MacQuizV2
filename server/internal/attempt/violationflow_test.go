@@ -60,7 +60,7 @@ func TestViolationFlowE2E(t *testing.T) {
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:      sqlDB,
 		Auth:    authusers.NewHandler(authSvc, false),
-		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
+		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}), authSvc),
 		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log, pub), authSvc),
 	})
 	server := httptest.NewServer(router)
@@ -290,7 +290,7 @@ func TestViolationAutoSubmitLadderE2E(t *testing.T) {
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:      sqlDB,
 		Auth:    authusers.NewHandler(authSvc, false),
-		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
+		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}), authSvc),
 		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log, pub), authSvc),
 	})
 	server := httptest.NewServer(router)

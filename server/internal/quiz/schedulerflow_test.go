@@ -41,7 +41,7 @@ func TestSchedulerFlowE2E(t *testing.T) {
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	authSvc := authusers.NewService(sqlDB, "test-secret", log)
-	quizSvc := quiz.NewService(sqlDB, log)
+	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()})
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:   sqlDB,
 		Auth: authusers.NewHandler(authSvc, false),

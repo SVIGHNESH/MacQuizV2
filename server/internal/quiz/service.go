@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -105,17 +106,22 @@ type Service struct {
 	// uses it to enqueue the open_quiz/close_quiz transitions inside its own
 	// transaction. The worker process consumes them (internal/worker).
 	jobs *river.Client[*sql.Tx]
+	// uploads receives a registered bulk-import file (docs/07 section 2 step
+	// 2); RegisterImport writes through it before enqueueing the
+	// import_validate job the worker (internal/quiz/importworker.go) later
+	// reads back through an ImportStorage pointed at the same files.
+	uploads ImportUploadStore
 }
 
 // NewService wires the quiz authoring service.
-func NewService(db *sql.DB, log *slog.Logger) *Service {
+func NewService(db *sql.DB, log *slog.Logger, uploads ImportUploadStore) *Service {
 	jobs, err := river.NewClient(riverdatabasesql.New(db), &river.Config{})
 	if err != nil {
 		// The empty config is statically valid; NewClient has nothing left
 		// to reject, so this cannot happen at runtime.
 		panic(fmt.Sprintf("build insert-only river client: %v", err))
 	}
-	return &Service{db: db, log: log, jobs: jobs}
+	return &Service{db: db, log: log, jobs: jobs, uploads: uploads}
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,
@@ -337,6 +343,72 @@ func (s *Service) AddQuestion(ctx context.Context, actor authusers.User, quizID 
 		return Question{}, fmt.Errorf("commit add question: %w", err)
 	}
 	return q, nil
+}
+
+// Import is the bulk-upload registration/status shape (docs/07 section 2).
+// file_ref never leaves the service: it is an internal storage handle, not
+// something a client needs.
+type Import struct {
+	ID          string          `json:"id"`
+	QuizID      string          `json:"quiz_id"`
+	UploadedBy  string          `json:"uploaded_by"`
+	Status      string          `json:"status"`
+	RowCount    *int            `json:"row_count"`
+	ErrorReport json.RawMessage `json:"error_report,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+const importColumns = `id, quiz_id, uploaded_by, status, row_count, error_report, created_at`
+
+func scanImport(scan func(dest ...any) error) (Import, error) {
+	var imp Import
+	var errorReport []byte
+	err := scan(&imp.ID, &imp.QuizID, &imp.UploadedBy, &imp.Status,
+		&imp.RowCount, &errorReport, &imp.CreatedAt)
+	imp.ErrorReport = errorReport
+	return imp, err
+}
+
+// RegisterImport saves a bulk-upload file for a draft quiz the actor owns,
+// creates its imports row in 'validating', and enqueues the import_validate
+// job the worker picks up (docs/07 section 2 steps 2-3). file has already
+// been size-capped by the handler (ImportUploadStore.Save does not re-check
+// it); a file that is too large surfaces as whatever error the capped
+// reader produces from Save's io.Copy.
+func (s *Service) RegisterImport(ctx context.Context, actor authusers.User, quizID string, file io.Reader) (Import, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Import{}, fmt.Errorf("begin register-import tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	if _, err := s.draftForUpdate(ctx, tx, actor, quizID); err != nil {
+		return Import{}, err
+	}
+
+	fileRef, err := s.uploads.Save(ctx, file)
+	if err != nil {
+		return Import{}, fmt.Errorf("save import file: %w", err)
+	}
+
+	imp, err := scanImport(tx.QueryRowContext(ctx,
+		`INSERT INTO imports (quiz_id, uploaded_by, file_ref)
+		 VALUES ($1, $2, $3)
+		 RETURNING `+importColumns, quizID, actor.ID, fileRef).Scan)
+	if err != nil {
+		return Import{}, fmt.Errorf("insert import: %w", err)
+	}
+	if _, err := s.jobs.InsertTx(ctx, tx, ImportValidateArgs{ImportID: imp.ID}, nil); err != nil {
+		return Import{}, fmt.Errorf("enqueue import validation: %w", err)
+	}
+	if err := audit.Write(ctx, tx, actor.ID, "imports.registered", "import", imp.ID,
+		map[string]any{"quiz_id": quizID}); err != nil {
+		return Import{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Import{}, fmt.Errorf("commit register import: %w", err)
+	}
+	return imp, nil
 }
 
 // UpdateQuestion replaces a question's content while its quiz is a draft.

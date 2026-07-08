@@ -52,6 +52,7 @@ func (h *Handler) QuizRoutes() http.Handler {
 		r.Delete("/{id}", h.handleDeleteQuiz)
 		r.Post("/{id}/questions", h.handleAddQuestion)
 		r.Put("/{id}/questions/order", h.handleReorderQuestions)
+		r.Post("/{id}/imports", h.handleRegisterImport)
 		r.Post("/{id}/publish", h.handlePublishQuiz)
 		r.Post("/{id}/close", h.handleForceCloseQuiz)
 		r.Post("/{id}/extend", h.handleExtendQuiz)
@@ -233,6 +234,32 @@ func (h *Handler) handleAddQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"question": TeacherView(q)})
+}
+
+// handleRegisterImport implements "Register a bulk upload" (docs/04-api.md:
+// POST /quizzes/:id/imports). The doc describes a pre-signed-URL flow; on
+// the single-VM deployment there is no object-storage service to presign
+// against, so the request body IS the file - ImportUploadStore.Save (backed
+// by LocalImportStorage today) writes it straight through. A production R2
+// backend would swap this handler for one that only registers the row and
+// hands back a presigned PUT URL, without touching the worker.
+func (h *Handler) handleRegisterImport(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such quiz")
+	if !ok {
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, MaxImportFileBytes)
+	imp, err := h.svc.RegisterImport(r.Context(), actor, id, body)
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		httpapi.WriteFieldErrors(w, map[string]string{"file": "must be 10 MB or smaller"})
+		return
+	}
+	if h.writeQuizError(w, "register import", err, "no such quiz") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"import": imp})
 }
 
 func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {

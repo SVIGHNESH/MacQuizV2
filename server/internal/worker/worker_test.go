@@ -82,7 +82,7 @@ func TestWorkerOpensAndClosesQuiz(t *testing.T) {
 	// Publish through the real service so the window jobs are enqueued in
 	// the publish transaction. The HTTP layer's future-window rule does not
 	// apply at the service level, letting the test use a seconds-long window.
-	quizSvc := quiz.NewService(sqlDB, log)
+	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()})
 	startsAt := time.Now().Add(2 * time.Second).UTC()
 	endsAt := startsAt.Add(3 * time.Second)
 	teacher := authusers.User{ID: teacherID, Role: "teacher", Status: "active"}

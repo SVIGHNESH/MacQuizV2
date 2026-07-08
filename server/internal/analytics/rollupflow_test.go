@@ -47,7 +47,7 @@ func TestRollupFlowE2E(t *testing.T) {
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:        sqlDB,
 		Auth:      authusers.NewHandler(authSvc, false),
-		Quiz:      quiz.NewHandler(quiz.NewService(sqlDB, log), authSvc),
+		Quiz:      quiz.NewHandler(quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}), authSvc),
 		Attempt:   attempt.NewHandler(attempt.NewService(sqlDB, log), authSvc),
 		Analytics: analytics.NewHandler(analytics.NewService(sqlDB, log), authSvc),
 	})
