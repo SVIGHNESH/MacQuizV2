@@ -150,3 +150,71 @@ func (s *Service) StudentStats(ctx context.Context, actor authusers.User, studen
 	out.TopicStrengths = json.RawMessage(topicStrengths)
 	return out, nil
 }
+
+// TeacherStats is a teacher's activity-and-outcomes summary for the wire
+// (docs/07 section 4, "Per teacher"). Unlike QuizStats and StudentStats it
+// reads no rollup table - there is no teacher_stats - so it aggregates live
+// from quizzes, attempts, and the per-quiz quiz_stats rows each close froze.
+// The averages are null for a teacher whose quizzes have no rolled-up stats
+// yet (or who has released no results), never for a real-but-idle teacher, who
+// reports zero counts.
+type TeacherStats struct {
+	TeacherID        string   `json:"teacher_id"`
+	QuizzesCreated   int      `json:"quizzes_created"`
+	QuizzesConducted int      `json:"quizzes_conducted"`
+	TotalAttempts    int      `json:"total_attempts"`
+	AvgParticipation *float64 `json:"avg_participation"`
+	// AvgClassScore is the mean of each rolled-up quiz's mean, which quiz_stats
+	// stores in raw points; every fixture quiz is out of 10 here, but averaging
+	// raw points across quizzes of differing max scores is points-not-percent by
+	// design - quiz_stats keeps no percentage mean to average instead.
+	AvgClassScore          *float64 `json:"avg_class_score"`
+	AvgPublishToResultsSec *float64 `json:"avg_publish_to_results_sec"`
+}
+
+// TeacherStats returns one teacher's activity-and-outcomes summary for an admin
+// or that teacher themselves (docs/07 section 4: teacher analytics are
+// admin-only; a teacher sees their own). Authorization runs first via
+// ActionAnalyticsTeacher with the subject as owner - a teacher can only ever
+// pass it for their own id, so they can never probe another's - then an
+// explicit "is this id a teacher" check 404s an admin aiming at a student or an
+// unknown id. That existence check is what lets a real-but-idle teacher return
+// zero counts (a legitimate 200) while keeping every "you cannot see this"
+// outcome an existence-safe ErrNotFound, mirroring QuizStats.
+func (s *Service) TeacherStats(ctx context.Context, actor authusers.User, teacherID string) (TeacherStats, error) {
+	if !authusers.Can(actor, authusers.ActionAnalyticsTeacher,
+		authusers.Resource{OwnerID: teacherID}) {
+		return TeacherStats{}, ErrNotFound
+	}
+	var isTeacher bool
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND role = 'teacher')`,
+		teacherID).Scan(&isTeacher); err != nil {
+		return TeacherStats{}, fmt.Errorf("check teacher: %w", err)
+	}
+	if !isTeacher {
+		return TeacherStats{}, ErrNotFound
+	}
+
+	// One round trip: counts of created (all owned) and conducted (launched -
+	// published_at set) quizzes, every attempt across them, the averages of the
+	// frozen per-quiz participation and mean, and the mean publish-to-results
+	// latency in seconds over quizzes whose results have actually been released.
+	out := TeacherStats{TeacherID: teacherID}
+	err := s.db.QueryRowContext(ctx,
+		`SELECT
+		   (SELECT count(*) FROM quizzes WHERE owner_id = $1),
+		   (SELECT count(*) FROM quizzes WHERE owner_id = $1 AND published_at IS NOT NULL),
+		   (SELECT count(*) FROM attempts a JOIN quizzes q ON q.id = a.quiz_id WHERE q.owner_id = $1),
+		   (SELECT avg(qs.participation) FROM quiz_stats qs JOIN quizzes q ON q.id = qs.quiz_id WHERE q.owner_id = $1),
+		   (SELECT avg(qs.mean) FROM quiz_stats qs JOIN quizzes q ON q.id = qs.quiz_id WHERE q.owner_id = $1),
+		   (SELECT extract(epoch FROM avg(results_released_at - published_at))
+		      FROM quizzes WHERE owner_id = $1 AND results_released_at IS NOT NULL AND published_at IS NOT NULL)`,
+		teacherID).Scan(
+		&out.QuizzesCreated, &out.QuizzesConducted, &out.TotalAttempts,
+		&out.AvgParticipation, &out.AvgClassScore, &out.AvgPublishToResultsSec)
+	if err != nil {
+		return TeacherStats{}, fmt.Errorf("aggregate teacher stats: %w", err)
+	}
+	return out, nil
+}

@@ -569,4 +569,102 @@ func TestRollupFlowE2E(t *testing.T) {
 			t.Fatalf("garbage GET student analytics = %d %v, want 404", status, body)
 		}
 	})
+
+	// GET /analytics/teachers/:id serves the teacher's activity-and-outcomes
+	// summary (docs/07 section 4). Unlike the quiz/student endpoints there is no
+	// rollup table, so it aggregates live: owner has created five quizzes
+	// (Graded, Archived, Empty, Ungraded, Pending), all published, with four
+	// attempts across them, and four of them rolled up (Pending never did). To
+	// give the publish-to-results latency an exact, non-flaky value, stamp the
+	// graded quiz's window at five minutes with released results - both now()s
+	// share the one statement timestamp, so the difference is exactly 300s and
+	// only that quiz feeds the average.
+	ownerID := userID(t, ctx, sqlDB, "owner@school.test")
+	if _, err := sqlDB.ExecContext(ctx,
+		`UPDATE quizzes SET published_at = now() - interval '5 minutes', results_released_at = now()
+		 WHERE id = $1`, gradedQuiz); err != nil {
+		t.Fatalf("stamp release latency: %v", err)
+	}
+
+	t.Run("a teacher reads their own activity summary", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+ownerID, nil, teacher)
+		if status != 200 {
+			t.Fatalf("owner GET own analytics = %d %v, want 200", status, body)
+		}
+		if body["teacher_id"] != ownerID {
+			t.Fatalf("teacher_id = %v, want %s", body["teacher_id"], ownerID)
+		}
+		if body["quizzes_created"].(float64) != 5 || body["quizzes_conducted"].(float64) != 5 {
+			t.Fatalf("created/conducted = %v/%v, want 5/5",
+				body["quizzes_created"], body["quizzes_conducted"])
+		}
+		if body["total_attempts"].(float64) != 4 {
+			t.Fatalf("total_attempts = %v, want 4", body["total_attempts"])
+		}
+		// avg participation over the four rolled-up quizzes: (2/3 + 1 + 0 + 1)/4.
+		if math.Abs(body["avg_participation"].(float64)-2.0/3.0) > 1e-9 {
+			t.Fatalf("avg_participation = %v, want 0.6667", body["avg_participation"])
+		}
+		// avg class score over the three non-null means (Empty is null-scored):
+		// (7 + 10 + 10)/3.
+		if body["avg_class_score"].(float64) != 9 {
+			t.Fatalf("avg_class_score = %v, want 9", body["avg_class_score"])
+		}
+		if body["avg_publish_to_results_sec"].(float64) != 300 {
+			t.Fatalf("avg_publish_to_results_sec = %v, want 300", body["avg_publish_to_results_sec"])
+		}
+	})
+
+	t.Run("an admin may read any teacher's summary", func(t *testing.T) {
+		if status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+ownerID, nil, admin); status != 200 {
+			t.Fatalf("admin GET teacher analytics = %d %v, want 200", status, body)
+		}
+	})
+
+	t.Run("an idle teacher reads their own summary as zeros, not 404", func(t *testing.T) {
+		// stranger owns no quizzes, so the aggregate is all-zero with null
+		// averages - a legitimate 200, unlike the student endpoint's no-row 404,
+		// because the explicit is-a-teacher check confirms the subject exists.
+		strangerID := userID(t, ctx, sqlDB, "stranger@school.test")
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+strangerID, nil, stranger)
+		if status != 200 {
+			t.Fatalf("stranger GET own analytics = %d %v, want 200", status, body)
+		}
+		if body["quizzes_created"].(float64) != 0 || body["total_attempts"].(float64) != 0 {
+			t.Fatalf("idle teacher = %v, want zero counts", body)
+		}
+		if body["avg_participation"] != nil || body["avg_class_score"] != nil {
+			t.Fatalf("idle teacher averages = %v, want null", body)
+		}
+	})
+
+	t.Run("a teacher cannot read another teacher's summary - 404", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+ownerID, nil, stranger)
+		if status != 404 {
+			t.Fatalf("stranger GET owner analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a student is blocked at the role gate", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+ownerID, nil, scholar)
+		if status != 403 {
+			t.Fatalf("student GET teacher analytics = %d %v, want 403", status, body)
+		}
+	})
+
+	t.Run("an admin aiming at a non-teacher id reads as 404", func(t *testing.T) {
+		// A student id is a real user but not a teacher: existence-safe 404, never
+		// a 200 with a stranger's (empty) summary.
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/"+scholarID, nil, admin)
+		if status != 404 {
+			t.Fatalf("admin GET student-as-teacher analytics = %d %v, want 404", status, body)
+		}
+	})
+
+	t.Run("a malformed teacher id reads as 404", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/analytics/teachers/not-a-uuid", nil, admin)
+		if status != 404 {
+			t.Fatalf("garbage GET teacher analytics = %d %v, want 404", status, body)
+		}
+	})
 }

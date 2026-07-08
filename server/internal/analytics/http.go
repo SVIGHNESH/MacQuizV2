@@ -38,6 +38,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged)
 	r.With(requireStaff).Get("/quizzes/{id}", h.handleQuizStats)
 	r.Get("/students/{id}", h.handleStudentStats)
+	r.With(requireStaff).Get("/teachers/{id}", h.handleTeacherStats)
 	return r
 }
 
@@ -98,6 +99,32 @@ func (h *Handler) handleStudentStats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.svc.log.Error("student analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, stats)
+}
+
+// handleTeacherStats serves GET /analytics/teachers/{id}: the teacher's
+// activity-and-outcomes summary for an admin or that teacher themselves. It is
+// staff-gated like the quiz route (a student answers 403 at the gate); the
+// service 404s a teacher aiming at another teacher and an admin aiming at a
+// non-teacher id, so one teacher's existence never leaks.
+func (h *Handler) handleTeacherStats(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(id) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such teacher")
+		return
+	}
+	stats, err := h.svc.TeacherStats(r.Context(), actor, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound,
+				"no analytics for this teacher")
+			return
+		}
+		h.svc.log.Error("teacher analytics", "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
 		return
 	}
