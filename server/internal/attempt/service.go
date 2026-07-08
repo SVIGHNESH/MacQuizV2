@@ -285,6 +285,25 @@ func (s *Service) Get(ctx context.Context, actor authusers.User, id string) (Det
 	return s.buildDetail(ctx, s.db, a)
 }
 
+// OwnerOf resolves an attempt's owning student and quiz for the realtime
+// gateway's subscribe-time authorization on the student-facing attempt:{id}
+// channel (docs/04-api.md section 6: "the student who owns the attempt").
+// Deliberately narrower than Get - the gateway needs only these two ids to
+// run its Can() check and pick the quiz's events channel to subscribe to.
+// found is false for an unknown attempt, which the gateway answers as 404 so
+// existence is never leaked to a non-owner.
+func (s *Service) OwnerOf(ctx context.Context, attemptID string) (studentID, quizID string, found bool, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT student_id, quiz_id FROM attempts WHERE id = $1`, attemptID).Scan(&studentID, &quizID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, fmt.Errorf("load attempt owner: %w", err)
+	}
+	return studentID, quizID, true, nil
+}
+
 // SaveAnswer upserts one response (docs/04: PUT /attempts/:id/answers/:qid).
 // Idempotent on (attempt_id, question_id); refused once the deadline plus
 // grace has passed or the attempt has left in_progress - the same checks

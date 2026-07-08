@@ -256,6 +256,156 @@ func TestMonitorThroughWrappedResponseWriter(t *testing.T) {
 	}
 }
 
+const testAttemptID = "22222222-2222-2222-2222-222222222222"
+
+func attemptOwnedBy(studentID string) AttemptOwnerFunc {
+	return func(context.Context, string) (string, string, bool, error) {
+		return studentID, testQuizID, true, nil
+	}
+}
+
+func student(id string) authusers.User {
+	return authusers.User{ID: id, Role: "student", Status: "active"}
+}
+
+// mountAttempt wires handleAttempt behind an injected actor, mirroring
+// mountMonitor: it returns the httptest server and the ws:// URL for the
+// attempt channel endpoint.
+func mountAttempt(t *testing.T, g *Gateway, actor authusers.User) (*httptest.Server, string) {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(authusers.WithActor(req.Context(), actor)))
+		})
+	})
+	r.Get("/ws/attempts/{id}", g.handleAttempt)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/attempts/" + testAttemptID
+	return srv, wsURL
+}
+
+// TestAttemptRelaysKickThenCloses proves the happy path from docs/06 section
+// 4 step 4: the owning student receives the kick envelope for their own
+// attempt, and the socket force-closes right after.
+func TestAttemptRelaysKickThenCloses(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := newFakeSubscriber()
+	g := NewGateway(base, fake, nil, ownerIs("teacher-1"), nil, discardLog())
+	g.SetAttemptOwner(attemptOwnedBy("student-1"))
+	_, wsURL := mountAttempt(t, g, student("student-1"))
+
+	ctx, c := dial(t, wsURL)
+	defer c.CloseNow()
+
+	fake.emit(`{"type":"attempt.kicked","attempt_id":"` + testAttemptID + `","payload":{"reason":"cheating"}}`)
+	_, data, err := c.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := string(data); !strings.Contains(got, `"attempt.kicked"`) {
+		t.Fatalf("relayed %q, want the kicked envelope", got)
+	}
+	if _, _, err := c.Read(ctx); err == nil {
+		t.Fatal("expected the socket to force-close after delivering the kick")
+	}
+}
+
+// TestAttemptIgnoresUnrelatedEvents proves the channel only ever relays a
+// kick for this attempt (or a quiz-wide banner) - not the full monitor event
+// stream, and not a kick belonging to a different attempt on the same quiz.
+func TestAttemptIgnoresUnrelatedEvents(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := newFakeSubscriber()
+	g := NewGateway(base, fake, nil, ownerIs("teacher-1"), nil, discardLog())
+	g.SetAttemptOwner(attemptOwnedBy("student-1"))
+	_, wsURL := mountAttempt(t, g, student("student-1"))
+
+	ctx, c := dial(t, wsURL)
+	defer c.CloseNow()
+
+	fake.emit(`{"type":"attempt.progress","attempt_id":"` + testAttemptID + `","payload":{}}`)
+	fake.emit(`{"type":"attempt.kicked","attempt_id":"some-other-attempt","payload":{}}`)
+	fake.emit(`{"type":"attempt.submitted","attempt_id":"` + testAttemptID + `","payload":{}}`)
+	fake.emit(`{"type":"quiz.extended","attempt_id":"","payload":{"new_ends_at":"2026-01-01T00:00:00Z"}}`)
+
+	readCtx, readCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer readCancel()
+	_, data, err := c.Read(readCtx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := string(data); !strings.Contains(got, `"quiz.extended"`) {
+		t.Fatalf("relayed %q, want only the quiz-wide banner (progress/submitted/other-attempt-kick must be dropped)", got)
+	}
+}
+
+// TestAttemptNonOwnerStudent404 proves a student who does not own the
+// attempt is refused before any upgrade, existence never leaked.
+func TestAttemptNonOwnerStudent404(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	g.SetAttemptOwner(attemptOwnedBy("student-1"))
+	srv, _ := mountAttempt(t, g, student("student-9"))
+
+	resp := plainGet(t, srv.URL+"/ws/attempts/"+testAttemptID)
+	if resp != http.StatusNotFound {
+		t.Fatalf("non-owner student status = %d, want 404", resp)
+	}
+}
+
+// TestAttemptTeacherRejected404 proves a teacher (even the quiz's own
+// teacher) cannot subscribe to a student's attempt channel: docs/04-api.md
+// section 6 scopes it to the attempt owner only.
+func TestAttemptTeacherRejected404(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	g.SetAttemptOwner(attemptOwnedBy("student-1"))
+	srv, _ := mountAttempt(t, g, authusers.User{ID: "teacher-1", Role: "teacher", Status: "active"})
+
+	resp := plainGet(t, srv.URL+"/ws/attempts/"+testAttemptID)
+	if resp != http.StatusNotFound {
+		t.Fatalf("teacher status = %d, want 404", resp)
+	}
+}
+
+// TestAttemptUnknownAttempt404 proves an unknown attempt (owner lookup
+// found=false) is a 404.
+func TestAttemptUnknownAttempt404(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	notFound := func(context.Context, string) (string, string, bool, error) { return "", "", false, nil }
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	g.SetAttemptOwner(notFound)
+	srv, _ := mountAttempt(t, g, student("student-1"))
+
+	resp := plainGet(t, srv.URL+"/ws/attempts/"+testAttemptID)
+	if resp != http.StatusNotFound {
+		t.Fatalf("unknown attempt status = %d, want 404", resp)
+	}
+}
+
+// TestAttemptNoOwnerFuncWired404 proves a Gateway that never had
+// SetAttemptOwner called (every deploy before this brick lands, and every
+// test exercising only the monitor channel) answers 404 instead of a nil
+// function panic.
+func TestAttemptNoOwnerFuncWired404(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g := NewGateway(base, newFakeSubscriber(), nil, ownerIs("teacher-1"), nil, discardLog())
+	srv, _ := mountAttempt(t, g, student("student-1"))
+
+	resp := plainGet(t, srv.URL+"/ws/attempts/"+testAttemptID)
+	if resp != http.StatusNotFound {
+		t.Fatalf("no attempt owner wired status = %d, want 404", resp)
+	}
+}
+
 // dial opens a WebSocket client to url and returns a context for its
 // operations. The dialer sends no Origin header, so Accept's same-origin check
 // passes without OriginPatterns.

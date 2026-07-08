@@ -2,9 +2,11 @@ package realtime
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -22,9 +24,12 @@ import (
 // section 3), and every payload is the source-of-truth envelope the attempt
 // module already persisted and published.
 //
-// This brick lands the quiz:{id}:monitor channel only; the attempt:{id} and
-// user:{id}:notify channels, heartbeat/disconnect tracking, and the current
-// question wiring are separate bricks that layer on top.
+// This brick also lands the attempt:{id} student channel (docs/05 section 3):
+// the attempt's owning student subscribes to the same quiz:{id}:events stream
+// and receives only the events scoped to their own attempt (today: the kick
+// lockout message, docs/06 section 4 step 4) plus any quiz-wide banner
+// events. The user:{id}:notify channel, heartbeat/disconnect tracking, and
+// the current question wiring are separate bricks that still layer on top.
 
 const (
 	// pingInterval keeps the socket (and any intermediate proxy) alive across
@@ -41,16 +46,29 @@ const (
 // section 1), matching quiz.LiveRoster.
 type QuizOwnerFunc func(ctx context.Context, quizID string) (ownerID string, found bool, err error)
 
+// AttemptOwnerFunc resolves an attempt's owning student and quiz for the
+// attempt:{id} channel's subscribe-time authorization (docs/04-api.md
+// section 6: "the student who owns the attempt"). found is false for an
+// unknown attempt, answered as 404 exactly like QuizOwnerFunc.
+type AttemptOwnerFunc func(ctx context.Context, attemptID string) (studentID, quizID string, found bool, err error)
+
+// eventKicked is the docs/05 section 2 event type this channel force-closes
+// on (docs/06 section 4 step 4). Duplicated as a literal rather than imported
+// from the attempt package, which this package does not (and should not)
+// depend on - the gateway only ever relays the envelope it is handed.
+const eventKicked = "attempt.kicked"
+
 // Gateway is the WebSocket monitor endpoint. It holds no quiz state: the
 // snapshot the dashboard reconciles against comes from GET /quizzes/:id/live,
 // and the gateway only streams the deltas published after it.
 type Gateway struct {
-	sub     Subscriber
-	auth    *authusers.Service
-	owner   QuizOwnerFunc
-	origins []string
-	log     *slog.Logger
-	metrics *telemetry.Metrics
+	sub          Subscriber
+	auth         *authusers.Service
+	owner        QuizOwnerFunc
+	attemptOwner AttemptOwnerFunc
+	origins      []string
+	log          *slog.Logger
+	metrics      *telemetry.Metrics
 
 	// baseCtx is the socket lifetime, derived from the serve process context
 	// so every open socket closes on shutdown. Critically it is NOT the
@@ -64,6 +82,16 @@ type Gateway struct {
 // what every existing test gets.
 func (g *Gateway) SetMetrics(m *telemetry.Metrics) {
 	g.metrics = m
+}
+
+// SetAttemptOwner wires the attempt:{id} channel's owner lookup. Optional, a
+// setter like SetMetrics rather than a NewGateway parameter, so every
+// existing caller and test that only exercises the monitor channel compiles
+// unchanged; a Gateway with no attempt owner wired answers every attempt
+// socket request 404 (attemptOwner is checked for nil before ever being
+// called).
+func (g *Gateway) SetAttemptOwner(f AttemptOwnerFunc) {
+	g.attemptOwner = f
 }
 
 // NewGateway wires the gateway. ctx is the serve-process lifetime; when it is
@@ -88,6 +116,7 @@ func (g *Gateway) Routes() http.Handler {
 		r.Use(requireStaff)
 		r.Get("/quizzes/{id}/monitor", g.handleMonitor)
 	})
+	r.Get("/attempts/{id}", g.handleAttempt)
 	return r
 }
 
@@ -169,6 +198,112 @@ func (g *Gateway) pump(ctx context.Context, c *websocket.Conn, msgs <-chan strin
 			err := c.Write(wctx, websocket.MessageText, []byte(payload))
 			cancel()
 			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+// handleAttempt authorizes the subscribe against the attempt's own student,
+// then streams the attempt's kick lockout message (and any future quiz-wide
+// banner) until the client disconnects, the kick is delivered, or the
+// process shuts down. There is no coarse role gate to mount this behind
+// (unlike handleMonitor's requireStaff): a student is exactly who this
+// channel is for, so the owner check below is the only gate.
+func (g *Gateway) handleAttempt(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	attemptID := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(attemptID) || g.attemptOwner == nil {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such attempt")
+		return
+	}
+
+	// Authorize before the upgrade, exactly as handleMonitor does: a denial or
+	// an unknown attempt is a clean 404, never a half-open socket. Only the
+	// owning student may ever pass (docs/04-api.md section 6) - a teacher or
+	// admin gets the same 404 as a stranger, since this channel carries no
+	// resource they are entitled to watch.
+	studentID, quizID, found, err := g.attemptOwner(r.Context(), attemptID)
+	if err != nil {
+		g.log.Error("resolve attempt owner", "attempt_id", attemptID, "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	if !found || actor.Role != "student" || actor.ID != studentID {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such attempt")
+		return
+	}
+
+	// Subscribe before upgrading, same reasoning as handleMonitor: a Redis
+	// failure here is a clean 500, not a socket that connects and then
+	// silently delivers nothing.
+	connCtx, cancel := context.WithCancel(g.baseCtx)
+	defer cancel()
+	sub, err := g.sub.Subscribe(connCtx, eventsChannel(quizID))
+	if err != nil {
+		g.log.Error("subscribe attempt channel", "attempt_id", attemptID, "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	defer sub.Close()
+
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: g.origins})
+	if err != nil {
+		// Accept has already written the failure response.
+		return
+	}
+	defer c.CloseNow()
+	g.metrics.IncWSConnections(g.baseCtx)
+	defer g.metrics.DecWSConnections(g.baseCtx)
+
+	ctx := c.CloseRead(connCtx)
+	g.pumpAttempt(ctx, c, sub.Messages(), attemptID)
+}
+
+// pumpAttempt relays only what the docs/05 section 3 attempt:{id} channel
+// promises: the kick lockout message for this attempt, and any quiz-wide
+// banner event (a "quiz." prefix, e.g. the still-unbuilt quiz.extended/
+// quiz.closed). It deliberately drops every other event on the shared
+// quiz:{quiz_id}:events stream - attempt.progress/submitted/graded/violation
+// are for the teacher's monitor, not an echo back to the student who already
+// knows their own state. It returns after delivering a kick for this
+// attempt: docs/06 section 4 step 4, "delivers a lockout message... then
+// force-closes it" - a kicked attempt has nothing further to receive.
+func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-chan string, attemptID string) {
+	ping := time.NewTicker(pingInterval)
+	defer ping.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ping.C:
+			pctx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := c.Ping(pctx)
+			cancel()
+			if err != nil {
+				return
+			}
+		case payload, ok := <-msgs:
+			if !ok {
+				return
+			}
+			var env Event
+			if err := json.Unmarshal([]byte(payload), &env); err != nil {
+				g.log.Warn("decode attempt channel envelope", "attempt_id", attemptID, "err", err)
+				continue
+			}
+			isKick := env.Type == eventKicked && env.AttemptID == attemptID
+			isBanner := strings.HasPrefix(env.Type, "quiz.")
+			if !isKick && !isBanner {
+				continue
+			}
+			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := c.Write(wctx, websocket.MessageText, []byte(payload))
+			cancel()
+			if err != nil {
+				return
+			}
+			if isKick {
 				return
 			}
 		}

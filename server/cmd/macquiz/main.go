@@ -187,6 +187,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// pump returns, so graceful shutdown does not wait out the Timeout grace.
 	gateway := realtime.NewGateway(ctx, subscriber, authSvc, quizSvc.OwnerOf, cfg.WSAllowedOrigins, log)
 	gateway.SetMetrics(tel.Metrics)
+	gateway.SetAttemptOwner(attemptSvc.OwnerOf)
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
