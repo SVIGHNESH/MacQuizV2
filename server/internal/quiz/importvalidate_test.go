@@ -1,0 +1,140 @@
+package quiz
+
+import (
+	"strings"
+	"testing"
+)
+
+const importHeader = "type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct,points\n"
+
+func TestParseImportCSV_ValidFile(t *testing.T) {
+	csv := importHeader +
+		"single,Pick red,Red,Blue,,,,,a,2\n" +
+		"multi,Pick primaries,Red,Blue,Green,,,,\"a,c\",1\n" +
+		"truefalse,Sky is blue,,,,,,,true,\n" +
+		"short,Capital of France,,,,,,,Paris|paris,1\n"
+
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("want no row errors, got %+v", errs)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("want 4 parsed rows, got %d", len(rows))
+	}
+	if string(rows[0].Input.Correct) != `"a"` {
+		t.Errorf("single correct = %s, want \"a\"", rows[0].Input.Correct)
+	}
+	if string(rows[1].Input.Correct) != `["a","c"]` {
+		t.Errorf("multi correct = %s, want [\"a\",\"c\"]", rows[1].Input.Correct)
+	}
+	if got := *rows[0].Input.Points; got != 2 {
+		t.Errorf("points = %v, want 2", got)
+	}
+	if got := *rows[3].Input.Points; got != 1 {
+		t.Errorf("default points = %v, want 1", got)
+	}
+}
+
+func TestParseImportCSV_UnknownType(t *testing.T) {
+	csv := importHeader + "essay,Write about x,,,,,,,,\n"
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("want 0 parsed rows, got %d", len(rows))
+	}
+	if !hasColumnError(errs, 1, "type") {
+		t.Errorf("want a row-1 type error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_MissingCorrect(t *testing.T) {
+	csv := importHeader + "single,Pick one,Red,Blue,,,,,,\n"
+	_, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if !hasColumnError(errs, 1, "correct") {
+		t.Errorf("want a row-1 correct error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_CorrectNotAmongOptions(t *testing.T) {
+	csv := importHeader + "single,Pick one,Red,Blue,,,,,z,\n"
+	_, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if !hasColumnError(errs, 1, "correct") {
+		t.Errorf("want a row-1 correct error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_DuplicateQuestionText(t *testing.T) {
+	csv := importHeader +
+		"truefalse,Sky is blue,,,,,,,true,\n" +
+		"truefalse,sky is BLUE ,,,,,,,false,\n"
+	_, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if !hasColumnError(errs, 2, "question") {
+		t.Errorf("want a row-2 question (duplicate) error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_MalformedPoints(t *testing.T) {
+	csv := importHeader + "truefalse,Sky is blue,,,,,,,true,not-a-number\n"
+	_, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if !hasColumnError(errs, 1, "points") {
+		t.Errorf("want a row-1 points error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_RowLimit(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(importHeader)
+	for i := 0; i < MaxImportRows+1; i++ {
+		b.WriteString("truefalse,Q,,,,,,,true,\n")
+	}
+	rows, errs, err := ParseImportCSV(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("only the first row is a non-duplicate within the 500-row window, got %d valid rows", len(rows))
+	}
+	foundLimitErr := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "row limit") {
+			foundLimitErr = true
+		}
+	}
+	if !foundLimitErr {
+		t.Errorf("want a row-limit error, got %+v", errs)
+	}
+}
+
+func TestParseImportCSV_MissingColumn(t *testing.T) {
+	csv := "type,question,correct\nsingle,x,a\n"
+	_, _, err := ParseImportCSV(strings.NewReader(csv))
+	if err == nil {
+		t.Fatal("want an error for a missing required column")
+	}
+}
+
+func hasColumnError(errs []ImportRowError, row int, column string) bool {
+	for _, e := range errs {
+		if e.Row == row && e.Column == column {
+			return true
+		}
+	}
+	return false
+}
