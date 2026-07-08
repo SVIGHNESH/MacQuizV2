@@ -15,6 +15,19 @@ export type PlayerEntry =
 
 const AUTOSAVE_DELAY_MS = 600
 
+type GuardrailType = 'fullscreen' | 'focus' | 'clipboard'
+
+// docs/06 section 3: a warn-class report (a guardrail set to warn, or the
+// clipboard guardrail, which is always logged-not-counted) still needs
+// student-facing copy even though it never touches violation_count.
+const GUARDRAIL_WARN_NOTICE: Record<GuardrailType, string> = {
+  fullscreen: 'You left fullscreen. This has been recorded.',
+  focus: 'You left the quiz window. This has been recorded.',
+  clipboard: 'Copy, cut, and paste are disabled during this quiz.',
+}
+
+const VIOLATION_NOTICE_MS = 6_000
+
 type Phase =
   | { kind: 'loading' }
   | { kind: 'load-error'; message: string }
@@ -55,6 +68,20 @@ export default function AttemptPlayer({
   // Server-minus-client clock estimate; the countdown is cosmetic (docs/08).
   const clockOffset = useRef(0)
   const submitted = useRef(false)
+
+  // Milestone 6 client guardrails (docs/06 section 3). The player root is the
+  // fullscreen target and the scope for the clipboard/context-menu block.
+  const playerRoot = useRef<HTMLDivElement>(null)
+  const [fullscreenOk, setFullscreenOk] = useState(true)
+  const [violationNotice, setViolationNotice] = useState<string | null>(null)
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const awaySince = useRef<number | null>(null)
+  // Guardrail event listeners close over the phase at mount time; this ref
+  // lets reportViolation see the current phase without re-subscribing them.
+  const phaseRef = useRef(phase)
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
 
   useEffect(() => {
     let cancelled = false
@@ -136,6 +163,132 @@ export default function AttemptPlayer({
     timers.current.clear()
     setPhase({ kind: 'done', reason })
   }
+
+  const showNotice = (message: string) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    setViolationNotice(message)
+    noticeTimer.current = setTimeout(() => setViolationNotice(null), VIOLATION_NOTICE_MS)
+  }
+
+  // The REST fallback the docs call for (the attempt socket does not exist
+  // yet): one request is one violation, no client-side dedup. The server is
+  // the ladder's authority - a counted report that crosses max_violations
+  // auto-submits under us, which the response's attempt.status reveals.
+  const reportViolation = async (type: GuardrailType, durationMs?: number) => {
+    if (!detail || phaseRef.current.kind !== 'playing') return
+    const result = await api
+      .POST('/api/v1/attempts/{id}/events', {
+        params: { path: { id: detail.attempt.id } },
+        body: { type, duration_ms: durationMs ?? null },
+      })
+      .catch(() => null)
+    if (result?.data) {
+      const nextAttempt = result.data.attempt
+      setDetail((prev) => (prev ? { ...prev, attempt: nextAttempt } : prev))
+      if (nextAttempt.status !== 'in_progress') {
+        // The violation ladder's auto_submit fired server-side.
+        lock('closed')
+        return
+      }
+      showNotice(
+        result.data.counted
+          ? `Violation ${nextAttempt.violation_count} of ${detail.guardrails.max_violations} - stay in the quiz window.`
+          : GUARDRAIL_WARN_NOTICE[type],
+      )
+      return
+    }
+    const code = result?.error?.code
+    if (code === 'ATTEMPT_KICKED' || code === 'ATTEMPT_ALREADY_SUBMITTED') {
+      lock('closed')
+    }
+    // GUARDRAIL_OFF and network failures are not worth surfacing: the report
+    // was best-effort evidence, not something the student can act on.
+  }
+
+  // Fullscreen lock (docs/06: "leaving raises a violation and overlays a
+  // 'return to fullscreen' blocker"). Requesting fullscreen right after the
+  // attempt loads rides the same user gesture that started the attempt.
+  useEffect(() => {
+    if (phase.kind !== 'playing' || !detail || detail.guardrails.fullscreen === 'off') {
+      return
+    }
+    const request = document.documentElement.requestFullscreen?.()
+    if (request) {
+      request.then(
+        () => setFullscreenOk(true),
+        () => setFullscreenOk(false),
+      )
+    } else {
+      setFullscreenOk(false)
+    }
+    const onChange = () => {
+      const active = document.fullscreenElement != null
+      setFullscreenOk(active)
+      if (!active) void reportViolation('fullscreen')
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.kind])
+
+  // Focus tracking (docs/06: "visibilitychange + blur", reported with the
+  // away duration). awaySince guards against double-counting when blur and
+  // visibilitychange both fire for the same tab switch.
+  useEffect(() => {
+    if (phase.kind !== 'playing' || !detail || detail.guardrails.focus_tracking === 'off') {
+      return
+    }
+    const markAway = () => {
+      if (awaySince.current === null) awaySince.current = Date.now()
+    }
+    const markBack = () => {
+      if (awaySince.current === null) return
+      const durationMs = Date.now() - awaySince.current
+      awaySince.current = null
+      void reportViolation('focus', durationMs)
+    }
+    const onVisibility = () => (document.hidden ? markAway() : markBack())
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('blur', markAway)
+    window.addEventListener('focus', markBack)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('blur', markAway)
+      window.removeEventListener('focus', markBack)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.kind])
+
+  // Clipboard / context-menu block (docs/06: "usage attempts logged"),
+  // scoped to the player rather than the whole document.
+  useEffect(() => {
+    const node = playerRoot.current
+    if (phase.kind !== 'playing' || !detail || !detail.guardrails.block_clipboard || !node) {
+      return
+    }
+    const block = (e: Event) => {
+      e.preventDefault()
+      void reportViolation('clipboard')
+    }
+    node.addEventListener('copy', block)
+    node.addEventListener('cut', block)
+    node.addEventListener('paste', block)
+    node.addEventListener('contextmenu', block)
+    return () => {
+      node.removeEventListener('copy', block)
+      node.removeEventListener('cut', block)
+      node.removeEventListener('paste', block)
+      node.removeEventListener('contextmenu', block)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.kind])
+
+  // Pending notice timer dies with the player.
+  useEffect(() => {
+    return () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    }
+  }, [])
 
   const saveOne = async (questionId: string): Promise<boolean> => {
     if (!detail) return false
@@ -274,8 +427,11 @@ export default function AttemptPlayer({
   ).length
   const urgent = remainingMs !== null && remainingMs < 60_000
 
+  const fullscreenGuarded =
+    phase.kind === 'playing' && detail.guardrails.fullscreen !== 'off' && !fullscreenOk
+
   return (
-    <div className="player">
+    <div className="player" ref={playerRoot}>
       <header className="player-topbar">
         <div className="player-heading">
           <p className="eyebrow">Attempt {detail.attempt.attempt_no}</p>
@@ -297,6 +453,34 @@ export default function AttemptPlayer({
       </header>
 
       {saveError && <p className="form-error">{saveError}</p>}
+      {violationNotice && (
+        <p className="guardrail-notice" role="alert">
+          {violationNotice}
+        </p>
+      )}
+
+      {fullscreenGuarded && (
+        <div className="fullscreen-lock-overlay" role="alertdialog" aria-modal="true">
+          <div className="panel fullscreen-lock-card">
+            <h2 className="card-title">Return to fullscreen to continue</h2>
+            <p className="hint">
+              This quiz requires fullscreen. Leaving it is recorded as a guardrail
+              violation.
+            </p>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => {
+                void document.documentElement
+                  .requestFullscreen?.()
+                  ?.then(() => setFullscreenOk(true))
+              }}
+            >
+              Return to fullscreen
+            </button>
+          </div>
+        </div>
+      )}
 
       <ol className="player-questions">
         {detail.questions.map((question) => (

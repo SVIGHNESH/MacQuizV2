@@ -208,6 +208,38 @@
   margin: 0;
 }
 
+/* --- Guardrails --------------------------------------------------------- */
+
+.guardrail-notice {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-warning-on-tint);
+  background: var(--color-warning-tint);
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+}
+
+.fullscreen-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-modal);
+}
+
+.fullscreen-lock-card {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  max-width: 380px;
+}
+
+.fullscreen-lock-card .hint {
+  margin: 0;
+}
+
 /* --- Released review ---------------------------------------------------- */
 
 .review {
