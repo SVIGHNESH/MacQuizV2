@@ -29,6 +29,7 @@ const (
 	CodeAttemptKicked           = "ATTEMPT_KICKED"
 	CodeAttemptAlreadySubmitted = "ATTEMPT_ALREADY_SUBMITTED"
 	CodeAttemptNotKicked        = "ATTEMPT_NOT_KICKED"
+	CodeAttemptNotGraded        = "ATTEMPT_NOT_GRADED"
 	CodeGuardrailOff            = "GUARDRAIL_OFF"
 	CodeImportNotReady          = "IMPORT_NOT_READY"
 )

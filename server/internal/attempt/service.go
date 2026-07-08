@@ -43,6 +43,9 @@ var (
 	// attempt's snapshot has switched off; there is nothing to record
 	// (docs/06 section 3).
 	ErrGuardrailOff = errors.New("guardrail is not enabled for this attempt")
+	// ErrNotGraded marks a score override attempted before the kicked
+	// attempt's async grade job has landed; there is no score yet to zero.
+	ErrNotGraded = errors.New("attempt has not finished grading yet")
 )
 
 // writeGrace is the autosave slack after deadline_at (docs/06 section 2:
@@ -689,6 +692,62 @@ func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, 
 	}
 	if err := tx.Commit(); err != nil {
 		return Attempt{}, fmt.Errorf("commit readmit: %w", err)
+	}
+	return a, nil
+}
+
+// OverrideScore zeroes a kicked attempt's score (docs/06 line 80: "results
+// are flagged kicked wherever scores appear, and the teacher can override
+// the score to zero per attempt"). The target must be a kicked attempt
+// (else ErrNotKicked) that has finished its async grade job (else
+// ErrNotGraded - the grade job's own UPDATE would otherwise race and clobber
+// the override, since it writes score unconditionally for any
+// submitted/kicked row). It is idempotent per attempt: the marker's WHERE
+// ... score_overridden_at IS NULL guard means a repeat override (or a
+// concurrent double click) zeroes no second time and writes no second audit
+// row. There is no realtime event - like readmit, this is a moderation
+// action a closed/graded quiz's student isn't live-watching a socket for.
+func (s *Service) OverrideScore(ctx context.Context, actor authusers.User, attemptID, reason string) (Attempt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("begin override score tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	a, err := s.moderatableForUpdate(ctx, tx, actor, attemptID)
+	if err != nil {
+		return Attempt{}, err
+	}
+	if a.SubmitKind == nil || *a.SubmitKind != "kicked" {
+		return Attempt{}, ErrNotKicked
+	}
+	if a.Status != "graded" {
+		return Attempt{}, ErrNotGraded
+	}
+
+	// The row is already locked FOR UPDATE by moderatableForUpdate above and
+	// this is the only writer that can flip score_overridden_at, so 0 rows
+	// affected here can only mean an already-overridden attempt (both other
+	// guards were just checked against this same locked row).
+	res, err := tx.ExecContext(ctx,
+		`UPDATE attempts SET score = 0, score_overridden_at = now(), score_overridden_by = $1
+		 WHERE id = $2 AND status = 'graded' AND submit_kind = 'kicked' AND score_overridden_at IS NULL`,
+		actor.ID, a.ID)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("override score: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return Attempt{}, fmt.Errorf("override score rows affected: %w", err)
+	}
+	if rows == 1 {
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.score_overridden", "attempt", a.ID,
+			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+			return Attempt{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Attempt{}, fmt.Errorf("commit override score: %w", err)
 	}
 	return a, nil
 }

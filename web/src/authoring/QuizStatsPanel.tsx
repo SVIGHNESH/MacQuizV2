@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import type { components } from '../api/schema'
 import type { QuizStats, TeacherQuestion } from './model'
+
+type ResultRow = components['schemas']['ResultRow']
 
 type Phase =
   | { kind: 'loading' }
@@ -27,6 +30,9 @@ export default function QuizStatsPanel({
   questions: TeacherQuestion[]
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
+  const [kicked, setKicked] = useState<ResultRow[] | null>(null)
+  const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
+  const [overrideError, setOverrideError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -55,6 +61,46 @@ export default function QuizStatsPanel({
       cancelled = true
     }
   }, [quizId])
+
+  // The kicked-attempts table (docs/06 line 80's score-override control) only
+  // makes sense once there is at least one kicked attempt to show, so it
+  // reads GET /quizzes/:id/results itself rather than growing the analytics
+  // rollup endpoint with per-attempt detail it doesn't otherwise carry.
+  const loadKicked = useCallback(async () => {
+    const result = await api
+      .GET('/api/v1/quizzes/{id}/results', { params: { path: { id: quizId } } })
+      .catch(() => null)
+    if (result?.data) {
+      setKicked(result.data.results.filter((row) => row.submit_kind === 'kicked'))
+    }
+  }, [quizId])
+
+  useEffect(() => {
+    if (phase.kind === 'loaded' && phase.stats.integrity.kicked_attempts > 0) {
+      void loadKicked()
+    }
+  }, [phase, loadKicked])
+
+  const overrideScore = async (attemptId: string) => {
+    const reason = window.prompt('Reason for zeroing this attempt’s score?')
+    if (!reason || !reason.trim()) return
+    setBusyAttemptId(attemptId)
+    setOverrideError(null)
+    const result = await api
+      .POST('/api/v1/attempts/{id}/override-score', {
+        params: { path: { id: attemptId } },
+        body: { reason: reason.trim() },
+      })
+      .catch(() => null)
+    setBusyAttemptId(null)
+    if (!result?.data) {
+      setOverrideError(
+        result?.error?.message ?? 'Could not override this attempt’s score.',
+      )
+      return
+    }
+    void loadKicked()
+  }
 
   if (phase.kind === 'loading') {
     return (
@@ -190,6 +236,48 @@ export default function QuizStatsPanel({
           </div>
         </div>
       </div>
+
+      {stats.integrity.kicked_attempts > 0 && (
+        <div
+          className="stats-item-table kicked-attempts-table"
+          role="table"
+          aria-label="Kicked attempts"
+        >
+          <span className="field-label">Kicked attempts</span>
+          {overrideError && <p className="form-error">{overrideError}</p>}
+          <div className="stats-item-head" role="row">
+            <span role="columnheader">Student</span>
+            <span role="columnheader" className="qt-num">
+              Score
+            </span>
+            <span role="columnheader"></span>
+          </div>
+          {(kicked ?? []).map((row) => (
+            <div key={row.attempt_id} className="stats-item-row" role="row">
+              <span className="stats-item-question">{row.full_name}</span>
+              <span className="qt-num tabular">
+                {row.score === null ? '—' : row.score}
+              </span>
+              <span className="qt-num">
+                {row.score_overridden ? (
+                  <span className="hint">Score overridden to 0</span>
+                ) : row.status !== 'graded' ? (
+                  <span className="hint">Grading pending</span>
+                ) : (
+                  <button
+                    className="button button-quiet-danger button-small"
+                    type="button"
+                    disabled={busyAttemptId === row.attempt_id}
+                    onClick={() => void overrideScore(row.attempt_id!)}
+                  >
+                    Override to zero
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

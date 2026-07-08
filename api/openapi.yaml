@@ -1603,6 +1603,62 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/attempts/{id}/override-score:
+    post:
+      operationId: overrideAttemptScore
+      summary: Zero a kicked attempt's score once it is graded (owner or admin)
+      description: >-
+        Results are flagged `kicked` wherever scores appear; this endpoint
+        lets the teacher additionally override the score itself to zero
+        (docs/06 line 80). The target must be a kicked attempt (else 409
+        ATTEMPT_NOT_KICKED) whose async grade job has already landed (else
+        409 ATTEMPT_NOT_GRADED - try again shortly). Audited and idempotent -
+        a repeat override of the same attempt answers 200 without zeroing a
+        second time or writing a second audit row. Policy: the quiz owner or
+        any admin; a non-owning teacher reads 404, so an attempt's existence
+        never leaks. The reason is required.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  description: Why the score is being overridden (canned phrase plus optional free text).
+      responses:
+        "200":
+          description: The attempt, unchanged; its score is now zeroed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            ATTEMPT_NOT_KICKED - the target attempt was never kicked; or
+            ATTEMPT_NOT_GRADED - the attempt has not finished grading yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
   /api/v1/attempts/{id}/result:
     get:
       operationId: getAttemptResult
@@ -2788,7 +2844,8 @@ components:
         fields null.
       required:
         [student_id, full_name, email, attempt_id, attempt_no, status,
-         submit_kind, started_at, submitted_at, score, max_score]
+         submit_kind, started_at, submitted_at, score, max_score,
+         score_overridden]
       properties:
         student_id:
           type: string
@@ -2828,6 +2885,12 @@ components:
           type: number
           nullable: true
           description: Total points of the snapshot version this attempt pinned.
+        score_overridden:
+          type: boolean
+          description: >-
+            True once the teacher has overridden this attempt's score to zero
+            (docs/06 line 80, POST /attempts/:id/override-score) - only ever
+            true for a kicked attempt.
     QuizResultsResponse:
       type: object
       required: [quiz, results]
@@ -2969,8 +3032,8 @@ components:
         The released results payload for one attempt. The attempt keeps its
         usual score-free shape; the released score rides at the top level.
       required:
-        [attempt, quiz_title, score, max_score, percentile, released_at,
-         questions]
+        [attempt, quiz_title, score, score_overridden, max_score, percentile,
+         released_at, questions]
       properties:
         attempt:
           $ref: "#/components/schemas/Attempt"
@@ -2978,6 +3041,11 @@ components:
           type: string
         score:
           type: number
+        score_overridden:
+          type: boolean
+          description: >-
+            True once the teacher has overridden this attempt's score to zero
+            (docs/06 line 80) - only ever true for a kicked attempt.
         max_score:
           type: number
         percentile:

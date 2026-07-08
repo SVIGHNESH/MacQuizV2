@@ -42,13 +42,14 @@ type ResultQuestion struct {
 // usual score-free wire shape; the released score rides at the top level, so
 // no other payload embedding Attempt gains a score field by accident.
 type Result struct {
-	Attempt    Attempt          `json:"attempt"`
-	QuizTitle  string           `json:"quiz_title"`
-	Score      float64          `json:"score"`
-	MaxScore   float64          `json:"max_score"`
-	Percentile *float64         `json:"percentile"`
-	ReleasedAt time.Time        `json:"released_at"`
-	Questions  []ResultQuestion `json:"questions"`
+	Attempt         Attempt          `json:"attempt"`
+	QuizTitle       string           `json:"quiz_title"`
+	Score           float64          `json:"score"`
+	ScoreOverridden bool             `json:"score_overridden"`
+	MaxScore        float64          `json:"max_score"`
+	Percentile      *float64         `json:"percentile"`
+	ReleasedAt      time.Time        `json:"released_at"`
+	Questions       []ResultQuestion `json:"questions"`
 }
 
 // Result serves GET /attempts/:id/result. Owner-only (anyone else reads
@@ -88,11 +89,13 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 	res.ReleasedAt = *releasedAt
 
 	var score float64
+	var overriddenAt *time.Time
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT coalesce(score, 0) FROM attempts WHERE id = $1`, id).Scan(&score); err != nil {
+		`SELECT coalesce(score, 0), score_overridden_at FROM attempts WHERE id = $1`, id).Scan(&score, &overriddenAt); err != nil {
 		return Result{}, fmt.Errorf("load score: %w", err)
 	}
 	res.Score = score
+	res.ScoreOverridden = overriddenAt != nil
 
 	questions, err := decodeSnapshot(questionsJSON)
 	if err != nil {

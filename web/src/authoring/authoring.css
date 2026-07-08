@@ -934,6 +934,15 @@
   color: var(--color-text-strong);
 }
 
+/* Kicked-attempts table (docs/06 line 80's score-override control) reuses the
+   item-analysis table's visual style but has its own 3-column layout - the
+   5-column grid-template-columns above is specific to Question/Responses/
+   Difficulty/Discrimination/Avg time and would misalign this table's rows. */
+.kicked-attempts-table .stats-item-head,
+.kicked-attempts-table .stats-item-row {
+  grid-template-columns: 1fr 80px 180px;
+}
+
 .stats-integrity {
   display: grid;
   gap: 10px;

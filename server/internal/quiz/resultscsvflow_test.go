@@ -162,7 +162,7 @@ func TestResultsCSVExport(t *testing.T) {
 		}
 		wantHeader := []string{
 			"student_name", "email", "attempt_no", "status", "submit_kind",
-			"started_at", "submitted_at", "score", "max_score",
+			"started_at", "submitted_at", "score", "max_score", "score_overridden",
 		}
 		if strings.Join(rows[0], ",") != strings.Join(wantHeader, ",") {
 			t.Fatalf("csv header = %v, want %v", rows[0], wantHeader)

@@ -103,17 +103,18 @@ func ReleaseDueResults(ctx context.Context, db *sql.DB) (int64, error) {
 // sees scores as grading lands, before any release - releasing is their
 // decision to make, so they need the numbers first.
 type ResultRow struct {
-	StudentID   string     `json:"student_id"`
-	FullName    string     `json:"full_name"`
-	Email       string     `json:"email"`
-	AttemptID   *string    `json:"attempt_id"`
-	AttemptNo   *int       `json:"attempt_no"`
-	Status      *string    `json:"status"`
-	SubmitKind  *string    `json:"submit_kind"`
-	StartedAt   *time.Time `json:"started_at"`
-	SubmittedAt *time.Time `json:"submitted_at"`
-	Score       *float64   `json:"score"`
-	MaxScore    *float64   `json:"max_score"`
+	StudentID       string     `json:"student_id"`
+	FullName        string     `json:"full_name"`
+	Email           string     `json:"email"`
+	AttemptID       *string    `json:"attempt_id"`
+	AttemptNo       *int       `json:"attempt_no"`
+	Status          *string    `json:"status"`
+	SubmitKind      *string    `json:"submit_kind"`
+	StartedAt       *time.Time `json:"started_at"`
+	SubmittedAt     *time.Time `json:"submitted_at"`
+	Score           *float64   `json:"score"`
+	MaxScore        *float64   `json:"max_score"`
+	ScoreOverridden bool       `json:"score_overridden"`
 }
 
 // Results returns the owner's per-student results view (docs/12 Milestone 4:
@@ -137,7 +138,7 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT u.id, u.full_name, u.email,
 		        a.id, a.attempt_no, a.status, a.submit_kind, a.started_at,
-		        a.submitted_at, a.score,
+		        a.submitted_at, a.score, a.score_overridden_at,
 		        (SELECT sum((q->>'points')::float8)
 		         FROM jsonb_array_elements(v.questions) q)
 		 FROM quiz_assignments s
@@ -154,11 +155,13 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 	results := []ResultRow{}
 	for rows.Next() {
 		var r ResultRow
+		var overriddenAt *time.Time
 		if err := rows.Scan(&r.StudentID, &r.FullName, &r.Email, &r.AttemptID,
 			&r.AttemptNo, &r.Status, &r.SubmitKind, &r.StartedAt, &r.SubmittedAt,
-			&r.Score, &r.MaxScore); err != nil {
+			&r.Score, &overriddenAt, &r.MaxScore); err != nil {
 			return Quiz{}, nil, fmt.Errorf("scan result row: %w", err)
 		}
+		r.ScoreOverridden = overriddenAt != nil
 		results = append(results, r)
 	}
 	return q, results, rows.Err()

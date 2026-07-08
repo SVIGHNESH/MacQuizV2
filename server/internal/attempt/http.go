@@ -23,19 +23,22 @@ type Handler struct {
 	svc     *Service
 	auth    *authusers.Service
 	metrics *telemetry.Metrics
-	// Kick and readmit are rate-limited per teacher, keyed by actor ID, to
-	// prevent kick storms (docs/04-api.md section 5, docs/08 section 4).
-	kickByTeacher    *ratelimit.Limiter
-	readmitByTeacher *ratelimit.Limiter
+	// Kick, readmit, and override-score are rate-limited per teacher, keyed
+	// by actor ID, to prevent kick/moderation storms (docs/04-api.md section
+	// 5, docs/08 section 4).
+	kickByTeacher          *ratelimit.Limiter
+	readmitByTeacher       *ratelimit.Limiter
+	overrideScoreByTeacher *ratelimit.Limiter
 }
 
 // NewHandler wires the attempt routes.
 func NewHandler(svc *Service, auth *authusers.Service) *Handler {
 	return &Handler{
-		svc:              svc,
-		auth:             auth,
-		kickByTeacher:    ratelimit.New(20, time.Minute),
-		readmitByTeacher: ratelimit.New(20, time.Minute),
+		svc:                    svc,
+		auth:                   auth,
+		kickByTeacher:          ratelimit.New(20, time.Minute),
+		readmitByTeacher:       ratelimit.New(20, time.Minute),
+		overrideScoreByTeacher: ratelimit.New(20, time.Minute),
 	}
 }
 
@@ -69,6 +72,7 @@ func (h *Handler) Routes() http.Handler {
 		r.Use(requireStaff)
 		r.Post("/{id}/kick", h.handleKick)
 		r.Post("/{id}/readmit", h.handleReadmit)
+		r.Post("/{id}/override-score", h.handleOverrideScore)
 	})
 	return r
 }
@@ -311,6 +315,38 @@ func (h *Handler) handleReadmit(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
 }
 
+// handleOverrideScore serves POST /attempts/{id}/override-score: the
+// teacher/admin zeroes a kicked attempt's score once its async grade job has
+// landed (docs/06 line 80: "the teacher can override the score to zero per
+// attempt"). The reason is required and audited; it mirrors handleKick's
+// body handling.
+func (h *Handler) handleOverrideScore(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	if ok, retry := h.overrideScoreByTeacher.Allow(actor.ID, time.Now()); !ok {
+		httpapi.WriteRateLimited(w, retry)
+		return
+	}
+	var req kickRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReasonBytes)).Decode(&req); err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"body": "malformed JSON"})
+		return
+	}
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		httpapi.WriteFieldErrors(w, map[string]string{"reason": "required"})
+		return
+	}
+	attempt, err := h.svc.OverrideScore(r.Context(), actor, id, req.Reason)
+	if h.writeAttemptError(w, "override score", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"attempt": attempt})
+}
+
 // handleResult serves GET /attempts/{id}/result: the released review with
 // the score, the answer key, and the per-question grading.
 func (h *Handler) handleResult(w http.ResponseWriter, r *http.Request) {
@@ -361,6 +397,9 @@ func (h *Handler) writeAttemptError(w http.ResponseWriter, op string, err error,
 	case errors.Is(err, ErrGuardrailOff):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeGuardrailOff,
 			"this guardrail is not enabled for this attempt")
+	case errors.Is(err, ErrNotGraded):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAttemptNotGraded,
+			"this attempt has not finished grading yet")
 	default:
 		h.svc.log.Error(op, "err", err)
 		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")

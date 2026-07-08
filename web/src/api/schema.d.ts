@@ -855,6 +855,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{id}/override-score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Zero a kicked attempt's score once it is graded (owner or admin)
+         * @description Results are flagged `kicked` wherever scores appear; this endpoint lets the teacher additionally override the score itself to zero (docs/06 line 80). The target must be a kicked attempt (else 409 ATTEMPT_NOT_KICKED) whose async grade job has already landed (else 409 ATTEMPT_NOT_GRADED - try again shortly). Audited and idempotent - a repeat override of the same attempt answers 200 without zeroing a second time or writing a second audit row. Policy: the quiz owner or any admin; a non-owning teacher reads 404, so an attempt's existence never leaks. The reason is required.
+         */
+        post: operations["overrideAttemptScore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attempts/{id}/result": {
         parameters: {
             query?: never;
@@ -1423,6 +1443,8 @@ export interface components {
             score: number | null;
             /** @description Total points of the snapshot version this attempt pinned. */
             max_score: number | null;
+            /** @description True once the teacher has overridden this attempt's score to zero (docs/06 line 80, POST /attempts/:id/override-score) - only ever true for a kicked attempt. */
+            score_overridden: boolean;
         };
         QuizResultsResponse: {
             quiz: components["schemas"]["Quiz"];
@@ -1490,6 +1512,8 @@ export interface components {
             attempt: components["schemas"]["Attempt"];
             quiz_title: string;
             score: number;
+            /** @description True once the teacher has overridden this attempt's score to zero (docs/06 line 80) - only ever true for a kicked attempt. */
+            score_overridden: boolean;
             max_score: number;
             /** @description This attempt's score, ranked against the quiz's score distribution (docs/07 section 3, "score and percentile per quiz"). Bucket-granular (derived from the 10-bucket quiz_stats histogram, not an exact rank) and null when no points are possible on the quiz or the quiz_stats rollup hasn't landed yet. */
             percentile: number | null;
@@ -3004,6 +3028,48 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             /** @description ATTEMPT_NOT_KICKED - the target attempt was never kicked, so there is nothing to readmit. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    overrideAttemptScore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the score is being overridden (canned phrase plus optional free text). */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The attempt, unchanged; its score is now zeroed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description ATTEMPT_NOT_KICKED - the target attempt was never kicked; or ATTEMPT_NOT_GRADED - the attempt has not finished grading yet. */
             409: {
                 headers: {
                     [name: string]: unknown;

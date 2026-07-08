@@ -94,7 +94,7 @@ func (h *Handler) handleResultsCSV(w http.ResponseWriter, r *http.Request) {
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{
 		"student_name", "email", "attempt_no", "status", "submit_kind",
-		"started_at", "submitted_at", "score", "max_score",
+		"started_at", "submitted_at", "score", "max_score", "score_overridden",
 	})
 	for _, res := range results {
 		_ = cw.Write([]string{
@@ -107,6 +107,7 @@ func (h *Handler) handleResultsCSV(w http.ResponseWriter, r *http.Request) {
 			timePtrString(res.SubmittedAt),
 			floatPtrString(res.Score),
 			floatPtrString(res.MaxScore),
+			strconv.FormatBool(res.ScoreOverridden),
 		})
 	}
 	cw.Flush()
