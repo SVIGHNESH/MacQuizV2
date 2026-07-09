@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
@@ -101,20 +105,22 @@ func ReleaseDueResults(ctx context.Context, db *sql.DB) (int64, error) {
 // and one of their attempts. Students who never started keep the attempt
 // fields null, so the table shows absence instead of hiding it. The owner
 // sees scores as grading lands, before any release - releasing is their
-// decision to make, so they need the numbers first.
-type ResultRow struct {
-	StudentID       string     `json:"student_id"`
-	FullName        string     `json:"full_name"`
-	Email           string     `json:"email"`
-	AttemptID       *string    `json:"attempt_id"`
-	AttemptNo       *int       `json:"attempt_no"`
-	Status          *string    `json:"status"`
-	SubmitKind      *string    `json:"submit_kind"`
-	StartedAt       *time.Time `json:"started_at"`
-	SubmittedAt     *time.Time `json:"submitted_at"`
-	Score           *float64   `json:"score"`
-	MaxScore        *float64   `json:"max_score"`
-	ScoreOverridden bool       `json:"score_overridden"`
+// decision to make, so they need the numbers first. It is a direct alias to
+// the generated apischema.ResultRow type (api/openapi.yaml, oapi-codegen -
+// see internal/apischema), so this response can never silently drift from
+// the spec.
+type ResultRow = apischema.ResultRow
+
+// resultFloat32 narrows a nullable float64 score/max-score column to the
+// *float32 the generated wire type expects. These are display-only scores
+// (docs/07 section 3), never a financial computation, so float32's ~7
+// significant digits lose nothing that matters on the wire.
+func resultFloat32(v sql.NullFloat64) *float32 {
+	if !v.Valid {
+		return nil
+	}
+	f := float32(v.Float64)
+	return &f
 }
 
 // Results returns the owner's per-student results view (docs/12 Milestone 4:
@@ -154,14 +160,54 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 
 	results := []ResultRow{}
 	for rows.Next() {
-		var r ResultRow
+		var studentID, fullName, email string
+		var attemptID, status, submitKind sql.NullString
+		var attemptNo sql.NullInt64
+		var startedAt, submittedAt sql.NullTime
+		var score, maxScore sql.NullFloat64
 		var overriddenAt *time.Time
-		if err := rows.Scan(&r.StudentID, &r.FullName, &r.Email, &r.AttemptID,
-			&r.AttemptNo, &r.Status, &r.SubmitKind, &r.StartedAt, &r.SubmittedAt,
-			&r.Score, &overriddenAt, &r.MaxScore); err != nil {
+		if err := rows.Scan(&studentID, &fullName, &email, &attemptID,
+			&attemptNo, &status, &submitKind, &startedAt, &submittedAt,
+			&score, &overriddenAt, &maxScore); err != nil {
 			return Quiz{}, nil, fmt.Errorf("scan result row: %w", err)
 		}
-		r.ScoreOverridden = overriddenAt != nil
+		studentUUID, err := uuid.Parse(studentID)
+		if err != nil {
+			return Quiz{}, nil, fmt.Errorf("parse student id: %w", err)
+		}
+		r := ResultRow{
+			StudentId:       studentUUID,
+			FullName:        fullName,
+			Email:           openapi_types.Email(email),
+			Score:           resultFloat32(score),
+			MaxScore:        resultFloat32(maxScore),
+			ScoreOverridden: overriddenAt != nil,
+		}
+		if attemptID.Valid {
+			id, err := uuid.Parse(attemptID.String)
+			if err != nil {
+				return Quiz{}, nil, fmt.Errorf("parse attempt id: %w", err)
+			}
+			r.AttemptId = &id
+		}
+		if attemptNo.Valid {
+			n := int(attemptNo.Int64)
+			r.AttemptNo = &n
+		}
+		if status.Valid {
+			st := apischema.ResultRowStatus(status.String)
+			r.Status = &st
+		}
+		if submitKind.Valid {
+			sk := apischema.ResultRowSubmitKind(submitKind.String)
+			r.SubmitKind = &sk
+		}
+		if startedAt.Valid {
+			r.StartedAt = &startedAt.Time
+		}
+		if submittedAt.Valid {
+			r.SubmittedAt = &submittedAt.Time
+		}
 		results = append(results, r)
 	}
 	return q, results, rows.Err()

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/authusers"
 	"macquiz/server/internal/httpapi"
 )
@@ -99,10 +100,10 @@ func (h *Handler) handleResultsCSV(w http.ResponseWriter, r *http.Request) {
 	for _, res := range results {
 		_ = cw.Write([]string{
 			res.FullName,
-			res.Email,
+			string(res.Email),
 			intPtrString(res.AttemptNo),
-			strPtrString(res.Status),
-			strPtrString(res.SubmitKind),
+			resultRowStatusString(res.Status),
+			resultRowSubmitKindString(res.SubmitKind),
 			timePtrString(res.StartedAt),
 			timePtrString(res.SubmittedAt),
 			floatPtrString(res.Score),
@@ -120,11 +121,18 @@ func intPtrString(v *int) string {
 	return strconv.Itoa(*v)
 }
 
-func strPtrString(v *string) string {
+func resultRowStatusString(v *apischema.ResultRowStatus) string {
 	if v == nil {
 		return ""
 	}
-	return *v
+	return string(*v)
+}
+
+func resultRowSubmitKindString(v *apischema.ResultRowSubmitKind) string {
+	if v == nil {
+		return ""
+	}
+	return string(*v)
 }
 
 func timePtrString(v *time.Time) string {
@@ -134,9 +142,9 @@ func timePtrString(v *time.Time) string {
 	return v.UTC().Format(time.RFC3339)
 }
 
-func floatPtrString(v *float64) string {
+func floatPtrString(v *float32) string {
 	if v == nil {
 		return ""
 	}
-	return strconv.FormatFloat(*v, 'f', -1, 64)
+	return strconv.FormatFloat(float64(*v), 'f', -1, 32)
 }
