@@ -343,20 +343,43 @@ export default function QuestionCard({
         </div>
       )}
 
-      <label className="field field-points">
-        <span className="field-label">Points</span>
-        <input
-          className="input input-points tabular"
-          type="number"
-          min={0.5}
-          max={1000}
-          step={0.5}
-          value={Number.isFinite(draft.points) ? draft.points : ''}
-          disabled={!editable}
-          onChange={(e) => edit({ points: e.target.valueAsNumber })}
-        />
-        {fields.points && <p className="field-error">{fields.points}</p>}
-      </label>
+      <div className="field-row">
+        <label className="field field-points">
+          <span className="field-label">Points</span>
+          <input
+            className="input input-points tabular"
+            type="number"
+            min={0.5}
+            max={1000}
+            step={0.5}
+            value={Number.isFinite(draft.points) ? draft.points : ''}
+            disabled={!editable}
+            onChange={(e) => edit({ points: e.target.valueAsNumber })}
+          />
+          {fields.points && <p className="field-error">{fields.points}</p>}
+        </label>
+
+        <label className="field field-topic">
+          <span className="field-label">Topic</span>
+          <input
+            className="input"
+            type="text"
+            maxLength={60}
+            placeholder="Optional, e.g. Data privacy"
+            value={draft.topic}
+            disabled={!editable}
+            onChange={(e) => edit({ topic: e.target.value })}
+          />
+          {fields.topic ? (
+            <p className="field-error">{fields.topic}</p>
+          ) : (
+            <p className="field-hint">
+              Questions sharing a topic are averaged into each student&rsquo;s
+              topic strengths.
+            </p>
+          )}
+        </label>
+      </div>
 
       {saveState.phase === 'error' &&
         Object.keys(fields).length === 0 && (

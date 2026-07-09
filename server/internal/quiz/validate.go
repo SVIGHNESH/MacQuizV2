@@ -13,9 +13,14 @@ type QuestionInput struct {
 	Options json.RawMessage `json:"options"`
 	Correct json.RawMessage `json:"correct"`
 	Points  *float64        `json:"points"`
+	Topic   *string         `json:"topic"`
 
 	// points is the normalized value (default 1) set by Validate.
 	points float64
+	// topic is the normalized tag (trimmed, nil when blank) set by Validate.
+	// A blank tag and an absent one are the same thing - untagged; storing ""
+	// would make the empty string a topic the rollup could aggregate under.
+	topic *string
 }
 
 // questionBody is the minimal required body shape: rich text plus an
@@ -42,6 +47,11 @@ type shortCorrect struct {
 // almost certainly a typo, and scores stay readable.
 const maxPoints = 1000
 
+// maxTopicLength bounds a topic tag, matching the questions.topic CHECK. A
+// topic is a label on an analytics axis, not prose: past this it stops being
+// a tag several questions can share.
+const maxTopicLength = 60
+
 // Validate enforces the docs/07 authoring rules per question type: a correct
 // answer must exist among the options, points > 0, choice types need 2-8
 // options. It returns per-field messages for the 422 VALIDATION_FAILED
@@ -54,6 +64,17 @@ func (in *QuestionInput) Validate() map[string]string {
 		fields["body"] = "must be an object like {\"text\": \"...\"}"
 	} else if strings.TrimSpace(body.Text) == "" {
 		fields["body"] = "text is required"
+	}
+
+	in.topic = nil
+	if in.Topic != nil {
+		if trimmed := strings.TrimSpace(*in.Topic); trimmed == "" {
+			in.topic = nil
+		} else if len([]rune(trimmed)) > maxTopicLength {
+			fields["topic"] = "must be at most 60 characters"
+		} else {
+			in.topic = &trimmed
+		}
 	}
 
 	in.points = 1

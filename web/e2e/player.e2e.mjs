@@ -247,6 +247,7 @@ async function provision() {
       ],
       correct: 'b',
       points: 1,
+      topic: 'Astronomy',
     },
     {
       type: 'multi',
@@ -259,15 +260,18 @@ async function provision() {
       ],
       correct: ['a', 'c'],
       points: 2,
+      topic: 'Mathematics',
     },
     {
       type: 'truefalse',
       body: { text: 'The Sun is a star.' },
       correct: true,
       points: 1,
+      topic: 'Astronomy',
     },
     {
       type: 'short',
+      // Deliberately untagged: it must name no topic on the strengths panel.
       body: { text: 'Which organelle is the powerhouse of the cell?' },
       correct: { accepted: ['mitochondria'] },
       points: 2,
@@ -617,6 +621,39 @@ async function reviewFlow(page) {
     check(
       (await page.$$('.trend-bar')).length === 1,
       'the accuracy trend plots the one graded quiz',
+    )
+
+    // Topic strengths. She got both Astronomy questions right and the one
+    // Mathematics question wrong; the short answer carries no tag, so it must
+    // name no topic here at all. Weakest reads first, and it is the one bar
+    // drawn in the chart tint rather than full primary (docs/11: semantic
+    // color only where the value carries a judgment).
+    const bars = await page.$$eval('.topic-bar', (nodes) =>
+      nodes.map((node) => ({
+        label: node.querySelector('.topic-bar-label')?.textContent ?? '',
+        value: node.querySelector('.topic-bar-value')?.textContent ?? '',
+        width: node.querySelector('.topic-bar-fill')?.style.width ?? '',
+        fill: getComputedStyle(node.querySelector('.topic-bar-fill')).backgroundColor,
+      })),
+    )
+    check(bars.length === 2, 'only the two tagged topics get a bar')
+    check(
+      bars[0].label === 'Mathematics' && bars[0].value === '0%',
+      'the weakest topic sorts first',
+    )
+    check(
+      bars[0].fill === 'rgb(179, 204, 249)',
+      'the weakest topic is drawn in the chart tint, not a semantic red',
+    )
+    check(
+      bars[1].label === 'Astronomy' &&
+        bars[1].value === '100%' &&
+        bars[1].width === '100%',
+      'a fully correct topic reads 100% on a full-width primary bar',
+    )
+    check(
+      bars[1].fill === 'rgb(37, 99, 235)',
+      'a topic that is not the weakest keeps the primary fill',
     )
   } else {
     check(

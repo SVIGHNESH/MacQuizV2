@@ -21,6 +21,12 @@ var importTemplateColumns = []string{
 	"correct", "points",
 }
 
+// topicColumn is the one OPTIONAL template column: a file written against the
+// original fixed header still parses, and one that carries topic tags feeds
+// student_stats.topic_strengths. It is not in importTemplateColumns because a
+// missing topic column is not a malformed file.
+const topicColumn = "topic"
+
 // ImportRowError is one validation failure against a specific row/column of
 // a bulk-import file, shaped to serialize directly into imports.error_report.
 type ImportRowError struct {
@@ -146,6 +152,15 @@ func parseImportRecords(header []string, records [][]string) ([]ImportRow, []Imp
 			in.Correct = buildShortCorrect(correctRaw)
 		}
 
+		// get() would resolve a missing column to index 0 (the zero value of
+		// the col map), so the optional topic column is read only when the
+		// header actually declared it.
+		if _, ok := col[topicColumn]; ok {
+			if topicRaw := get(rec, topicColumn); topicRaw != "" {
+				in.Topic = &topicRaw
+			}
+		}
+
 		if pointsRaw := get(rec, "points"); pointsRaw != "" {
 			p, perr := strconv.ParseFloat(pointsRaw, 64)
 			if perr != nil {
@@ -156,7 +171,7 @@ func parseImportRecords(header []string, records [][]string) ([]ImportRow, []Imp
 		}
 
 		fields := in.Validate()
-		for _, c := range []string{"type", "body", "options", "correct", "points"} {
+		for _, c := range []string{"type", "body", "options", "correct", "points", "topic"} {
 			if msg, ok := fields[c]; ok {
 				rowErrs = append(rowErrs, ImportRowError{Row: rowNum, Column: c, Message: msg})
 			}

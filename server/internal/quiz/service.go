@@ -80,7 +80,10 @@ type Question struct {
 	Options  json.RawMessage `json:"options,omitempty"`
 	Correct  json.RawMessage `json:"-"`
 	Points   float64         `json:"points"`
-	Source   string          `json:"source"`
+	// Topic is the free-text taxonomy tag student_stats.topic_strengths
+	// aggregates against; nil when the question is untagged.
+	Topic  *string `json:"topic"`
+	Source string  `json:"source"`
 }
 
 // QuizPatch carries the optional PATCH /quizzes/:id mutations; nil means
@@ -317,7 +320,7 @@ func (s *Service) DeleteQuiz(ctx context.Context, actor authusers.User, id strin
 	return nil
 }
 
-const questionColumns = `id, quiz_id, position, type, body, options, correct, points::float8, source`
+const questionColumns = `id, quiz_id, position, type, body, options, correct, points::float8, topic, source`
 
 func scanQuestion(scan func(dest ...any) error) (Question, error) {
 	var q Question
@@ -326,7 +329,7 @@ func scanQuestion(scan func(dest ...any) error) (Question, error) {
 	// truefalse and short questions.
 	var body, options, correct []byte
 	err := scan(&q.ID, &q.QuizID, &q.Position, &q.Type, &body, &options,
-		&correct, &q.Points, &q.Source)
+		&correct, &q.Points, &q.Topic, &q.Source)
 	q.Body, q.Options, q.Correct = body, options, correct
 	return q, err
 }
@@ -345,12 +348,12 @@ func (s *Service) AddQuestion(ctx context.Context, actor authusers.User, quizID 
 	}
 
 	q, err := scanQuestion(tx.QueryRowContext(ctx,
-		`INSERT INTO questions (quiz_id, position, type, body, options, correct, points)
+		`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, topic)
 		 SELECT $1, coalesce(max(position), 0) + 1,
-		        $2::question_type, $3::jsonb, $4::jsonb, $5::jsonb, $6::numeric
+		        $2::question_type, $3::jsonb, $4::jsonb, $5::jsonb, $6::numeric, $7
 		 FROM questions WHERE quiz_id = $1
 		 RETURNING `+questionColumns,
-		quizID, in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points).Scan)
+		quizID, in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.topic).Scan)
 	if err != nil {
 		return Question{}, fmt.Errorf("insert question: %w", err)
 	}
@@ -510,11 +513,11 @@ func (s *Service) CommitImport(ctx context.Context, actor authusers.User, import
 	inserted := make([]Question, 0, len(rows))
 	for i, row := range rows {
 		q, err := scanQuestion(tx.QueryRowContext(ctx,
-			`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, source, import_id)
-			 VALUES ($1, $2, $3::question_type, $4::jsonb, $5::jsonb, $6::jsonb, $7::numeric, 'import', $8)
+			`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, topic, source, import_id)
+			 VALUES ($1, $2, $3::question_type, $4::jsonb, $5::jsonb, $6::jsonb, $7::numeric, $8, 'import', $9)
 			 RETURNING `+questionColumns,
 			quizID, basePos+i+1, row.Input.Type, row.Input.Body, nullableJSON(row.Input.Options),
-			row.Input.Correct, row.Input.points, importID).Scan)
+			row.Input.Correct, row.Input.points, row.Input.topic, importID).Scan)
 		if err != nil {
 			return Import{}, nil, fmt.Errorf("insert imported question (row %d): %w", row.Row, err)
 		}
@@ -552,10 +555,10 @@ func (s *Service) UpdateQuestion(ctx context.Context, actor authusers.User, ques
 	}
 
 	q, err := scanQuestion(tx.QueryRowContext(ctx,
-		`UPDATE questions SET type = $1, body = $2, options = $3, correct = $4, points = $5
-		 WHERE id = $6
+		`UPDATE questions SET type = $1, body = $2, options = $3, correct = $4, points = $5, topic = $6
+		 WHERE id = $7
 		 RETURNING `+questionColumns,
-		in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, questionID).Scan)
+		in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.topic, questionID).Scan)
 	if err != nil {
 		return Question{}, fmt.Errorf("update question: %w", err)
 	}

@@ -596,6 +596,18 @@
   justify-items: start;
 }
 
+/* Points is a two-digit number; the topic tag takes the rest of the row. */
+.field-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.field-topic {
+  min-width: 0;
+}
+
 /* Add-question panel */
 
 .add-question-panel {

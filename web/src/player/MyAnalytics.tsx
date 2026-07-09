@@ -33,6 +33,20 @@ function formatPace(milliseconds: number | null): string {
 }
 
 /**
+ * The rollup keys topic_strengths by the tag the teacher wrote, so its order
+ * is whatever the JSON object happened to carry. Sorting weakest-first is the
+ * point of the panel: the topic to revise reads at the top, not wherever the
+ * alphabet put it. Ties fall back to the tag so the list never reshuffles
+ * between renders.
+ */
+function weakestFirst(topics: Record<string, number>): [string, number][] {
+  return Object.entries(topics).sort(
+    ([leftTopic, left], [rightTopic, right]) =>
+      left - right || leftTopic.localeCompare(rightTopic),
+  )
+}
+
+/**
  * St6: the student's own cross-quiz rollup. Every number here is served, not
  * derived from a guess - when the rollup has not landed the screen says so
  * rather than rendering zeroes.
@@ -108,6 +122,7 @@ export default function MyAnalytics({ studentId }: { studentId: string }) {
       )
     : null
   const completion = asPercent(stats.completion_rate)
+  const topics = weakestFirst(stats.topic_strengths)
 
   return (
     <div className="analytics">
@@ -171,6 +186,43 @@ export default function MyAnalytics({ studentId }: { studentId: string }) {
               )
             })}
           </ol>
+        )}
+      </section>
+
+      <section className="chart-panel">
+        <h2 className="chart-title">Topic strengths</h2>
+        {topics.length === 0 ? (
+          <p className="hint">
+            None of the questions you have answered carried a topic tag, so
+            there is nothing to compare yet.
+          </p>
+        ) : (
+          <ul className="topic-bars">
+            {topics.map(([topic, accuracy], index) => {
+              const percent = asPercent(accuracy) ?? 0
+              // docs/11: charts get primary plus its tints, and semantic color
+              // only where the value carries meaning - so the weakest topic is
+              // tinted rather than reddened. A tie for last leaves every bar
+              // primary: nothing singles one topic out.
+              const weakest = index === 0 && accuracy < (topics[1]?.[1] ?? 2)
+              return (
+                <li className="topic-bar" key={topic}>
+                  <div className="topic-bar-head">
+                    <span className="topic-bar-label">{topic}</span>
+                    <span className="topic-bar-value tabular">{percent}%</span>
+                  </div>
+                  {/* The head above already states topic and percent; the bar
+                      restates them visually and is skipped by screen readers. */}
+                  <div className="topic-bar-track" aria-hidden="true">
+                    <div
+                      className={`topic-bar-fill${weakest ? ' topic-bar-fill-weakest' : ''}`}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         )}
       </section>
     </div>

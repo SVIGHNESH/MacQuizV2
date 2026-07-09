@@ -37,6 +37,8 @@ export interface QuestionDraft {
   correctBool: boolean
   accepted: string[]
   points: number
+  /** Free-text analytics tag; the empty string means untagged. */
+  topic: string
 }
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
@@ -55,6 +57,7 @@ export function fromQuestion(q: TeacherQuestion): QuestionDraft {
     correctBool: true,
     accepted: [],
     points: q.points,
+    topic: q.topic ?? '',
   }
   switch (q.type) {
     case 'single':
@@ -98,12 +101,21 @@ export function toInput(
   } else if (draft.points > 1000) {
     fields.points = 'Points must be at most 1000.'
   }
+  const topic = draft.topic.trim()
+  // Code points, not UTF-16 units: the server counts runes against the same
+  // limit, so a surrogate pair must not read as two characters here.
+  if ([...topic].length > 60) {
+    fields.topic = 'A topic tag must be at most 60 characters.'
+  }
 
   const input: QuestionInput = {
     type: draft.type,
     body: { text: draft.text.trim() },
     correct: null,
     points: draft.points,
+    // Blank is untagged, and it must travel as an explicit null: omitting the
+    // key on a full-state update would leave a previously-set tag standing.
+    topic: topic === '' ? null : topic,
   }
   switch (draft.type) {
     case 'single':

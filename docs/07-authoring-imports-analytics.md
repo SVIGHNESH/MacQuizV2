@@ -15,6 +15,7 @@ The editor autosaves so a teacher never loses a half-written question.
 The file is fully validated before a single question row is written; the commit is all-or-nothing.
 
 1. Template: teacher downloads a CSV/XLSX template with columns `type, question, option_a..option_f, correct, points`; one row per question.
+   An optional `topic` column may appear anywhere in the header row; its cells tag the questions for `student_stats.topic_strengths`, and a file that omits the column imports untagged questions exactly as before.
 2. Upload: file goes to object storage via a pre-signed URL; the API creates an `imports` row in state `validating` and enqueues a job.
    Limits: 10 MB, 500 rows.
 3. Validate: the import worker parses every row and collects errors per row and column (unknown type, missing correct answer, correct answer not among options, duplicate question text within the file, malformed points).
@@ -39,7 +40,13 @@ Student and quiz analytics are visible to the owning teacher and the admin; teac
 | Per teacher | Quizzes created/conducted, total student attempts, average participation, average class score, publish-to-results latency | Admin (teacher sees own) |
 | Org-wide | Active users, quizzes per week, platform participation, cohort comparisons across groups | Admin |
 
-Score and percentile per quiz is served by `GET /attempts/:id/result` (`Result.percentile`, `server/internal/attempt/results.go`): a percentile-rank derived from the quiz's already-computed `quiz_stats.distribution` histogram (below-bucket count plus half the attempt's own bucket, over the total), not a fresh full-population query - consistent with section 4's "no separate analytics store" rule. It is bucket-granular (10 buckets), not an exact rank, and is `null` until the quiz's `quiz_stats` rollup lands or when the quiz has no points. Strength/weakness by topic tag is not implemented: the schema carries no per-question topic taxonomy to strengthen against (`student_stats.topic_strengths` is always an empty object), so this sub-metric is out of scope for v1 pending a topic-tagging data model, not merely deferred.
+Score and percentile per quiz is served by `GET /attempts/:id/result` (`Result.percentile`, `server/internal/attempt/results.go`): a percentile-rank derived from the quiz's already-computed `quiz_stats.distribution` histogram (below-bucket count plus half the attempt's own bucket, over the total), not a fresh full-population query - consistent with section 4's "no separate analytics store" rule. It is bucket-granular (10 buckets), not an exact rank, and is `null` until the quiz's `quiz_stats` rollup lands or when the quiz has no points.
+
+Strength/weakness by topic tag is served by `student_stats.topic_strengths` (`rollupStudents`, `server/internal/analytics/rollup.go`), a map of topic tag to accuracy in 0-1.
+The taxonomy is `questions.topic`, a nullable free-text tag the author writes in the editor or an optional `topic` column of the import template; an untagged question belongs to no topic.
+A topic's accuracy is the mean `is_correct` of the answers the student gave to that topic's questions across their best graded attempt on every terminal quiz.
+Three rules the read endpoints depend on: only answered questions count (the same denominator item analysis' p-value uses, so a skip is not evidence of weakness), correctness is unweighted by points, and the tag is read from the `quiz_versions` snapshot the student sat rather than the live `questions` row - retagging a question cannot rewrite a closed quiz's result.
+The map is empty (never null) for a student none of whose answered questions carried a tag.
 
 ## 4. How analytics are computed
 

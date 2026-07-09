@@ -1105,6 +1105,8 @@ export interface components {
             body: components["schemas"]["QuestionBody"];
             options?: components["schemas"]["QuestionOption"][];
             points: number;
+            /** @description Free-text topic tag, or null when the question is untagged. Tags are frozen into the version snapshot on publish and drive StudentStats.topic_strengths. */
+            topic?: string | null;
             /** @enum {string} */
             source: "manual" | "import";
         };
@@ -1122,6 +1124,8 @@ export interface components {
             correct: unknown;
             /** @description Defaults to 1; must be positive. */
             points?: number;
+            /** @description Optional free-text topic tag, 1-60 characters after trimming. Omitted, null, or blank leaves the question untagged. */
+            topic?: string | null;
         };
         UpdateQuizRequest: {
             title?: string;
@@ -1220,8 +1224,10 @@ export interface components {
             }[];
             avg_time_per_question: number | null;
             completion_rate: number | null;
-            /** @description Reserved; always an empty object today (no topic taxonomy yet). */
-            topic_strengths: Record<string, never>;
+            /** @description Accuracy per question topic tag, 0-1, over the student's best graded attempt on each terminal quiz. Only answered questions of a tagged topic count, mirroring item analysis' p-value denominator. Empty when none of the student's questions carried a topic tag. */
+            topic_strengths: {
+                [key: string]: number;
+            };
             /** Format: date-time */
             updated_at: string;
         };

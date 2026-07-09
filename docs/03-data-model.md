@@ -79,6 +79,7 @@ questions (
   options    jsonb,                     -- [{key, text}] for choice types
   correct    jsonb,                     -- NEVER serialized to student clients
   points     numeric DEFAULT 1,
+  topic      text NULL,                 -- free-text tag; feeds student_stats.topic_strengths
   source     enum('manual','import'),   -- FR-2 vs FR-3 provenance
   import_id  uuid NULL REFERENCES imports(id)
 )

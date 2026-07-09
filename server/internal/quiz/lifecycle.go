@@ -150,7 +150,8 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 		`INSERT INTO quiz_versions (quiz_id, version, questions, guardrails)
 		 SELECT $1, $2, jsonb_agg(jsonb_build_object(
 		            'id', id, 'position', position, 'type', type, 'body', body,
-		            'options', options, 'correct', correct, 'points', points)
+		            'options', options, 'correct', correct, 'points', points,
+		            'topic', topic)
 		            ORDER BY position), $3::jsonb
 		 FROM questions WHERE quiz_id = $1`,
 		id, newVersion, guardrailsJSON); err != nil {

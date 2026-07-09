@@ -2,6 +2,7 @@ package quiz
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -116,4 +117,74 @@ func TestValidateDefaultsPoints(t *testing.T) {
 	if in.points != 1 {
 		t.Fatalf("normalized points = %v, want 1", in.points)
 	}
+}
+
+// TestValidateNormalizesTopic pins the topic tag's normalization: it is
+// trimmed, a blank tag means untagged rather than a topic named "", and an
+// over-long tag is a field error rather than a truncation. The rollup keys
+// student_stats.topic_strengths on this value, so "Data privacy " and
+// "Data privacy" must not become two topics.
+func TestValidateNormalizesTopic(t *testing.T) {
+	topic := func(s string) *string { return &s }
+	base := func() QuestionInput {
+		return QuestionInput{
+			Type:    "truefalse",
+			Body:    json.RawMessage(`{"text":"Sky is blue"}`),
+			Correct: json.RawMessage(`true`),
+		}
+	}
+
+	t.Run("absent stays untagged", func(t *testing.T) {
+		in := base()
+		if fields := in.Validate(); len(fields) != 0 {
+			t.Fatalf("Validate = %v, want valid", fields)
+		}
+		if in.topic != nil {
+			t.Fatalf("topic = %q, want nil", *in.topic)
+		}
+	})
+
+	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
+		in := base()
+		in.Topic = topic("  Data privacy\t")
+		if fields := in.Validate(); len(fields) != 0 {
+			t.Fatalf("Validate = %v, want valid", fields)
+		}
+		if in.topic == nil || *in.topic != "Data privacy" {
+			t.Fatalf("topic = %v, want Data privacy", in.topic)
+		}
+	})
+
+	t.Run("a blank tag is untagged, not an empty topic", func(t *testing.T) {
+		in := base()
+		in.Topic = topic("   ")
+		if fields := in.Validate(); len(fields) != 0 {
+			t.Fatalf("Validate = %v, want valid", fields)
+		}
+		if in.topic != nil {
+			t.Fatalf("topic = %q, want nil", *in.topic)
+		}
+	})
+
+	t.Run("60 characters pass, 61 fail", func(t *testing.T) {
+		in := base()
+		in.Topic = topic(strings.Repeat("x", 60))
+		if fields := in.Validate(); len(fields) != 0 {
+			t.Fatalf("Validate(60 chars) = %v, want valid", fields)
+		}
+		in = base()
+		in.Topic = topic(strings.Repeat("x", 61))
+		if fields := in.Validate(); fields["topic"] == "" {
+			t.Fatalf("Validate(61 chars) = %v, want a topic field error", fields)
+		}
+	})
+
+	t.Run("length counts runes, matching the database CHECK", func(t *testing.T) {
+		// 60 multi-byte runes: 180 bytes, but a legal tag.
+		in := base()
+		in.Topic = topic(strings.Repeat("é", 60))
+		if fields := in.Validate(); len(fields) != 0 {
+			t.Fatalf("Validate = %v, want valid", fields)
+		}
+	})
 }

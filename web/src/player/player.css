@@ -1118,3 +1118,56 @@
   font: 500 11px/1.4 var(--font-sans);
   color: var(--color-slate-400);
 }
+
+/* Topic strengths (St6): label and tabular percent on one line, a 6px pill
+   track beneath. Sorted weakest-first, so the bar to act on reads first. */
+
+.topic-bars {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.topic-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topic-bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topic-bar-label {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.topic-bar-value {
+  font: 600 12px/1 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.topic-bar-track {
+  height: 6px;
+  background: var(--color-well);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.topic-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999px;
+}
+
+/* The one topic below all the others. A tint, not a semantic red: docs/11
+   reserves semantic color for values that carry a judgment. */
+.topic-bar-fill-weakest {
+  background: var(--color-chart-tint-1);
+}

@@ -2177,6 +2177,13 @@ components:
             $ref: "#/components/schemas/QuestionOption"
         points:
           type: number
+        topic:
+          type: string
+          nullable: true
+          description: >-
+            Free-text topic tag, or null when the question is untagged. Tags
+            are frozen into the version snapshot on publish and drive
+            StudentStats.topic_strengths.
         source:
           type: string
           enum: [manual, import]
@@ -2212,6 +2219,12 @@ components:
         points:
           type: number
           description: Defaults to 1; must be positive.
+        topic:
+          type: string
+          nullable: true
+          description: >-
+            Optional free-text topic tag, 1-60 characters after trimming.
+            Omitted, null, or blank leaves the question untagged.
     UpdateQuizRequest:
       type: object
       properties:
@@ -2445,7 +2458,13 @@ components:
           nullable: true
         topic_strengths:
           type: object
-          description: Reserved; always an empty object today (no topic taxonomy yet).
+          description: >-
+            Accuracy per question topic tag, 0-1, over the student's best
+            graded attempt on each terminal quiz. Only answered questions of a
+            tagged topic count, mirroring item analysis' p-value denominator.
+            Empty when none of the student's questions carried a topic tag.
+          additionalProperties:
+            type: number
         updated_at:
           type: string
           format: date-time

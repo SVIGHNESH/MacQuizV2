@@ -138,3 +138,47 @@ func hasColumnError(errs []ImportRowError, row int, column string) bool {
 	}
 	return false
 }
+
+// topicHeader puts the optional topic column FIRST, not appended last, so a
+// parser that assumed a fixed column order rather than reading the header map
+// would mis-file the cell.
+const topicHeader = "topic,type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct,points\n"
+
+func TestParseImportCSV_TopicColumn(t *testing.T) {
+	csv := topicHeader +
+		"Data privacy,single,Pick red,Red,Blue,,,,,a,1\n" +
+		"   ,truefalse,Sky is blue,,,,,,,true,\n" +
+		strings.Repeat("x", 61) + ",short,Capital of France,,,,,,,Paris,1\n"
+
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if len(errs) != 1 || errs[0].Row != 3 || errs[0].Column != "topic" {
+		t.Fatalf("want one row-3 topic error, got %+v", errs)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 parsed rows, got %d", len(rows))
+	}
+	if rows[0].Input.topic == nil || *rows[0].Input.topic != "Data privacy" {
+		t.Errorf("row 1 topic = %v, want Data privacy", rows[0].Input.topic)
+	}
+	// A whitespace-only cell is untagged, not a topic named " ".
+	if rows[1].Input.topic != nil {
+		t.Errorf("row 2 topic = %v, want nil", *rows[1].Input.topic)
+	}
+}
+
+func TestParseImportCSV_TopicColumnIsOptional(t *testing.T) {
+	// The original fixed template has no topic column. get() resolves a missing
+	// column to index 0 - "type" - so an unguarded read would tag every
+	// question with its own type.
+	csv := importHeader + "single,Pick red,Red,Blue,,,,,a,1\n"
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil || len(errs) != 0 || len(rows) != 1 {
+		t.Fatalf("ParseImportCSV = (%d rows, %+v, %v), want one clean row", len(rows), errs, err)
+	}
+	if rows[0].Input.topic != nil {
+		t.Errorf("topic = %q, want nil for a file with no topic column", *rows[0].Input.topic)
+	}
+}

@@ -681,7 +681,10 @@ type Question struct {
 	Position int                `json:"position"`
 	QuizId   openapi_types.UUID `json:"quiz_id"`
 	Source   QuestionSource     `json:"source"`
-	Type     QuestionType       `json:"type"`
+
+	// Topic Free-text topic tag, or null when the question is untagged. Tags are frozen into the version snapshot on publish and drive StudentStats.topic_strengths.
+	Topic *string      `json:"topic"`
+	Type  QuestionType `json:"type"`
 }
 
 // QuestionSource defines model for Question.Source.
@@ -707,8 +710,11 @@ type QuestionInput struct {
 	Options *[]QuestionOption `json:"options,omitempty"`
 
 	// Points Defaults to 1; must be positive.
-	Points *float32          `json:"points,omitempty"`
-	Type   QuestionInputType `json:"type"`
+	Points *float32 `json:"points,omitempty"`
+
+	// Topic Optional free-text topic tag, 1-60 characters after trimming. Omitted, null, or blank leaves the question untagged.
+	Topic *string           `json:"topic"`
+	Type  QuestionInputType `json:"type"`
 }
 
 // QuestionInputType defines model for QuestionInput.Type.
@@ -879,9 +885,9 @@ type StudentStats struct {
 	CompletionRate     *float32           `json:"completion_rate"`
 	StudentId          openapi_types.UUID `json:"student_id"`
 
-	// TopicStrengths Reserved; always an empty object today (no topic taxonomy yet).
-	TopicStrengths map[string]interface{} `json:"topic_strengths"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	// TopicStrengths Accuracy per question topic tag, 0-1, over the student's best graded attempt on each terminal quiz. Only answered questions of a tagged topic count, mirroring item analysis' p-value denominator. Empty when none of the student's questions carried a topic tag.
+	TopicStrengths map[string]float32 `json:"topic_strengths"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
 // TeacherQuestion defines model for TeacherQuestion.
@@ -896,7 +902,10 @@ type TeacherQuestion struct {
 	Position int                   `json:"position"`
 	QuizId   openapi_types.UUID    `json:"quiz_id"`
 	Source   TeacherQuestionSource `json:"source"`
-	Type     TeacherQuestionType   `json:"type"`
+
+	// Topic Free-text topic tag, or null when the question is untagged. Tags are frozen into the version snapshot on publish and drive StudentStats.topic_strengths.
+	Topic *string             `json:"topic"`
+	Type  TeacherQuestionType `json:"type"`
 }
 
 // TeacherQuestionSource defines model for TeacherQuestion.Source.

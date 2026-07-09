@@ -478,10 +478,23 @@ func integritySummary(ctx context.Context, db *sql.DB, quizID string) (integrity
 // (score over the version-pinned max score, null when the snapshot has no
 // points) ordered by submission; avg_time_per_question the mean answer time
 // over those best attempts; completion_rate the fraction of the student's
-// terminal assigned quizzes they have a graded attempt for. topic_strengths is
-// an empty object (never null): the schema carries no question topic taxonomy
-// to strengthen against, so it is deferred like the other empty-not-null
-// rollup fields.
+// terminal assigned quizzes they have a graded attempt for.
+//
+// topic_strengths (docs/07 section 3, "strength/weakness by topic tag") is the
+// student's accuracy per questions.topic over that same best-attempt
+// population, read from the VERSION SNAPSHOT rather than the live questions
+// table: the tag frozen into quiz_versions is the one the student sat, so
+// retagging or deleting a question after a quiz closes cannot rewrite a past
+// result. Two rules it inherits from the sibling metrics:
+//   - only ANSWERED questions count, the denominator itemAnalysis' p-value
+//     already uses, so skipping a topic's question is not evidence of weakness
+//     in that topic;
+//   - correctness is the boolean is_correct, unweighted by points, so a topic
+//     reads "how often you were right", not "how many marks you earned".
+//
+// It stays an empty object (never null) for a student none of whose questions
+// carried a tag: the taxonomy is optional per question, and pre-topic version
+// snapshots have no 'topic' key at all.
 func rollupStudents(ctx context.Context, db *sql.DB, quizID string) error {
 	if _, err := db.ExecContext(ctx, `
 WITH affected AS (
@@ -531,6 +544,26 @@ cp AS (
     FROM assigned_terminal t
     LEFT JOIN best b ON b.student_id = t.student_id AND b.quiz_id = t.quiz_id
     GROUP BY t.student_id
+),
+topic_answers AS (
+    SELECT b.student_id, q->>'topic' AS topic, aa.is_correct
+    FROM best b
+    JOIN quiz_versions v ON v.quiz_id = b.quiz_id AND v.version = b.quiz_version
+    CROSS JOIN LATERAL jsonb_array_elements(v.questions) q
+    JOIN attempt_answers aa
+      ON aa.attempt_id = b.attempt_id AND aa.question_id = (q->>'id')::uuid
+    WHERE q->>'topic' IS NOT NULL AND aa.is_correct IS NOT NULL
+),
+ts AS (
+    SELECT student_id,
+           jsonb_object_agg(topic, accuracy) AS topics
+    FROM (
+        SELECT student_id, topic,
+               round(avg(is_correct::int)::numeric, 4) AS accuracy
+        FROM topic_answers
+        GROUP BY student_id, topic
+    ) per_topic
+    GROUP BY student_id
 )
 INSERT INTO student_stats
        (student_id, accuracy_trend, avg_time_per_question, completion_rate, topic_strengths, updated_at)
@@ -538,12 +571,13 @@ SELECT f.student_id,
        coalesce(tr.trend, '[]'::jsonb),
        tm.avg_time,
        CASE WHEN cp.assigned_ct > 0 THEN cp.done_ct::numeric / cp.assigned_ct END,
-       '{}'::jsonb,
+       coalesce(ts.topics, '{}'::jsonb),
        now()
 FROM affected f
 LEFT JOIN trend tr ON tr.student_id = f.student_id
 LEFT JOIN tm ON tm.student_id = f.student_id
 LEFT JOIN cp ON cp.student_id = f.student_id
+LEFT JOIN ts ON ts.student_id = f.student_id
 ON CONFLICT (student_id) DO UPDATE SET
     accuracy_trend        = EXCLUDED.accuracy_trend,
     avg_time_per_question = EXCLUDED.avg_time_per_question,
