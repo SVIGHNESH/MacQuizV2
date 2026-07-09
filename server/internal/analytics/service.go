@@ -117,18 +117,11 @@ func (s *Service) QuizStats(ctx context.Context, actor authusers.User, quizID st
 	return out, nil
 }
 
-// StudentStats is the student_stats row shaped for the wire. The jsonb columns
-// pass through untouched (json.RawMessage); avg_time_per_question and
-// completion_rate are null for a student who has never had a quiz close over
-// them.
-type StudentStats struct {
-	StudentID          string          `json:"student_id"`
-	AccuracyTrend      json.RawMessage `json:"accuracy_trend"`
-	AvgTimePerQuestion *float64        `json:"avg_time_per_question"`
-	CompletionRate     *float64        `json:"completion_rate"`
-	TopicStrengths     json.RawMessage `json:"topic_strengths"`
-	UpdatedAt          time.Time       `json:"updated_at"`
-}
+// StudentStats is the student_stats row shaped for the wire, built directly
+// from the generated apischema.StudentStats type rather than a hand-written
+// struct (see QuizStats). avg_time_per_question and completion_rate are null
+// for a student who has never had a quiz close over them.
+type StudentStats = apischema.StudentStats
 
 // StudentStats returns one student's cross-quiz performance profile
 // (docs/04 permission matrix: a student sees only themselves, a teacher sees
@@ -156,12 +149,18 @@ func (s *Service) StudentStats(ctx context.Context, actor authusers.User, studen
 		return StudentStats{}, ErrNotFound
 	}
 
-	out := StudentStats{StudentID: studentID}
+	studentUUID, err := uuid.Parse(studentID)
+	if err != nil {
+		return StudentStats{}, ErrNotFound
+	}
+
+	out := StudentStats{StudentId: studentUUID}
 	var accuracyTrend, topicStrengths []byte
-	err := s.db.QueryRowContext(ctx,
+	var avgTimePerQuestion, completionRate sql.NullFloat64
+	err = s.db.QueryRowContext(ctx,
 		`SELECT accuracy_trend, avg_time_per_question, completion_rate, topic_strengths, updated_at
 		 FROM student_stats WHERE student_id = $1`, studentID).Scan(
-		&accuracyTrend, &out.AvgTimePerQuestion, &out.CompletionRate, &topicStrengths, &out.UpdatedAt)
+		&accuracyTrend, &avgTimePerQuestion, &completionRate, &topicStrengths, &out.UpdatedAt)
 	if err == sql.ErrNoRows {
 		// The caller may see this student, but no quiz has closed over them yet
 		// (or the id is not a student at all). Same 404 - nothing to show.
@@ -170,8 +169,14 @@ func (s *Service) StudentStats(ctx context.Context, actor authusers.User, studen
 	if err != nil {
 		return StudentStats{}, fmt.Errorf("load student_stats: %w", err)
 	}
-	out.AccuracyTrend = json.RawMessage(accuracyTrend)
-	out.TopicStrengths = json.RawMessage(topicStrengths)
+	out.AvgTimePerQuestion = float32ptr(avgTimePerQuestion)
+	out.CompletionRate = float32ptr(completionRate)
+	if err := json.Unmarshal(accuracyTrend, &out.AccuracyTrend); err != nil {
+		return StudentStats{}, fmt.Errorf("decode accuracy_trend: %w", err)
+	}
+	if err := json.Unmarshal(topicStrengths, &out.TopicStrengths); err != nil {
+		return StudentStats{}, fmt.Errorf("decode topic_strengths: %w", err)
+	}
 	return out, nil
 }
 
@@ -182,19 +187,11 @@ func (s *Service) StudentStats(ctx context.Context, actor authusers.User, studen
 // The averages are null for a teacher whose quizzes have no rolled-up stats
 // yet (or who has released no results), never for a real-but-idle teacher, who
 // reports zero counts.
-type TeacherStats struct {
-	TeacherID        string   `json:"teacher_id"`
-	QuizzesCreated   int      `json:"quizzes_created"`
-	QuizzesConducted int      `json:"quizzes_conducted"`
-	TotalAttempts    int      `json:"total_attempts"`
-	AvgParticipation *float64 `json:"avg_participation"`
-	// AvgClassScore is the mean of each rolled-up quiz's mean, which quiz_stats
-	// stores in raw points; every fixture quiz is out of 10 here, but averaging
-	// raw points across quizzes of differing max scores is points-not-percent by
-	// design - quiz_stats keeps no percentage mean to average instead.
-	AvgClassScore          *float64 `json:"avg_class_score"`
-	AvgPublishToResultsSec *float64 `json:"avg_publish_to_results_sec"`
-}
+// AvgClassScore is the mean of each rolled-up quiz's mean, which quiz_stats
+// stores in raw points; every fixture quiz is out of 10 here, but averaging
+// raw points across quizzes of differing max scores is points-not-percent by
+// design - quiz_stats keeps no percentage mean to average instead.
+type TeacherStats = apischema.TeacherStats
 
 // TeacherStats returns one teacher's activity-and-outcomes summary for an admin
 // or that teacher themselves (docs/07 section 4: teacher analytics are
@@ -220,12 +217,18 @@ func (s *Service) TeacherStats(ctx context.Context, actor authusers.User, teache
 		return TeacherStats{}, ErrNotFound
 	}
 
+	teacherUUID, err := uuid.Parse(teacherID)
+	if err != nil {
+		return TeacherStats{}, ErrNotFound
+	}
+
 	// One round trip: counts of created (all owned) and conducted (launched -
 	// published_at set) quizzes, every attempt across them, the averages of the
 	// frozen per-quiz participation and mean, and the mean publish-to-results
 	// latency in seconds over quizzes whose results have actually been released.
-	out := TeacherStats{TeacherID: teacherID}
-	err := s.db.QueryRowContext(ctx,
+	out := TeacherStats{TeacherId: teacherUUID}
+	var avgParticipation, avgClassScore, avgPublishToResultsSec sql.NullFloat64
+	err = s.db.QueryRowContext(ctx,
 		`SELECT
 		   (SELECT count(*) FROM quizzes WHERE owner_id = $1),
 		   (SELECT count(*) FROM quizzes WHERE owner_id = $1 AND published_at IS NOT NULL),
@@ -236,25 +239,14 @@ func (s *Service) TeacherStats(ctx context.Context, actor authusers.User, teache
 		      FROM quizzes WHERE owner_id = $1 AND results_released_at IS NOT NULL AND published_at IS NOT NULL)`,
 		teacherID).Scan(
 		&out.QuizzesCreated, &out.QuizzesConducted, &out.TotalAttempts,
-		&out.AvgParticipation, &out.AvgClassScore, &out.AvgPublishToResultsSec)
+		&avgParticipation, &avgClassScore, &avgPublishToResultsSec)
 	if err != nil {
 		return TeacherStats{}, fmt.Errorf("aggregate teacher stats: %w", err)
 	}
+	out.AvgParticipation = float32ptr(avgParticipation)
+	out.AvgClassScore = float32ptr(avgClassScore)
+	out.AvgPublishToResultsSec = float32ptr(avgPublishToResultsSec)
 	return out, nil
-}
-
-// ActiveUserCounts is the platform's active headcount by role (docs/07
-// section 4, "Org-wide": "Active users").
-type ActiveUserCounts struct {
-	Admins   int `json:"admins"`
-	Teachers int `json:"teachers"`
-	Students int `json:"students"`
-}
-
-// WeeklyCount is one bucket of the quizzes-created-per-week trend.
-type WeeklyCount struct {
-	WeekStart time.Time `json:"week_start"`
-	Count     int       `json:"count"`
 }
 
 // CohortStats compares one group's members against the platform-wide
@@ -262,13 +254,7 @@ type WeeklyCount struct {
 // groups"). AvgCompletionRate and AvgAccuracy are null when no member has a
 // student_stats rollup yet, mirroring the per-student null-until-rolled-up
 // convention.
-type CohortStats struct {
-	GroupID           string   `json:"group_id"`
-	GroupName         string   `json:"group_name"`
-	MemberCount       int      `json:"member_count"`
-	AvgCompletionRate *float64 `json:"avg_completion_rate"`
-	AvgAccuracy       *float64 `json:"avg_accuracy"`
-}
+type CohortStats = apischema.CohortStats
 
 // OrgStats is the admin org-wide dashboard (docs/07 section 4, FR-9): active
 // users, a recent quizzes-created trend, platform-wide participation, and a
@@ -276,13 +262,9 @@ type CohortStats struct {
 // rollup table of its own - every field is computed live from small,
 // already-indexed aggregates (user/group counts, the frozen per-quiz
 // quiz_stats rows), so it stays cheap without needing a dedicated org_stats
-// table.
-type OrgStats struct {
-	ActiveUsers           ActiveUserCounts `json:"active_users"`
-	QuizzesPerWeek        []WeeklyCount    `json:"quizzes_per_week"`
-	PlatformParticipation *float64         `json:"platform_participation"`
-	CohortComparisons     []CohortStats    `json:"cohort_comparisons"`
-}
+// table. Built directly from the generated apischema.OrgStats type, same as
+// the other analytics responses.
+type OrgStats = apischema.OrgStats
 
 // OrgStats returns the org-wide dashboard for an admin (docs/04 permission
 // matrix: org analytics is admin-only, so the caller gates on ActionAnalyticsOrg
@@ -293,6 +275,7 @@ func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats,
 	}
 
 	var out OrgStats
+	var platformParticipation sql.NullFloat64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT
 		   (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active'),
@@ -300,10 +283,11 @@ func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats,
 		   (SELECT count(*) FROM users WHERE role = 'student' AND status = 'active'),
 		   (SELECT avg(participation) FROM quiz_stats)`,
 	).Scan(&out.ActiveUsers.Admins, &out.ActiveUsers.Teachers, &out.ActiveUsers.Students,
-		&out.PlatformParticipation)
+		&platformParticipation)
 	if err != nil {
 		return OrgStats{}, fmt.Errorf("load org headcounts: %w", err)
 	}
+	out.PlatformParticipation = float32ptr(platformParticipation)
 
 	// Last 12 weeks of quiz creation, oldest first; a week with no quizzes is
 	// simply absent (the dashboard renders it as a zero bucket), matching the
@@ -319,7 +303,10 @@ func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats,
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var wc WeeklyCount
+		var wc struct {
+			Count     int       `json:"count"`
+			WeekStart time.Time `json:"week_start"`
+		}
 		if err := rows.Scan(&wc.WeekStart, &wc.Count); err != nil {
 			return OrgStats{}, fmt.Errorf("scan weekly count: %w", err)
 		}
@@ -351,11 +338,19 @@ func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats,
 	}
 	defer cohortRows.Close()
 	for cohortRows.Next() {
+		var groupID string
 		var cs CohortStats
-		if err := cohortRows.Scan(&cs.GroupID, &cs.GroupName, &cs.MemberCount,
-			&cs.AvgCompletionRate, &cs.AvgAccuracy); err != nil {
+		var avgCompletionRate, avgAccuracy sql.NullFloat64
+		if err := cohortRows.Scan(&groupID, &cs.GroupName, &cs.MemberCount,
+			&avgCompletionRate, &avgAccuracy); err != nil {
 			return OrgStats{}, fmt.Errorf("scan cohort stats: %w", err)
 		}
+		cs.GroupId, err = uuid.Parse(groupID)
+		if err != nil {
+			return OrgStats{}, fmt.Errorf("parse cohort group id: %w", err)
+		}
+		cs.AvgCompletionRate = float32ptr(avgCompletionRate)
+		cs.AvgAccuracy = float32ptr(avgAccuracy)
 		out.CohortComparisons = append(out.CohortComparisons, cs)
 	}
 	if err := cohortRows.Err(); err != nil {

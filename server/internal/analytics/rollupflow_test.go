@@ -606,7 +606,9 @@ func TestRollupFlowE2E(t *testing.T) {
 			t.Fatalf("total_attempts = %v, want 4", body["total_attempts"])
 		}
 		// avg participation over the four rolled-up quizzes: (2/3 + 1 + 0 + 1)/4.
-		if math.Abs(body["avg_participation"].(float64)-2.0/3.0) > 1e-9 {
+		// Wire value is float32 (apischema.TeacherStats), so the tolerance must
+		// match float32's precision, not float64's.
+		if math.Abs(body["avg_participation"].(float64)-2.0/3.0) > 1e-6 {
 			t.Fatalf("avg_participation = %v, want 0.6667", body["avg_participation"])
 		}
 		// avg class score over the three non-null means (Empty is null-scored):
@@ -719,11 +721,12 @@ func TestRollupFlowE2E(t *testing.T) {
 		if cohort["member_count"].(float64) != 3 {
 			t.Fatalf("cohort member_count = %v, want 3", cohort["member_count"])
 		}
-		// (0.75 + 1 + 0) / 3.
-		if math.Abs(cohort["avg_completion_rate"].(float64)-7.0/12.0) > 1e-9 {
+		// (0.75 + 1 + 0) / 3. Wire value is float32 (apischema.CohortStats), so
+		// the tolerance must match float32's precision, not float64's.
+		if math.Abs(cohort["avg_completion_rate"].(float64)-7.0/12.0) > 1e-6 {
 			t.Fatalf("cohort avg_completion_rate = %v, want 0.5833", cohort["avg_completion_rate"])
 		}
-		if math.Abs(cohort["avg_accuracy"].(float64)-0.7) > 1e-9 {
+		if math.Abs(cohort["avg_accuracy"].(float64)-0.7) > 1e-6 {
 			t.Fatalf("cohort avg_accuracy = %v, want 0.7 (absent's null trend excluded)", cohort["avg_accuracy"])
 		}
 	})
