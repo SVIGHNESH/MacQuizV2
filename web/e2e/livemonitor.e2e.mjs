@@ -12,9 +12,9 @@
 //   3. The student (separate browser context) starts the attempt and
 //      answers the question; the teacher's roster updates to "In progress"
 //      and "1 / 1" over the WebSocket, with no page reload.
-//   4. The teacher kicks the student (reason via a JS prompt); the roster
-//      row flips to "Kicked" and a Readmit control appears, and the
-//      student's next autosave is refused.
+//   4. The teacher kicks the student through the two-step destructive-flow
+//      modal (docs/11 section 4); the roster row flips to "Kicked" and a
+//      Readmit control appears, and the student's next autosave is refused.
 //
 // Run:  node e2e/livemonitor.e2e.mjs
 // Env:  E2E_BASE_URL (default http://localhost:5173)
@@ -281,10 +281,20 @@ async function teacherSeesProgressThenKicks(teacherPage) {
   check(progressOk, 'the progress cell reads 1 / 1 after the student answers')
   await shot(teacherPage, '93-live-monitor-in-progress.png')
 
-  teacherPage.on('dialog', async (dialog) => {
-    await dialog.accept('Not following instructions')
-  })
   await clickButtonWithText(teacherPage, 'Kick')
+  const modalOpened = await teacherPage
+    .waitForSelector('.modal-panel', { timeout: 5000 })
+    .then(() => true)
+    .catch(() => false)
+  check(modalOpened, 'kicking opens the two-step destructive-flow modal')
+  await type(teacherPage, '#destructive-reason', 'Not following instructions')
+  await clickButtonWithText(teacherPage, 'Continue')
+  check(
+    await waitForText(teacherPage, '.modal-consequence', 'ends their attempt', 5000),
+    'the confirm step restates the consequence in a danger-tint card',
+  )
+  await shot(teacherPage, '93b-live-monitor-kick-confirm.png')
+  await clickButtonWithText(teacherPage, 'Remove student')
   check(
     await waitForText(teacherPage, '.chip-roster-kicked', 'Kicked', 8000),
     'the roster flips to Kicked once the teacher removes the student',

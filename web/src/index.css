@@ -82,6 +82,59 @@ body {
   }
 }
 
+/* --- Modal (destructive flow) (docs/11 section 4): two-step reason-then-
+   confirm, overlay+blur, danger-tint consequence card, red button only on
+   the confirm step. ------------------------------------------------------ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay-modal);
+  backdrop-filter: blur(2px);
+}
+
+.modal-panel {
+  width: min(420px, 100%);
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-floating);
+  padding: 24px;
+  animation: rise var(--motion-entrance) both;
+}
+
+.modal-title {
+  margin: 0;
+  font: var(--text-card-title);
+  letter-spacing: var(--tracking-card-title);
+  color: var(--color-ink);
+}
+
+.modal-subtitle {
+  margin: 4px 0 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+.modal-consequence {
+  margin: 0;
+  padding: 12px 14px;
+  font: var(--text-secondary);
+  color: var(--color-danger-on-tint);
+  background: var(--color-danger-tint);
+  border-radius: var(--radius-option-row);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

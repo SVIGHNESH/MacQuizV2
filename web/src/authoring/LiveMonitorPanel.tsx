@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { formatRemaining } from '../player/model'
+import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
 import type { components } from '../api/schema'
 
 type LiveRosterRow = components['schemas']['LiveRosterRow']
@@ -36,12 +37,23 @@ interface RealtimeEvent {
  * roster snapshot from GET /quizzes/:id/live, kept current by streamed
  * WebSocket deltas with a polling fallback, plus the kick/readmit escalation.
  */
-export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
+export default function LiveMonitorPanel({
+  quizId,
+  quizTitle,
+}: {
+  quizId: string
+  quizTitle: string
+}) {
   const [roster, setRoster] = useState<LiveRosterRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
+  const [pendingEscalation, setPendingEscalation] = useState<{
+    attemptId: string
+    studentName: string
+    action: 'kick' | 'readmit'
+  } | null>(null)
   // Server-minus-client clock estimate, the same cosmetic-countdown technique
   // AttemptPlayer uses, so a skewed local clock never misreports time left.
   const clockOffset = useRef(0)
@@ -208,19 +220,15 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
     }
   }, [quizId, loadSnapshot, applyEvent])
 
-  const escalate = async (attemptId: string, action: 'kick' | 'readmit') => {
-    const reason = window.prompt(
-      action === 'kick'
-        ? 'Reason for removing this student?'
-        : 'Reason for readmitting this student?',
-    )
-    if (!reason || !reason.trim()) return
+  const escalate = async (reason: string) => {
+    if (!pendingEscalation) return
+    const { attemptId, action } = pendingEscalation
     setBusyAttemptId(attemptId)
     setActionError(null)
     const result = await api
       .POST(`/api/v1/attempts/{id}/${action}`, {
         params: { path: { id: attemptId } },
-        body: { reason: reason.trim() },
+        body: { reason },
       })
       .catch(() => null)
     setBusyAttemptId(null)
@@ -231,6 +239,7 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
       )
       return
     }
+    setPendingEscalation(null)
     void loadSnapshot()
   }
 
@@ -292,7 +301,13 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
                       className="button button-quiet-danger button-small"
                       type="button"
                       disabled={busyAttemptId === row.attempt_id}
-                      onClick={() => void escalate(row.attempt_id!, 'kick')}
+                      onClick={() =>
+                        setPendingEscalation({
+                          attemptId: row.attempt_id!,
+                          studentName: row.full_name,
+                          action: 'kick',
+                        })
+                      }
                     >
                       Kick
                     </button>
@@ -302,7 +317,13 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
                       className="button button-quiet button-small"
                       type="button"
                       disabled={busyAttemptId === row.attempt_id}
-                      onClick={() => void escalate(row.attempt_id!, 'readmit')}
+                      onClick={() =>
+                        setPendingEscalation({
+                          attemptId: row.attempt_id!,
+                          studentName: row.full_name,
+                          action: 'readmit',
+                        })
+                      }
                     >
                       Readmit
                     </button>
@@ -313,6 +334,28 @@ export default function LiveMonitorPanel({ quizId }: { quizId: string }) {
           })}
         </div>
       </div>
+
+      {pendingEscalation && (
+        <DestructiveConfirmModal
+          title={pendingEscalation.action === 'kick' ? 'Confirm removal' : 'Confirm readmission'}
+          subtitle={`${pendingEscalation.studentName} · ${quizTitle}`}
+          reasonLabel={
+            pendingEscalation.action === 'kick'
+              ? 'Reason for removing this student'
+              : 'Reason for readmitting this student'
+          }
+          consequence={
+            pendingEscalation.action === 'kick'
+              ? 'This ends their attempt immediately. Work already saved is kept for grading.'
+              : 'This lets the student resume their attempt from where they left off.'
+          }
+          confirmLabel={pendingEscalation.action === 'kick' ? 'Remove student' : 'Readmit student'}
+          busy={busyAttemptId === pendingEscalation.attemptId}
+          error={actionError}
+          onCancel={() => setPendingEscalation(null)}
+          onConfirm={(reason) => void escalate(reason)}
+        />
+      )}
     </section>
   )
 }

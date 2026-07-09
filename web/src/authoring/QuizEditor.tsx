@@ -374,10 +374,12 @@ function LoadedEditor({
         />
       )}
 
-      {quiz.status === 'live' && <LiveMonitorPanel quizId={quiz.id} />}
+      {quiz.status === 'live' && (
+        <LiveMonitorPanel quizId={quiz.id} quizTitle={quiz.title} />
+      )}
 
       {(quiz.status === 'closed' || quiz.status === 'archived') && (
-        <QuizStatsPanel quizId={quiz.id} questions={questions} />
+        <QuizStatsPanel quizId={quiz.id} quizTitle={quiz.title} questions={questions} />
       )}
     </div>
   )

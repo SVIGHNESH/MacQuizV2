@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
 import type { components } from '../api/schema'
 import type { QuizStats, TeacherQuestion } from './model'
 
@@ -24,15 +25,21 @@ const PCT = (fraction: number | null | undefined): string =>
  */
 export default function QuizStatsPanel({
   quizId,
+  quizTitle,
   questions,
 }: {
   quizId: string
+  quizTitle: string
   questions: TeacherQuestion[]
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   const [kicked, setKicked] = useState<ResultRow[] | null>(null)
   const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
   const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [pendingOverride, setPendingOverride] = useState<{
+    attemptId: string
+    studentName: string
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -81,15 +88,15 @@ export default function QuizStatsPanel({
     }
   }, [phase, loadKicked])
 
-  const overrideScore = async (attemptId: string) => {
-    const reason = window.prompt('Reason for zeroing this attempt’s score?')
-    if (!reason || !reason.trim()) return
+  const overrideScore = async (reason: string) => {
+    if (!pendingOverride) return
+    const { attemptId } = pendingOverride
     setBusyAttemptId(attemptId)
     setOverrideError(null)
     const result = await api
       .POST('/api/v1/attempts/{id}/override-score', {
         params: { path: { id: attemptId } },
-        body: { reason: reason.trim() },
+        body: { reason },
       })
       .catch(() => null)
     setBusyAttemptId(null)
@@ -99,6 +106,7 @@ export default function QuizStatsPanel({
       )
       return
     }
+    setPendingOverride(null)
     void loadKicked()
   }
 
@@ -268,7 +276,12 @@ export default function QuizStatsPanel({
                     className="button button-quiet-danger button-small"
                     type="button"
                     disabled={busyAttemptId === row.attempt_id}
-                    onClick={() => void overrideScore(row.attempt_id!)}
+                    onClick={() =>
+                      setPendingOverride({
+                        attemptId: row.attempt_id!,
+                        studentName: row.full_name,
+                      })
+                    }
                   >
                     Override to zero
                   </button>
@@ -277,6 +290,20 @@ export default function QuizStatsPanel({
             </div>
           ))}
         </div>
+      )}
+
+      {pendingOverride && (
+        <DestructiveConfirmModal
+          title="Confirm score override"
+          subtitle={`${pendingOverride.studentName} · ${quizTitle}`}
+          reasonLabel="Reason for zeroing this attempt's score"
+          consequence="This sets the attempt's score to zero and cannot be undone."
+          confirmLabel="Override to zero"
+          busy={busyAttemptId === pendingOverride.attemptId}
+          error={overrideError}
+          onCancel={() => setPendingOverride(null)}
+          onConfirm={(reason) => void overrideScore(reason)}
+        />
       )}
     </section>
   )
