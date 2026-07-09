@@ -1,5 +1,5 @@
-# CI per docs/09-deployment.md section 5: on pull request run lint and tests.
-# The Redis service container is added when the milestone that needs it lands.
+# CI per docs/09-deployment.md section 5: on pull request run lint and tests
+# (Postgres/Redis as Actions services).
 name: CI
 
 on:
@@ -27,8 +27,18 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       MACQUIZ_TEST_DATABASE_URL: postgres://macquiz:macquiz@localhost:5432/macquiz?sslmode=disable
+      MACQUIZ_TEST_REDIS_URL: redis://localhost:6380/0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
