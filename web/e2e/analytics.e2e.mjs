@@ -258,6 +258,10 @@ async function provision() {
     starts_at: startsAt.toISOString(),
     ends_at: endsAt.toISOString(),
     duration_sec: DURATION_SEC,
+    // Manual, so the teacher's own Release results control is what makes the
+    // scores visible - under the auto policy the worker releases them at
+    // close and the panel's unreleased state would never render.
+    release_policy: 'manual',
   }, 200)
 
   await new Promise((resolve) => setTimeout(resolve, LIVE_DELAY_MS + 1_000))
@@ -376,6 +380,43 @@ async function dashboardFlow(browser) {
   )
   check(kicked === '0', `kicked attempts reads 0 for a clean run (got ${kicked})`)
   await shot(page, '91-stats-dashboard.png')
+
+  await releaseAndArchiveFlow(page)
+}
+
+// The two lifecycle controls a closed quiz still has. The quiz was published
+// with release_policy=manual, so nothing has released it: the students'
+// scores are withheld until this teacher clicks the button.
+async function releaseAndArchiveFlow(page) {
+  check(
+    await waitForText(page, '#release-state', 'withheld until you release'),
+    'the closed quiz reports its results as withheld',
+  )
+  await page.click('#release-results-button')
+  check(
+    await waitForText(page, '#release-state', 'Results released', 8000),
+    'clicking Release results flips the panel to released',
+  )
+  const releaseButtonGone = (await page.$('#release-results-button')) === null
+  check(releaseButtonGone, 'the Release results button retires once released')
+  await shot(page, '92-results-released.png')
+
+  // Archiving is terminal, so it is two-step: Archive arms the confirm.
+  await page.click('#archive-button')
+  check(
+    (await page.$('#archive-confirm-button')) !== null,
+    'Archive arms a confirm step rather than archiving straight away',
+  )
+  await page.click('#archive-confirm-button')
+  check(
+    await waitForText(page, '.chip-status', 'Archived', 8000),
+    'confirming the archive flips the quiz to Archived',
+  )
+  check(
+    (await page.$('#archive-button')) === null,
+    'an archived quiz offers no further archive action',
+  )
+  await shot(page, '93-quiz-archived.png')
 }
 
 await mkdir(SHOT_DIR, { recursive: true })

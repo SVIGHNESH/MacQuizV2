@@ -347,6 +347,9 @@ async function publishFlow(browser) {
     '#publish-ends-at',
     toLocalInput(minutesFromNow(90)),
   )
+  // Withhold the scores until this teacher releases them, rather than the
+  // auto default the worker applies at close.
+  await page.select('#publish-release-policy', 'manual')
   await clickButtonWithText(page, 'Publish quiz')
   check(
     await waitForText(page, '.chip-status', 'Scheduled', 8000),
@@ -376,6 +379,11 @@ async function publishFlow(browser) {
   check(
     await waitForText(page, '.window-summary', 'Version 1', 8000),
     'the scheduled state survives a cold reload',
+  )
+  check(
+    (await page.$eval('#publish-release-policy', (el) => el.value)) ===
+      'manual',
+    'the chosen manual release policy came back from the server',
   )
   check(
     await waitForText(page, '.audience-count', '2 students assigned', 8000),

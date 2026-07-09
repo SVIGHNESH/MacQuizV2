@@ -794,6 +794,12 @@
   align-items: start;
 }
 
+/* The release-policy option labels are sentences, so the select takes its own
+   row rather than squeezing into the three-column window/duration line. */
+.schedule-grid .field-release {
+  grid-column: 1 / -1;
+}
+
 .guardrail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

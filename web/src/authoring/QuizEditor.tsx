@@ -13,6 +13,7 @@ import LiveMonitorPanel from './LiveMonitorPanel'
 import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import QuizStatsPanel from './QuizStatsPanel'
+import ResultsReleasePanel from './ResultsReleasePanel'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
 
 const QUESTION_TYPES: QuestionType[] = ['single', 'multi', 'truefalse', 'short']
@@ -376,6 +377,10 @@ function LoadedEditor({
 
       {quiz.status === 'live' && (
         <LiveMonitorPanel quizId={quiz.id} quizTitle={quiz.title} />
+      )}
+
+      {(quiz.status === 'closed' || quiz.status === 'archived') && (
+        <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
       )}
 
       {(quiz.status === 'closed' || quiz.status === 'archived') && (

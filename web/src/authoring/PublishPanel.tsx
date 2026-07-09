@@ -67,6 +67,7 @@ interface ScheduleDraft {
   endsAt: string
   durationMin: number
   guardrails: Guardrails
+  releasePolicy: Quiz['release_policy']
 }
 
 function ScheduleSection({
@@ -85,6 +86,9 @@ function ScheduleSection({
     endsAt: quiz.ends_at ? toLocalInput(quiz.ends_at) : '',
     durationMin: quiz.duration_sec ? Math.round(quiz.duration_sec / 60) : 20,
     guardrails: { ...DEFAULT_GUARDRAILS },
+    // A republish keeps the policy the scheduled snapshot was published with,
+    // so rescheduling a manual-release quiz can't silently turn it automatic.
+    releasePolicy: quiz.release_policy,
   }))
   const [publishing, setPublishing] = useState(false)
   const [fields, setFields] = useState<Record<string, string>>({})
@@ -144,6 +148,7 @@ function ScheduleSection({
           ends_at: new Date(draft.endsAt).toISOString(),
           duration_sec: Math.round(draft.durationMin * 60),
           guardrails: draft.guardrails,
+          release_policy: draft.releasePolicy,
         },
       })
       .catch(() => null)
@@ -163,7 +168,7 @@ function ScheduleSection({
   // Precondition errors that have no input of their own read as sentences.
   const generalErrors = Object.entries(fields).filter(
     ([key]) =>
-      !['starts_at', 'ends_at', 'duration_sec'].includes(key) &&
+      !['starts_at', 'ends_at', 'duration_sec', 'release_policy'].includes(key) &&
       !key.startsWith('guardrails.'),
   )
 
@@ -231,6 +236,26 @@ function ScheduleSection({
           />
           {fields.duration_sec && (
             <p className="field-error">Time limit {fields.duration_sec}.</p>
+          )}
+        </label>
+        <label className="field field-release">
+          <span className="field-label">Release results</span>
+          <select
+            id="publish-release-policy"
+            className="input"
+            value={draft.releasePolicy}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                releasePolicy: e.target.value as Quiz['release_policy'],
+              })
+            }
+          >
+            <option value="auto">Automatically, once the quiz closes</option>
+            <option value="manual">When I release them</option>
+          </select>
+          {fields.release_policy && (
+            <p className="field-error">Release results {fields.release_policy}.</p>
           )}
         </label>
       </div>
