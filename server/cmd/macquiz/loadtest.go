@@ -203,7 +203,7 @@ func findOrCreateLoadtestQuiz(ctx context.Context, sqlDB *sql.DB, qsvc *quiz.Ser
 		if cerr != nil {
 			return "", cerr
 		}
-		id = q.ID
+		id = q.Id.String()
 	case err != nil:
 		return "", err
 	}

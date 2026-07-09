@@ -56,7 +56,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 	if err != nil {
 		return Quiz{}, nil, time.Time{}, fmt.Errorf("load quiz: %w", err)
 	}
-	if !authusers.Can(actor, authusers.ActionQuizWatchLive, authusers.Resource{OwnerID: q.OwnerID}) {
+	if !authusers.Can(actor, authusers.ActionQuizWatchLive, authusers.Resource{OwnerID: q.OwnerId.String()}) {
 		return Quiz{}, nil, time.Time{}, ErrNotFound
 	}
 

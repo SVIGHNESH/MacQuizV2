@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
@@ -722,7 +723,7 @@ func (s *Service) ListAssignments(ctx context.Context, actor authusers.User, qui
 	if err != nil {
 		return nil, fmt.Errorf("load quiz: %w", err)
 	}
-	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerID}) {
+	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerId.String()}) {
 		return nil, ErrNotFound
 	}
 	return assignedStudents(ctx, s.db, quizID)
@@ -812,7 +813,7 @@ func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]
 			&q.ResultsReleasedAt); err != nil {
 			return nil, fmt.Errorf("scan assigned quiz: %w", err)
 		}
-		q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now)
+		q.Status = string(effectiveStatus(apischema.QuizStatus(q.Status), q.StartsAt, q.EndsAt, now))
 		q.Attempts = []AttemptSummary{}
 		quizzes = append(quizzes, q)
 	}
@@ -857,7 +858,7 @@ func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]
 // read if starts_at has passed"). The scheduler jobs flip the stored row at
 // the exact timestamps; this lazy derivation covers the gap between the
 // moment passing and the job landing, so no reader ever sees a stale state.
-func effectiveStatus(status string, startsAt, endsAt *time.Time, now time.Time) string {
+func effectiveStatus(status apischema.QuizStatus, startsAt, endsAt *time.Time, now time.Time) apischema.QuizStatus {
 	switch status {
 	case "scheduled":
 		if endsAt != nil && !now.Before(*endsAt) {
@@ -886,7 +887,7 @@ func (s *Service) ownedForUpdate(ctx context.Context, tx *sql.Tx, actor authuser
 	if err != nil {
 		return Quiz{}, fmt.Errorf("load quiz: %w", err)
 	}
-	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerID}) {
+	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerId.String()}) {
 		return Quiz{}, ErrNotFound
 	}
 	return q, nil

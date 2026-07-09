@@ -6,15 +6,13 @@
 // this file and fails if it differs from what's checked in, so the type
 // definitions themselves can never silently drift from api/openapi.yaml.
 //
-// Handler and service code has not yet been migrated to construct
-// responses from these generated types (see ThingsToDo.txt) - that is a
-// larger, deliberately separate follow-up, since several existing
-// hand-written wire types differ from what oapi-codegen produces in ways
-// that need per-field review, not a mechanical find/replace (e.g.
-// analytics.QuizStats.Mean is *float64 passed straight from a DB scan,
-// while apischema.QuizStats.Mean is *float32; several fields pass raw
-// json.RawMessage columns through untouched where the generated type has a
-// fully concrete nested struct).
+// Handler and service code across the server now builds its responses
+// directly from these generated types rather than hand-written structs
+// (see ThingsToDo.txt for the migration history) - each package needed its
+// own per-field review rather than a mechanical find/replace, since several
+// hand-written wire types differed from what oapi-codegen produces (e.g.
+// float64-vs-float32 scores, and plain strings vs. the generated UUID/enum
+// types).
 package apischema
 
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 -config oapi-codegen-config.yaml ../../../api/openapi.yaml

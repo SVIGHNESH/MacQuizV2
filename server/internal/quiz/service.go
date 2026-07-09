@@ -14,6 +14,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
@@ -61,28 +62,11 @@ var (
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay
-// null until publish (Milestone 3).
-type Quiz struct {
-	ID               string     `json:"id"`
-	OwnerID          string     `json:"owner_id"`
-	Title            string     `json:"title"`
-	Status           string     `json:"status"`
-	StartsAt         *time.Time `json:"starts_at"`
-	EndsAt           *time.Time `json:"ends_at"`
-	DurationSec      *int       `json:"duration_sec"`
-	MaxAttempts      int        `json:"max_attempts"`
-	ShuffleQuestions bool       `json:"shuffle_questions"`
-	PublishedAt      *time.Time `json:"published_at"`
-	Version          int        `json:"version"`
-	CreatedAt        time.Time  `json:"created_at"`
-	QuestionCount    int        `json:"question_count"`
-	// ReleasePolicy decides when scores become visible to students: auto
-	// releases in the worker pass that grades the closed quiz, manual waits
-	// for POST /quizzes/:id/release-results. ResultsReleasedAt is the fact
-	// every results read gates on; null means withheld.
-	ReleasePolicy     string     `json:"release_policy"`
-	ResultsReleasedAt *time.Time `json:"results_released_at"`
-}
+// null until publish (Milestone 3). It is a direct alias to the generated
+// apischema.Quiz type (api/openapi.yaml, oapi-codegen - see
+// internal/apischema), so this response can never silently drift from the
+// spec.
+type Quiz = apischema.Quiz
 
 // Question is the internal question shape. Correct is tagged `json:"-"` so
 // the answer key can never leak through a default serialization; only the
@@ -165,7 +149,7 @@ const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_s
 
 func scanQuiz(scan func(dest ...any) error) (Quiz, error) {
 	var q Quiz
-	err := scan(&q.ID, &q.OwnerID, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
+	err := scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 		&q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions, &q.PublishedAt,
 		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt)
 	return q, err
@@ -186,7 +170,7 @@ func (s *Service) CreateQuiz(ctx context.Context, actor authusers.User, title st
 	if err != nil {
 		return Quiz{}, fmt.Errorf("insert quiz: %w", err)
 	}
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.created", "quiz", q.ID,
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.created", "quiz", q.Id.String(),
 		map[string]any{"title": title}); err != nil {
 		return Quiz{}, err
 	}
@@ -213,7 +197,7 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 	quizzes := []Quiz{}
 	for rows.Next() {
 		var q Quiz
-		if err := rows.Scan(&q.ID, &q.OwnerID, &q.Title, &q.Status, &q.StartsAt,
+		if err := rows.Scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt,
 			&q.EndsAt, &q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions,
 			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.ReleasePolicy,
 			&q.ResultsReleasedAt, &q.QuestionCount); err != nil {
@@ -236,7 +220,7 @@ func (s *Service) GetQuiz(ctx context.Context, actor authusers.User, id string) 
 	if err != nil {
 		return Quiz{}, nil, fmt.Errorf("load quiz: %w", err)
 	}
-	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerID}) {
+	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerId.String()}) {
 		return Quiz{}, nil, ErrNotFound
 	}
 

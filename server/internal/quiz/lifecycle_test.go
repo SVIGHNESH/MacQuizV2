@@ -3,6 +3,8 @@ package quiz
 import (
 	"testing"
 	"time"
+
+	"macquiz/server/internal/apischema"
 )
 
 // TestEffectiveStatus pins the lazy state derivation from docs/06 section 1:
@@ -32,7 +34,7 @@ func TestEffectiveStatus(t *testing.T) {
 		{"archived stays archived", "archived", &past, &past, "archived"},
 	}
 	for _, tc := range cases {
-		if got := effectiveStatus(tc.status, tc.startsAt, tc.endsAt, now); got != tc.want {
+		if got := effectiveStatus(apischema.QuizStatus(tc.status), tc.startsAt, tc.endsAt, now); string(got) != tc.want {
 			t.Errorf("%s: effectiveStatus(%s) = %s, want %s", tc.name, tc.status, got, tc.want)
 		}
 	}

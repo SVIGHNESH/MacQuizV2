@@ -136,7 +136,7 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 	if err != nil {
 		return Quiz{}, nil, fmt.Errorf("load quiz: %w", err)
 	}
-	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerID}) {
+	if !authusers.Can(actor, authusers.ActionQuizEdit, authusers.Resource{OwnerID: q.OwnerId.String()}) {
 		return Quiz{}, nil, ErrNotFound
 	}
 	q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, time.Now())
