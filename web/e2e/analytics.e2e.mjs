@@ -289,7 +289,7 @@ async function waitForClose(endsAt) {
   }
 }
 
-async function dashboardFlow(browser, quizId) {
+async function dashboardFlow(browser) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
   await page.setViewport({ width: 1280, height: 1600 })
@@ -350,7 +350,7 @@ async function dashboardFlow(browser, quizId) {
 }
 
 await mkdir(SHOT_DIR, { recursive: true })
-const { quizId, endsAt } = await provision()
+const { endsAt } = await provision()
 
 const browser = await puppeteer.launch({
   executablePath: CHROMIUM,
@@ -361,7 +361,7 @@ const browser = await puppeteer.launch({
 try {
   await studentsFlow(browser)
   await waitForClose(endsAt)
-  await dashboardFlow(browser, quizId)
+  await dashboardFlow(browser)
 } finally {
   await browser.close()
 }

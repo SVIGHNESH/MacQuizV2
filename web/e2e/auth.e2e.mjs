@@ -3,7 +3,7 @@
 //
 // Drives a real Chromium through:
 //   1. bad-password rejection on the sign-in screen
-//   2. admin sign-in -> the Users console, session survives a reload, sign out
+//   2. admin sign-in -> the Overview console, session survives a reload, sign out
 //   3. admin provisions a teacher over the API (one-time credential)
 //   4. teacher first sign-in -> forced password reset (mismatch error, then
 //      success) -> auto re-login -> the teacher quizzes workspace, and the
@@ -132,8 +132,8 @@ async function adminFlow(browser) {
 
   await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD)
   check(
-    await waitForText(page, '.page-title', 'Users'),
-    'admin lands on the Users console after signing in',
+    await waitForText(page, '.page-title', 'Overview'),
+    'admin lands on the Overview console after signing in',
   )
   check(
     await waitForText(page, '.chip-role', 'Admin'),
@@ -143,7 +143,7 @@ async function adminFlow(browser) {
 
   await page.reload({ waitUntil: 'networkidle0' })
   check(
-    await waitForText(page, '.page-title', 'Users'),
+    await waitForText(page, '.page-title', 'Overview'),
     'admin session survives a full page reload',
   )
 

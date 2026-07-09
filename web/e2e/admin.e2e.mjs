@@ -60,6 +60,24 @@ async function waitForText(page, selector, needle) {
   return (await textOf(page, selector)).includes(needle)
 }
 
+async function clickButtonWithText(page, text, scope = '') {
+  const clicked = await page.evaluate(
+    (want, sel) => {
+      const root = sel ? document.querySelector(sel) : document
+      if (!root) return false
+      const button = [...root.querySelectorAll('button')].find((el) =>
+        (el.textContent ?? '').trim().includes(want),
+      )
+      if (!button) return false
+      button.click()
+      return true
+    },
+    text,
+    scope,
+  )
+  if (!clicked) throw new Error(`no button with text "${text}" in "${scope}"`)
+}
+
 async function type(page, selector, value) {
   await page.waitForSelector(selector, { timeout: 5000 })
   await page.click(selector)
@@ -83,8 +101,14 @@ async function adminConsoleFlow(browser) {
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD)
   check(
+    await waitForText(page, '.page-title', 'Overview'),
+    'admin signs in and lands on the Overview console',
+  )
+
+  await clickButtonWithText(page, 'Users', '.rail-nav')
+  check(
     await waitForText(page, '.page-title', 'Users'),
-    'admin signs in and lands on the Users console',
+    'the Users nav item switches to the accounts console',
   )
 
   // --- Provision a teacher --------------------------------------------------
@@ -149,7 +173,7 @@ async function adminConsoleFlow(browser) {
   void reenableButton
 
   // --- Groups: create a cohort, provision a student, set membership --------
-  await page.click('.rail-nav .rail-item:nth-child(2)')
+  await clickButtonWithText(page, 'Groups', '.rail-nav')
   check(
     await waitForText(page, '.page-title', 'Groups'),
     'the Groups nav item switches to the cohorts console',
@@ -181,9 +205,9 @@ async function adminConsoleFlow(browser) {
   })
 
   // A full reload resets the SPA's client-side view state back to the
-  // Users tab, so land on Groups again before looking for the cohort row.
+  // Overview tab, so land on Groups again before looking for the cohort row.
   await page.reload({ waitUntil: 'networkidle0' })
-  await page.click('.rail-nav .rail-item:nth-child(2)')
+  await clickButtonWithText(page, 'Groups', '.rail-nav')
   await page.waitForSelector('.admin-group-table', { timeout: 5000 })
   const groupRow = await page.evaluateHandle(
     (name) =>
