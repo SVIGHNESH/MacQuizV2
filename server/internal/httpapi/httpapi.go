@@ -32,6 +32,7 @@ const (
 	CodeAttemptNotGraded        = "ATTEMPT_NOT_GRADED"
 	CodeGuardrailOff            = "GUARDRAIL_OFF"
 	CodeImportNotReady          = "IMPORT_NOT_READY"
+	CodeAssignmentInProgress    = "ASSIGNMENT_IN_PROGRESS"
 )
 
 // ErrorBody is the wire shape of every non-2xx response.

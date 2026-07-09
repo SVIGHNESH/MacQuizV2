@@ -525,7 +525,7 @@ export interface paths {
         get: operations["listAssignments"];
         /**
          * Replace the quiz's audience (owner)
-         * @description Group ids are expanded to individual student rows at assignment time, so later group edits never silently revoke an already-assigned quiz. Atomic - one bad id changes nothing. Allowed while draft or scheduled; a live quiz's audience is frozen.
+         * @description Group ids are expanded to individual student rows at assignment time, so later group edits never silently revoke an already-assigned quiz. Atomic - one bad id changes nothing. Allowed while draft, scheduled, or live; while live, adding a student is a late invite, but removing one with an in-progress attempt is refused (ASSIGNMENT_IN_PROGRESS) - kick is the only sanctioned way to interrupt one.
          */
         put: operations["setAssignments"];
         post?: never;
@@ -1568,6 +1568,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The client switches on code - QUIZ_NOT_EDITABLE (the quiz is closed or archived, so its audience is no longer editable at all) or ASSIGNMENT_IN_PROGRESS (the quiz is live and this change would remove a student with an in-progress attempt; kick them instead). */
+        AssignmentConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The attempt state refuses this action; the client switches on code - QUIZ_NOT_LIVE (start outside the window), ATTEMPT_LIMIT_REACHED (max_attempts exhausted), ATTEMPT_DEADLINE_PASSED (write after deadline + grace), ATTEMPT_ALREADY_SUBMITTED (autosave against a terminal attempt), or ATTEMPT_KICKED (show the lockout screen). */
         AttemptConflict: {
             headers: {
@@ -2574,7 +2583,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["NotEditable"];
+            409: components["responses"]["AssignmentConflict"];
             422: components["responses"]["ValidationFailed"];
         };
     };

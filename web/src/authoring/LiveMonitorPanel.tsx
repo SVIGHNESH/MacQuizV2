@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { formatRemaining } from '../player/model'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
+import AudienceEditor from './AudienceEditor'
 import type { components } from '../api/schema'
 
 type LiveRosterRow = components['schemas']['LiveRosterRow']
@@ -49,6 +50,7 @@ export default function LiveMonitorPanel({
   const [connected, setConnected] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
+  const [showAudienceEditor, setShowAudienceEditor] = useState(false)
   const [pendingEscalation, setPendingEscalation] = useState<{
     attemptId: string
     studentName: string
@@ -261,7 +263,15 @@ export default function LiveMonitorPanel({
         <span className={`save-badge ${connected ? 'save-badge-ok' : 'save-badge-bad'}`}>
           {connected ? 'Live' : 'Reconnecting…'}
         </span>
+        <button
+          className="button button-quiet button-small"
+          type="button"
+          onClick={() => setShowAudienceEditor((v) => !v)}
+        >
+          {showAudienceEditor ? 'Hide audience' : 'Manage audience'}
+        </button>
       </div>
+      {showAudienceEditor && <AudienceEditor quizId={quizId} live />}
       {actionError && <p className="form-error">{actionError}</p>}
       <div className="table-panel">
         <div className="quiz-table live-roster-table" role="table" aria-label="Live roster">

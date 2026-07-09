@@ -439,8 +439,10 @@ type AssignedStudent struct {
 // /quizzes/:id/assignments). Group ids are expanded to individual student
 // rows at assignment time, so later group edits never silently revoke an
 // already-assigned quiz (docs/03). The replacement is atomic: one bad id
-// changes nothing. Allowed while draft or scheduled; a live quiz's audience
-// is frozen.
+// changes nothing. Allowed while draft, scheduled, or live: while live,
+// adding a student is a late invite, but removing one with an in-progress
+// attempt is blocked (docs/06 section 1) - interrupting a live attempt must
+// go through the explicit, audited kick control instead.
 func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quizID string, studentIDs, groupIDs []string) ([]AssignedStudent, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -452,7 +454,8 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	if err != nil {
 		return nil, err
 	}
-	if q.Status != "draft" && q.Status != "scheduled" {
+	es := effectiveStatus(q.Status, q.StartsAt, q.EndsAt, time.Now())
+	if es != "draft" && es != "scheduled" && es != "live" {
 		return nil, ErrNotEditable
 	}
 
@@ -534,6 +537,46 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	before.Close()
 	if err := before.Err(); err != nil {
 		return nil, err
+	}
+
+	// While live, a removal that would drop a student with an in-progress
+	// attempt is refused (docs/06 section 1) - kick is the only sanctioned
+	// way to interrupt one. Lock the candidate rows first so a concurrent
+	// Start (which takes the same quiz_assignments FOR UPDATE lock, per
+	// docs/04) cannot create an in-progress attempt after this check but
+	// before the DELETE below.
+	if es == "live" {
+		var removed []string
+		for id := range prevAudience {
+			if !audience[id] {
+				removed = append(removed, id)
+			}
+		}
+		if len(removed) > 0 {
+			lockRows, err := tx.QueryContext(ctx,
+				`SELECT 1 FROM quiz_assignments WHERE quiz_id = $1 AND student_id = ANY($2::uuid[]) FOR UPDATE`,
+				quizID, uuidArray(removed))
+			if err != nil {
+				return nil, fmt.Errorf("lock removed assignments: %w", err)
+			}
+			for lockRows.Next() {
+			}
+			lockErr := lockRows.Err()
+			lockRows.Close()
+			if lockErr != nil {
+				return nil, lockErr
+			}
+
+			var blocked int
+			if err := tx.QueryRowContext(ctx,
+				`SELECT count(*) FROM attempts WHERE quiz_id = $1 AND student_id = ANY($2::uuid[]) AND status = 'in_progress'`,
+				quizID, uuidArray(removed)).Scan(&blocked); err != nil {
+				return nil, fmt.Errorf("check in-progress attempts: %w", err)
+			}
+			if blocked > 0 {
+				return nil, ErrAssignmentInProgress
+			}
+		}
 	}
 
 	ids := make([]string, 0, len(audience))

@@ -260,7 +260,7 @@ func TestLifecycleFlowE2E(t *testing.T) {
 		}
 	})
 
-	t.Run("live quiz audience is frozen", func(t *testing.T) {
+	t.Run("live quiz audience allows late invite but publish stays refused", func(t *testing.T) {
 		status, body, _ := itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
 			map[string]any{"student_ids": []string{directID}}, teacher)
 		// The stored status is still 'scheduled' until the scheduler flips
@@ -272,11 +272,18 @@ func TestLifecycleFlowE2E(t *testing.T) {
 			`UPDATE quizzes SET status = 'live' WHERE id = $1`, quizID); err != nil {
 			t.Fatalf("flip to live: %v", err)
 		}
+		// Adding a student while live is a late invite (docs/06 section 1):
+		// nobody has an in-progress attempt yet in this authoring-only test,
+		// so the audience edit succeeds even though the quiz is live.
 		status, body, _ = itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
-			map[string]any{"student_ids": []string{directID}}, teacher)
-		if status != 409 || body["code"] != "QUIZ_NOT_EDITABLE" {
-			t.Fatalf("assignment while live = %d %v, want 409 QUIZ_NOT_EDITABLE", status, body)
+			map[string]any{"student_ids": []string{directID, groupedID}}, teacher)
+		if status != 200 {
+			t.Fatalf("late invite while live = %d %v, want 200", status, body)
 		}
+		if got := len(body["students"].([]any)); got != 2 {
+			t.Fatalf("audience after late invite while live = %d, want 2", got)
+		}
+		// Publish itself is still a draft/scheduled-only affordance.
 		status, body, _ = itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/publish", window, teacher)
 		if status != 409 {
 			t.Fatalf("publish while live = %d %v, want 409", status, body)
@@ -286,7 +293,7 @@ func TestLifecycleFlowE2E(t *testing.T) {
 	t.Run("lifecycle mutations left audit rows", func(t *testing.T) {
 		want := map[string]int{
 			"quizzes.published":       2,
-			"quizzes.assignments_set": 2,
+			"quizzes.assignments_set": 3,
 		}
 		for action, count := range want {
 			var got int

@@ -17,7 +17,7 @@ Draft -> Scheduled -> Live -> Closed -> Archived
 | Closed -> Archived | Teacher archives | Read-only; analytics retained |
 
 While Scheduled: reschedule and cancel are allowed.
-Once Live: the teacher can only extend `ends_at`, force-close early, or kick individual students; all three are audited and broadcast to connected students.
+Once Live: the teacher can extend `ends_at`, force-close early, kick individual students, or edit the audience (`PUT /quizzes/:id/assignments`) - adding a student is a late invite, removing one is allowed unless they have an in-progress attempt (409 `ASSIGNMENT_IN_PROGRESS`; kick is the only sanctioned way to interrupt one). All of these are audited and broadcast to connected students.
 
 ## 2. Attempt timing
 

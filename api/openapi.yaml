@@ -1013,8 +1013,11 @@ paths:
       description: >-
         Group ids are expanded to individual student rows at assignment
         time, so later group edits never silently revoke an already-assigned
-        quiz. Atomic - one bad id changes nothing. Allowed while draft or
-        scheduled; a live quiz's audience is frozen.
+        quiz. Atomic - one bad id changes nothing. Allowed while draft,
+        scheduled, or live; while live, adding a student is a late invite,
+        but removing one with an in-progress attempt is refused
+        (ASSIGNMENT_IN_PROGRESS) - kick is the only sanctioned way to
+        interrupt one.
       requestBody:
         required: true
         content:
@@ -1035,7 +1038,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/NotEditable"
+          $ref: "#/components/responses/AssignmentConflict"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /api/v1/quizzes/{id}/results:
@@ -1782,6 +1785,16 @@ components:
       description: >-
         QUIZ_NOT_EDITABLE - the quiz has been published; its question set is
         an immutable snapshot and drafts-only operations are refused.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    AssignmentConflict:
+      description: >-
+        The client switches on code - QUIZ_NOT_EDITABLE (the quiz is closed
+        or archived, so its audience is no longer editable at all) or
+        ASSIGNMENT_IN_PROGRESS (the quiz is live and this change would
+        remove a student with an in-progress attempt; kick them instead).
       content:
         application/json:
           schema:

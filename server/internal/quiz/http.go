@@ -412,6 +412,9 @@ func (h *Handler) writeQuizError(w http.ResponseWriter, op string, err error, no
 	case errors.Is(err, ErrNotArchivable):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotClosed,
 			"only a closed quiz can be archived")
+	case errors.Is(err, ErrAssignmentInProgress):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeAssignmentInProgress,
+			"cannot remove a student with an in-progress attempt; kick them instead")
 	default:
 		h.internalError(w, op, err)
 	}

@@ -941,6 +941,9 @@ type ViolationResponse struct {
 	Counted bool `json:"counted"`
 }
 
+// AssignmentConflict defines model for AssignmentConflict.
+type AssignmentConflict = Error
+
 // AttemptConflict defines model for AttemptConflict.
 type AttemptConflict = Error
 

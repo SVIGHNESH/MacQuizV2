@@ -52,6 +52,12 @@ var (
 	// finished yet, 'failed' means the file has row errors to fix, and
 	// 'committed' means this already happened once.
 	ErrImportNotReady = errors.New("import is not ready to commit")
+	// ErrAssignmentInProgress marks an audience change on a live quiz that
+	// would remove a student with an in-progress attempt: interrupting a
+	// live attempt must go through the explicit, audited kick control
+	// instead, so every interruption is attributed and reasoned (docs/06
+	// section 1's audience rule).
+	ErrAssignmentInProgress = errors.New("cannot remove a student with an in-progress attempt while the quiz is live")
 )
 
 // Quiz is the authoring-facing quiz shape. Window and guardrail fields stay
