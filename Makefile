@@ -1,7 +1,7 @@
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 
-.PHONY: build test vet fmt run-server run-worker migrate up down web-dev web-build web-lint generate-api
+.PHONY: build test vet fmt run-server run-worker migrate up down web-dev web-build web-lint generate-api generate-server-api
 
 build:
 	cd server && go build -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)" -o bin/macquiz ./cmd/macquiz
@@ -41,3 +41,6 @@ web-lint:
 
 generate-api:
 	cd web && npm run generate:api
+
+generate-server-api:
+	cd server && go generate ./internal/apischema/...

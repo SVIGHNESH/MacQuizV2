@@ -12,7 +12,7 @@ Status: proposed build order; each milestone is independently demoable and testa
 ## Milestone 0 - Repo and skeleton (foundation)
 
 - Monorepo: `web/` (React + TypeScript), `server/` (Go), `api/openapi.yaml` as the shared contract.
-  oapi-codegen generates the Go server interfaces and the TypeScript client, so frontend and backend cannot drift.
+  oapi-codegen generates the Go server's request/response types (`server/internal/apischema`) and the TypeScript client, both CI-checked against the spec; the Go side's handlers are not yet migrated to build their responses from the generated types (see ThingsToDo.txt), so drift protection there is currently type-availability only, not full enforcement.
 - Go packages scaffolded: `authusers`, `quiz`, `attempt`, `analytics`, `realtime`, plus a `worker` entrypoint in the same binary (chi router, coder/websocket, pgx, River).
 - Postgres migrations tooling (goose or golang-migrate); initial schema from 03-data-model.md.
 - Docker Compose dev stack (postgres, redis, app, worker); CI running golangci-lint, go test, and frontend lint/typecheck on PR.

@@ -46,6 +46,10 @@ jobs:
           go-version-file: server/go.mod
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: generated API types are in sync with api/openapi.yaml
+        run: |
+          go generate ./internal/apischema/...
+          git diff --exit-code -- internal/apischema/types.gen.go
       - name: go vet
         run: go vet ./...
       - name: golangci-lint

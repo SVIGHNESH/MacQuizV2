@@ -97,7 +97,7 @@ The defining pattern is the synchronized start: hundreds of students hit "start"
 | Observability | OpenTelemetry + Grafana stack | The live-quiz minute is when traces and dashboards matter most |
 
 Go is chosen for footprint and concurrency: tens of megabytes of resident memory, true parallelism across the VM's four cores, and one static binary that runs as both app and worker in a single container image (see 09-deployment.md).
-The API contract is defined spec-first in OpenAPI; oapi-codegen generates the Go server interfaces and the TypeScript client for the React app, so the two codebases cannot drift.
+The API contract is defined spec-first in OpenAPI; oapi-codegen generates the Go server's request/response types (server/internal/apischema, CI-checked against api/openapi.yaml the same way the generated TypeScript client is) and the TypeScript client for the React app. Handler and service code has not yet been migrated to build responses from the generated Go types - that migration is still hand-written and manually kept in sync - so today the "cannot drift" guarantee is fully enforced only on the TypeScript side; the Go side has the generated contract available but not yet wired through every handler.
 Using River instead of a Redis-backed queue puts jobs in Postgres, so a kick, its audit row, and its grading job commit in one transaction, and delayed jobs survive even a full Redis loss.
 
 ## 7. Scaling path (in order, each triggered by observed load)

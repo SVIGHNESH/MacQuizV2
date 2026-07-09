@@ -1,0 +1,4 @@
+package: apischema
+generate:
+  models: true
+output: types.gen.go

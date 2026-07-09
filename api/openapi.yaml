@@ -1,6 +1,10 @@
 # MacQuiz v2 API contract (docs/04-api.md).
-# Spec-first: oapi-codegen generates the Go server interfaces and the
-# TypeScript client from this file, so frontend and backend cannot drift.
+# Spec-first: oapi-codegen generates the Go server's request/response types
+# (server/internal/apischema) and the TypeScript client from this file, both
+# checked in CI against this spec. Go handlers/services are not yet migrated
+# to build responses from the generated types (docs/02-architecture.md,
+# ThingsToDo.txt), so today only the type definitions are drift-checked on
+# the Go side, not every handler's actual response shape.
 # Endpoints are added milestone by milestone; today it covers Milestone 0,
 # Milestone 1 (auth flow, admin user provisioning, groups), Milestone 2
 # (quiz authoring: draft quiz CRUD, question CRUD, reorder), Milestone 3
