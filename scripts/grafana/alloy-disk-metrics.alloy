@@ -1,0 +1,41 @@
+// Grafana Alloy config for docs/10-operations.md section 3's "disk usage on
+// the pg volume" alert threshold - the one section-3 threshold that has no
+// app-emitted OTel metric behind it (see scripts/grafana/README.md's "Not
+// covered here"). Alloy's built-in prometheus.exporter.unix component reads
+// the pg_data volume mounted read-only at /pgdata (docker-compose.prod.yml's
+// alloy service), scrapes filesystem stats (default mount/fs-type excludes
+// already drop pseudo-filesystems - node_exporter's exclude regex is RE2,
+// which has no negative-lookahead, so there is no clean way to allowlist
+// only /pgdata here; the alert rule and dashboard instead select it via the
+// `mountpoint="/pgdata"` label, same as any other unwanted series would be
+// filtered), and forwards them through the OTLP bridge to the same Grafana
+// Cloud OTLP gateway the Go app already exports to
+// (MACQUIZ_OTEL_EXPORTER_ENDPOINT), so the resulting series lands in the
+// same Grafana Cloud stack the app's own metrics do and is queryable from
+// the same Prometheus/Mimir datasource dashboard.json and alert-rules.json
+// already use.
+
+prometheus.exporter.unix "pg_volume" {
+	set_collectors = ["filesystem"]
+}
+
+prometheus.scrape "pg_volume" {
+	targets    = prometheus.exporter.unix.pg_volume.targets
+	forward_to = [otelcol.receiver.prometheus.pg_volume.receiver]
+}
+
+otelcol.receiver.prometheus "pg_volume" {
+	output {
+		metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+	}
+}
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+	client {
+		endpoint = "https://" + sys.env("MACQUIZ_OTEL_EXPORTER_ENDPOINT")
+
+		headers = {
+			"Authorization" = sys.env("MACQUIZ_ALLOY_OTLP_AUTH_HEADER"),
+		}
+	}
+}

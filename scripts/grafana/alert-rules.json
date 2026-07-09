@@ -168,6 +168,90 @@
           ]
         }
       ]
+    },
+    {
+      "orgId": 1,
+      "name": "macquiz-disk-usage",
+      "folder": "MacQuiz",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "macquiz-disk-usage-warn",
+          "title": "MacQuiz: pg volume disk usage > 70%",
+          "condition": "B",
+          "for": "5m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "warning" },
+          "annotations": {
+            "summary": "The pg_data volume is more than 70% full (docs/10-operations.md section 3, warn threshold). Reported by the alloy container's node_exporter integration (scripts/grafana/alloy-disk-metrics.alloy), not this app's own OTel metrics.",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/pgdata\"} / node_filesystem_size_bytes{mountpoint=\"/pgdata\"})"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [70] } }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "macquiz-disk-usage-page",
+          "title": "MacQuiz: pg volume disk usage > 85%",
+          "condition": "B",
+          "for": "5m",
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "labels": { "severity": "page" },
+          "annotations": {
+            "summary": "The pg_data volume is more than 85% full (docs/10-operations.md section 3, page threshold) - autosaves and writes are at risk once Postgres runs out of disk. Reported by the alloy container's node_exporter integration (scripts/grafana/alloy-disk-metrics.alloy), not this app's own OTel metrics.",
+            "runbook_url": "docs/10-operations.md#5-incident-quick-reference"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "${DS_PROMETHEUS}",
+              "model": {
+                "refId": "A",
+                "instant": true,
+                "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/pgdata\"} / node_filesystem_size_bytes{mountpoint=\"/pgdata\"})"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  { "evaluator": { "type": "gt", "params": [85] } }
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

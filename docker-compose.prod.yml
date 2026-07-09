@@ -118,6 +118,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Disk-usage alerting for the pg volume (docs/10-operations.md section 3's
+  # last threshold with no app-emitted metric behind it - see
+  # scripts/grafana/README.md's "alloy-disk-metrics.alloy" section). Mounts
+  # the same pg_data volume postgres writes into (read-only) and scrapes its
+  # filesystem stats via Alloy's built-in node_exporter integration,
+  # forwarding them to the same Grafana Cloud OTLP gateway the app/worker
+  # already export to.
+  # MACQUIZ_OTEL_EXPORTER_ENDPOINT unset (the default, telemetry-disabled
+  # state) still starts this container fine; it just fails to export, the
+  # same fail-open posture as the app's own telemetry.
+  alloy:
+    image: grafana/alloy:latest
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--stability.level=public-preview"
+      - "/etc/alloy/config.alloy"
+    env_file: .env.production
+    volumes:
+      - ./scripts/grafana/alloy-disk-metrics.alloy:/etc/alloy/config.alloy:ro
+      - pg_data:/pgdata:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pg_data:
   redis_data:

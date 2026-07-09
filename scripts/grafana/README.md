@@ -24,13 +24,15 @@ then map the `DS_PROMETHEUS` input to the stack's built-in Prometheus/Mimir data
 
 ## alert-rules.json
 
-Grafana unified-alerting provisioning format (`apiVersion: 1`, `groups`/`rules`), covering the two
-thresholds in docs/10 section 3 that are derived from metrics this app actually emits:
+Grafana unified-alerting provisioning format (`apiVersion: 1`, `groups`/`rules`), covering the three
+thresholds in docs/10 section 3 backed by a metric in this Grafana Cloud stack - two from this
+app's own OTel export, one from the `alloy` sidecar container's host metrics (see below):
 
 | Signal | Warn | Page |
 |--------|------|------|
 | Autosave p95 | > 200 ms sustained 5 min | > 300 ms sustained 5 min |
 | Queue lag | > 10 s | > 60 s |
+| Disk usage on pg volume | > 70% | > 85% |
 
 Import: Grafana Cloud UI -> Alerting -> Alert rules -> Export/Import -> Import -> upload this
 file, mapping `DS_PROMETHEUS` the same way as the dashboard. Alternatively, provision via the
@@ -46,22 +48,46 @@ curl -s -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules" \
 Both rule groups target the `MacQuiz` folder; create it first (or let the API create it) before
 importing.
 
+## alloy-disk-metrics.alloy
+
+Disk usage on the pg volume (docs/10 section 3) has no application-emitted OTel metric behind it -
+it's host-level, not a request path `server/internal/telemetry` instruments - so it can't be
+sourced from the app's own export the way autosave p95 and queue lag are. `docker-compose.prod.yml`'s
+`alloy` container closes that gap with a host metrics agent, as this file previously said would be
+needed: it mounts the same `pg_data` named volume postgres writes into (read-only, at `/pgdata`),
+runs Alloy's built-in `prometheus.exporter.unix` node_exporter integration scoped to the
+`filesystem` collector, and bridges the result through `otelcol.receiver.prometheus` to
+`otelcol.exporter.otlphttp`, targeting the exact same Grafana Cloud OTLP gateway
+(`MACQUIZ_OTEL_EXPORTER_ENDPOINT`) the app/worker already export to - so `node_filesystem_avail_bytes`/
+`node_filesystem_size_bytes` land in the same Grafana Cloud stack and Prometheus/Mimir datasource
+`dashboard.json`/`alert-rules.json` already use, queryable by `mountpoint="/pgdata"`. It needs its
+own `MACQUIZ_ALLOY_OTLP_AUTH_HEADER` var (see `.env.production.example`) because Alloy's config
+sets the header name and value as separate fields rather than the combined `name=value` string
+`MACQUIZ_OTEL_EXPORTER_HEADERS` uses - same credential, different shape.
+
+node_exporter's mount-point filter is a Go RE2 regex with no negative-lookahead support, so there
+is no clean way to scope the collector to only `/pgdata`; it reports every non-pseudo filesystem it
+finds (default excludes already drop `/proc`, `/sys`, `/dev`, and the overlay/docker internals) and
+the alert rule/any dashboard query selects `/pgdata` via its `mountpoint` label, the same way an
+unwanted series from any other exporter would be filtered.
+
 ### Not covered here
 
-docs/10 section 3 also lists disk usage on the pg volume and a missing/failed backup job. Neither
-has an application-emitted OTel metric behind it (disk usage is host-level, and the backup job is
-a cron script, not a request path `server/internal/telemetry` instruments), so neither can be a
-Grafana alert rule sourced from this app's own metrics. The backup job is now covered a different
-way: `scripts/backup/backup.sh` pings an optional `BACKUP_HEALTHCHECK_URL` (a Healthchecks.io-style
+A missing/failed backup job is the other docs/10 section 3 threshold with no application-emitted
+metric behind it (it's a cron script, not a request path). It's covered a different way:
+`scripts/backup/backup.sh` pings an optional `BACKUP_HEALTHCHECK_URL` (a Healthchecks.io-style
 dead-man's-switch) on start/success/failure, so a missing or failed nightly dump still pages
-someone - just via that external service's own missed-check alerting, not a Grafana rule. Disk
-usage remains genuinely uncovered: it would need a host metrics agent (e.g. Grafana Alloy's node
-exporter integration), which is separate infrastructure work outside this repo's scope. `/healthz`
-failures (the third row of that table) are already covered by UptimeRobot per docs/10 section 2,
-not Grafana.
+someone - just via that external service's own missed-check alerting, not a Grafana rule.
+`/healthz` failures (the third row of that table) are already covered by UptimeRobot per docs/10
+section 2, not Grafana.
 
-These two JSON files have not been live-imported against a real Grafana Cloud stack (this
-environment has none provisioned); they are hand-verified as syntactically valid JSON against
-Grafana's documented dashboard and alerting-provisioning schemas, matching the metric names and
-thresholds that actually exist in this codebase (`server/internal/telemetry/telemetry.go`,
-docs/10-operations.md section 3) rather than live-tested end to end.
+These JSON/Alloy files have not been live-imported/run against a real Grafana Cloud stack (this
+environment has none provisioned, so nothing here has a real `MACQUIZ_OTEL_EXPORTER_ENDPOINT` to
+export to); the two JSON files are hand-verified as syntactically valid JSON against Grafana's
+documented dashboard and alerting-provisioning schemas, and `alloy-disk-metrics.alloy` has been
+validated with the real `alloy validate`/`alloy fmt` commands and actually run (`alloy run`) via
+Docker against a live `pg_data` volume mounted the same way `docker-compose.prod.yml` mounts it,
+confirming the full scrape -> OTLP-bridge pipeline reports `healthy` and produces
+`node_filesystem_{avail,size}_bytes{mountpoint="/pgdata"}` series - short of a real Grafana Cloud
+account to export the last hop to, this is as close to end-to-end verification as this sandbox
+allows.
