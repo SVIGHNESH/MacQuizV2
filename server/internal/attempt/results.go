@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/authusers"
 )
 
@@ -24,32 +27,74 @@ var ErrResultsNotReleased = errors.New("results are not released")
 
 // ResultQuestion is one snapshot question in the released review: what was
 // asked, what the student answered, the key, and what it earned. Unanswered
-// questions keep Response and IsCorrect null.
-type ResultQuestion struct {
-	ID            string          `json:"id"`
-	Position      int             `json:"position"`
-	Type          string          `json:"type"`
-	Body          json.RawMessage `json:"body"`
-	Options       json.RawMessage `json:"options,omitempty"`
-	Correct       json.RawMessage `json:"correct"`
-	Points        float64         `json:"points"`
-	Response      json.RawMessage `json:"response"`
-	IsCorrect     *bool           `json:"is_correct"`
-	PointsAwarded float64         `json:"points_awarded"`
-}
+// questions keep Response and IsCorrect null. It is a direct alias to the
+// generated apischema.ResultQuestion type (api/openapi.yaml, oapi-codegen -
+// see internal/apischema), so this response can never silently drift from
+// the spec.
+type ResultQuestion = apischema.ResultQuestion
 
 // Result is the released results payload for one attempt. Attempt keeps its
 // usual score-free wire shape; the released score rides at the top level, so
-// no other payload embedding Attempt gains a score field by accident.
-type Result struct {
-	Attempt         Attempt          `json:"attempt"`
-	QuizTitle       string           `json:"quiz_title"`
-	Score           float64          `json:"score"`
-	ScoreOverridden bool             `json:"score_overridden"`
-	MaxScore        float64          `json:"max_score"`
-	Percentile      *float64         `json:"percentile"`
-	ReleasedAt      time.Time        `json:"released_at"`
-	Questions       []ResultQuestion `json:"questions"`
+// no other payload embedding Attempt gains a score field by accident. It is
+// a direct alias to the generated apischema.AttemptResult type.
+type Result = apischema.AttemptResult
+
+// resultFloat32 narrows a float64 score/points value to the float32 the
+// generated wire type expects. These are display-only scores (docs/07
+// section 3), never a financial computation, so float32's ~7 significant
+// digits lose nothing that matters on the wire.
+func resultFloat32(v float64) float32 {
+	return float32(v)
+}
+
+// gradedAnswer is one attempt_answers row, keyed by question id in Result.
+type gradedAnswer struct {
+	response      json.RawMessage
+	isCorrect     *bool
+	pointsAwarded float64
+}
+
+// buildResultQuestion converts one snapshot Question plus its (possibly
+// absent) graded answer into the generated wire shape. Body is a uniform
+// shape across every question type (docs/03-data-model.md); Correct and
+// Response are typed `interface{}` in the spec precisely because their shape
+// depends on the question type, so decoding the stored raw JSON into `any`
+// carries whatever shape it holds without needing a type switch.
+func buildResultQuestion(q Question, ans gradedAnswer, answered bool) (ResultQuestion, error) {
+	id, err := uuid.Parse(q.ID)
+	if err != nil {
+		return ResultQuestion{}, fmt.Errorf("parse question id: %w", err)
+	}
+	var body apischema.QuestionBody
+	if err := json.Unmarshal(q.Body, &body); err != nil {
+		return ResultQuestion{}, fmt.Errorf("decode question body: %w", err)
+	}
+	var options *[]apischema.QuestionOption
+	if len(q.Options) > 0 {
+		var opts []apischema.QuestionOption
+		if err := json.Unmarshal(q.Options, &opts); err != nil {
+			return ResultQuestion{}, fmt.Errorf("decode question options: %w", err)
+		}
+		options = &opts
+	}
+	var correct any
+	if err := json.Unmarshal(q.Correct, &correct); err != nil {
+		return ResultQuestion{}, fmt.Errorf("decode question correct: %w", err)
+	}
+	rq := ResultQuestion{
+		Id: id, Position: q.Position, Type: apischema.ResultQuestionType(q.Type),
+		Body: body, Options: options, Correct: correct, Points: resultFloat32(q.Points),
+	}
+	if answered {
+		var response any
+		if err := json.Unmarshal(ans.response, &response); err != nil {
+			return ResultQuestion{}, fmt.Errorf("decode answer response: %w", err)
+		}
+		rq.Response = &response
+		rq.IsCorrect = ans.isCorrect
+		rq.PointsAwarded = resultFloat32(ans.pointsAwarded)
+	}
+	return rq, nil
 }
 
 // Result serves GET /attempts/:id/result. Owner-only (anyone else reads
@@ -69,14 +114,14 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 		return Result{}, ErrNotFound
 	}
 
-	res := Result{Attempt: a}
+	res := Result{Attempt: a.Attempt}
 	var releasedAt *time.Time
 	var shuffle bool
 	var questionsJSON []byte
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT z.title, z.results_released_at, z.shuffle_questions, v.questions
 		 FROM quizzes z JOIN quiz_versions v ON v.quiz_id = z.id AND v.version = $2
-		 WHERE z.id = $1`, a.QuizID, a.QuizVersion).Scan(
+		 WHERE z.id = $1`, a.QuizId, a.QuizVersion).Scan(
 		&res.QuizTitle, &releasedAt, &shuffle, &questionsJSON); err != nil {
 		return Result{}, fmt.Errorf("load quiz for result: %w", err)
 	}
@@ -94,7 +139,7 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 		`SELECT coalesce(score, 0), score_overridden_at FROM attempts WHERE id = $1`, id).Scan(&score, &overriddenAt); err != nil {
 		return Result{}, fmt.Errorf("load score: %w", err)
 	}
-	res.Score = score
+	res.Score = resultFloat32(score)
 	res.ScoreOverridden = overriddenAt != nil
 
 	questions, err := decodeSnapshot(questionsJSON)
@@ -102,14 +147,9 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 		return Result{}, err
 	}
 	if shuffle {
-		shuffleForAttempt(questions, a.ID)
+		shuffleForAttempt(questions, a.Id.String())
 	}
 
-	type gradedAnswer struct {
-		response      json.RawMessage
-		isCorrect     *bool
-		pointsAwarded float64
-	}
 	answers := map[string]gradedAnswer{}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT question_id, response, coalesce(is_correct, false),
@@ -134,21 +174,22 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 	}
 
 	res.Questions = make([]ResultQuestion, len(questions))
+	var maxScore float64
 	for i, q := range questions {
-		rq := ResultQuestion{
-			ID: q.ID, Position: q.Position, Type: q.Type, Body: q.Body,
-			Options: q.Options, Correct: q.Correct, Points: q.Points,
-		}
-		if ans, answered := answers[q.ID]; answered {
-			rq.Response = ans.response
-			rq.IsCorrect = ans.isCorrect
-			rq.PointsAwarded = ans.pointsAwarded
+		ans, answered := answers[q.ID]
+		rq, err := buildResultQuestion(q, ans, answered)
+		if err != nil {
+			return Result{}, err
 		}
 		res.Questions[i] = rq
-		res.MaxScore += q.Points
+		maxScore += q.Points
 	}
+	res.MaxScore = resultFloat32(maxScore)
 
-	res.Percentile = quizPercentile(ctx, s.db, a.QuizID, res.Score, res.MaxScore)
+	if pct := quizPercentile(ctx, s.db, a.QuizId.String(), score, maxScore); pct != nil {
+		p := resultFloat32(*pct)
+		res.Percentile = &p
+	}
 	return res, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/audit"
 	"macquiz/server/internal/authusers"
 )
@@ -52,21 +53,15 @@ var (
 // "server rejects writes where now() > deadline_at + 5 s grace").
 const writeGrace = 5 * time.Second
 
-// Attempt is the student-facing attempt shape. StudentID stays internal (it
-// is always the caller) and score is withheld until the results-release
-// policy lands with grading.
+// Attempt is the student-facing attempt shape. It embeds the generated
+// apischema.Attempt type (api/openapi.yaml, oapi-codegen - see
+// internal/apischema), so this response can never silently drift from the
+// spec. StudentID rides alongside, tagged `json:"-"`, since it is
+// server-internal only (it is always the caller) - the spec omits it, and
+// score is withheld until the results-release policy lands with grading.
 type Attempt struct {
-	ID             string     `json:"id"`
-	QuizID         string     `json:"quiz_id"`
-	StudentID      string     `json:"-"`
-	AttemptNo      int        `json:"attempt_no"`
-	QuizVersion    int        `json:"quiz_version"`
-	StartedAt      time.Time  `json:"started_at"`
-	DeadlineAt     time.Time  `json:"deadline_at"`
-	SubmittedAt    *time.Time `json:"submitted_at"`
-	SubmitKind     *string    `json:"submit_kind"`
-	Status         string     `json:"status"`
-	ViolationCount int        `json:"violation_count"`
+	apischema.Attempt
+	StudentID string `json:"-"`
 }
 
 // Question is one snapshot question as the player may see it. Correct is
@@ -154,9 +149,14 @@ const attemptColumns = `id, quiz_id, student_id, attempt_no, quiz_version,
 
 func scanAttempt(scan func(dest ...any) error) (Attempt, error) {
 	var a Attempt
-	err := scan(&a.ID, &a.QuizID, &a.StudentID, &a.AttemptNo, &a.QuizVersion,
-		&a.StartedAt, &a.DeadlineAt, &a.SubmittedAt, &a.SubmitKind, &a.Status,
+	var submitKind sql.NullString
+	err := scan(&a.Id, &a.QuizId, &a.StudentID, &a.AttemptNo, &a.QuizVersion,
+		&a.StartedAt, &a.DeadlineAt, &a.SubmittedAt, &submitKind, &a.Status,
 		&a.ViolationCount)
+	if submitKind.Valid {
+		sk := apischema.AttemptSubmitKind(submitKind.String)
+		a.SubmitKind = &sk
+	}
 	return a, err
 }
 
@@ -253,15 +253,15 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 		}
 		// The disappearing student (docs/06 section 2): the timer that will
 		// auto-submit this attempt commits with the attempt itself.
-		if err := s.enqueueDeadlineJob(ctx, tx, a.ID, a.DeadlineAt); err != nil {
+		if err := s.enqueueDeadlineJob(ctx, tx, a.Id.String(), a.DeadlineAt); err != nil {
 			return Detail{}, false, err
 		}
 		// Persist first (docs/05 section 1): the started delta commits with the
 		// attempt row, so the dashboard can move this student to "in progress"
 		// the moment the socket relays it. A resume emits nothing - the row is
 		// already on the roster from its original start.
-		if err := appendEvent(ctx, tx, a.ID, eventStarted, startedPayload{
-			StudentID: a.StudentID, AttemptID: a.ID, DeadlineAt: a.DeadlineAt,
+		if err := appendEvent(ctx, tx, a.Id.String(), eventStarted, startedPayload{
+			StudentID: a.StudentID, AttemptID: a.Id.String(), DeadlineAt: a.DeadlineAt,
 		}); err != nil {
 			return Detail{}, false, err
 		}
@@ -278,8 +278,8 @@ func (s *Service) Start(ctx context.Context, actor authusers.User, quizID string
 	// relay the same delta to the live dashboard. A resume republishes nothing -
 	// the row it resumed is already on the roster from its original start.
 	if !resumed {
-		s.events.Publish(ctx, a.QuizID, a.ID, eventStarted, startedPayload{
-			StudentID: a.StudentID, AttemptID: a.ID, DeadlineAt: a.DeadlineAt,
+		s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventStarted, startedPayload{
+			StudentID: a.StudentID, AttemptID: a.Id.String(), DeadlineAt: a.DeadlineAt,
 		})
 	}
 	return detail, resumed, nil
@@ -416,7 +416,7 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 	err = tx.QueryRowContext(ctx,
 		`SELECT ord FROM quiz_versions v, jsonb_array_elements(v.questions) WITH ORDINALITY elems(q, ord)
 		 WHERE v.quiz_id = $1 AND v.version = $2 AND elems.q->>'id' = $3`,
-		a.QuizID, a.QuizVersion, questionID).Scan(&ordinal)
+		a.QuizId, a.QuizVersion, questionID).Scan(&ordinal)
 	if err == sql.ErrNoRows {
 		return Answer{}, time.Time{}, ErrNotFound
 	}
@@ -457,7 +457,7 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 	}
 	// Publish second: the progress row is durable, so relay the answered-count
 	// and cursor delta.
-	s.events.Publish(ctx, a.QuizID, attemptID, eventProgress, progressPayload{
+	s.events.Publish(ctx, a.QuizId.String(), attemptID, eventProgress, progressPayload{
 		CurrentQuestion: &ordinal,
 		AnsweredCount:   answered,
 	})
@@ -486,7 +486,7 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 	// Submission enqueues the grading job in the same transaction (docs/04
 	// section 4); a repeat submit of a terminal attempt enqueues nothing.
 	if freshlySubmitted {
-		if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+		if err := s.enqueueGradeJob(ctx, tx, a.Id.String()); err != nil {
 			return Attempt{}, err
 		}
 	}
@@ -497,7 +497,7 @@ func (s *Service) SubmitManual(ctx context.Context, actor authusers.User, attemp
 	// payload (a repeat submit returns nil), so the submitted delta relays
 	// exactly once per attempt, mirroring the single appendEvent it committed.
 	if submitted != nil {
-		s.events.Publish(ctx, a.QuizID, a.ID, eventSubmitted, *submitted)
+		s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventSubmitted, *submitted)
 	}
 	return a, nil
 }
@@ -539,19 +539,19 @@ func submit(ctx context.Context, tx *sql.Tx, a Attempt, kind string) (Attempt, *
 		`UPDATE attempts
 		 SET status = 'submitted', submit_kind = $1, submitted_at = now()
 		 WHERE id = $2 AND status = 'in_progress'
-		 RETURNING `+attemptColumns, kind, a.ID).Scan)
+		 RETURNING `+attemptColumns, kind, a.Id).Scan)
 	if err != nil {
 		return Attempt{}, nil, fmt.Errorf("mark submitted: %w", err)
 	}
 	// Only a real in_progress -> submitted flip reaches here (the terminal
 	// cases returned above), so the submitted delta is emitted exactly once per
 	// attempt, in the same transaction as the flip.
-	answered, err := countAnswered(ctx, tx, a.ID)
+	answered, err := countAnswered(ctx, tx, a.Id.String())
 	if err != nil {
 		return Attempt{}, nil, err
 	}
 	payload := submittedPayload{SubmitKind: kind, AnsweredCount: answered}
-	if err := appendEvent(ctx, tx, a.ID, eventSubmitted, payload); err != nil {
+	if err := appendEvent(ctx, tx, a.Id.String(), eventSubmitted, payload); err != nil {
 		return Attempt{}, nil, err
 	}
 	return a, &payload, nil
@@ -589,11 +589,11 @@ func (s *Service) Kick(ctx context.Context, actor authusers.User, attemptID, rea
 	// (or a kick the auto-submit beat) touches neither, so the audit_log carries
 	// exactly one row per attempt actually removed.
 	if freshlyKicked {
-		if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+		if err := s.enqueueGradeJob(ctx, tx, a.Id.String()); err != nil {
 			return Attempt{}, err
 		}
-		if err := audit.Write(ctx, tx, actor.ID, "attempt.kicked", "attempt", a.ID,
-			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.kicked", "attempt", a.Id.String(),
+			map[string]any{"quiz_id": a.QuizId, "student_id": a.StudentID, "reason": reason}); err != nil {
 			return Attempt{}, err
 		}
 	}
@@ -604,7 +604,7 @@ func (s *Service) Kick(ctx context.Context, actor authusers.User, attemptID, rea
 	// so the kicked delta relays exactly once per attempt, mirroring the single
 	// appendEvent it committed.
 	if kicked != nil {
-		s.events.Publish(ctx, a.QuizID, a.ID, eventKicked, *kicked)
+		s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventKicked, *kicked)
 	}
 	return a, nil
 }
@@ -630,12 +630,12 @@ func kick(ctx context.Context, tx *sql.Tx, a Attempt, kickedBy, reason string) (
 		 SET status = 'kicked', submit_kind = 'kicked', submitted_at = now(),
 		     kicked_by = $1, kick_reason = $2
 		 WHERE id = $3 AND status = 'in_progress'
-		 RETURNING `+attemptColumns, kickedBy, reason, a.ID).Scan)
+		 RETURNING `+attemptColumns, kickedBy, reason, a.Id).Scan)
 	if err != nil {
 		return Attempt{}, nil, fmt.Errorf("mark kicked: %w", err)
 	}
 	payload := kickedPayload{KickedBy: kickedBy, Reason: reason}
-	if err := appendEvent(ctx, tx, a.ID, eventKicked, payload); err != nil {
+	if err := appendEvent(ctx, tx, a.Id.String(), eventKicked, payload); err != nil {
 		return Attempt{}, nil, err
 	}
 	return a, &payload, nil
@@ -674,7 +674,7 @@ func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, 
 	// concurrent double readmit (whichever UPDATE wins flips exactly one row).
 	res, err := tx.ExecContext(ctx,
 		`UPDATE attempts SET readmitted_at = now()
-		 WHERE id = $1 AND status = 'kicked' AND readmitted_at IS NULL`, a.ID)
+		 WHERE id = $1 AND status = 'kicked' AND readmitted_at IS NULL`, a.Id)
 	if err != nil {
 		return Attempt{}, fmt.Errorf("mark readmitted: %w", err)
 	}
@@ -685,8 +685,8 @@ func (s *Service) Readmit(ctx context.Context, actor authusers.User, attemptID, 
 	// A real grant (one row flipped) is audited exactly once; a repeat readmit
 	// (already marked) touches nothing, so audit_log carries one row per slot.
 	if rows == 1 {
-		if err := audit.Write(ctx, tx, actor.ID, "attempt.readmitted", "attempt", a.ID,
-			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.readmitted", "attempt", a.Id.String(),
+			map[string]any{"quiz_id": a.QuizId, "student_id": a.StudentID, "reason": reason}); err != nil {
 			return Attempt{}, err
 		}
 	}
@@ -732,7 +732,7 @@ func (s *Service) OverrideScore(ctx context.Context, actor authusers.User, attem
 	res, err := tx.ExecContext(ctx,
 		`UPDATE attempts SET score = 0, score_overridden_at = now(), score_overridden_by = $1
 		 WHERE id = $2 AND status = 'graded' AND submit_kind = 'kicked' AND score_overridden_at IS NULL`,
-		actor.ID, a.ID)
+		actor.ID, a.Id)
 	if err != nil {
 		return Attempt{}, fmt.Errorf("override score: %w", err)
 	}
@@ -741,8 +741,8 @@ func (s *Service) OverrideScore(ctx context.Context, actor authusers.User, attem
 		return Attempt{}, fmt.Errorf("override score rows affected: %w", err)
 	}
 	if rows == 1 {
-		if err := audit.Write(ctx, tx, actor.ID, "attempt.score_overridden", "attempt", a.ID,
-			map[string]any{"quiz_id": a.QuizID, "student_id": a.StudentID, "reason": reason}); err != nil {
+		if err := audit.Write(ctx, tx, actor.ID, "attempt.score_overridden", "attempt", a.Id.String(),
+			map[string]any{"quiz_id": a.QuizId, "student_id": a.StudentID, "reason": reason}); err != nil {
 			return Attempt{}, err
 		}
 	}
@@ -795,7 +795,7 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 
 	// The policy is read from the version this attempt pinned, so a mid-window
 	// republish can never change what this attempt is judged against.
-	policy, err := guardrailPolicy(ctx, tx, a.QuizID, a.QuizVersion, vtype)
+	policy, err := guardrailPolicy(ctx, tx, a.QuizId.String(), a.QuizVersion, vtype)
 	if err != nil {
 		return Attempt{}, false, err
 	}
@@ -812,7 +812,7 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 		if err := tx.QueryRowContext(ctx,
 			`UPDATE attempts SET violation_count = violation_count + 1
 			 WHERE id = $1 AND status = 'in_progress'
-			 RETURNING violation_count`, a.ID).Scan(&newCount); err != nil {
+			 RETURNING violation_count`, a.Id).Scan(&newCount); err != nil {
 			return Attempt{}, false, fmt.Errorf("increment violation count: %w", err)
 		}
 	}
@@ -823,7 +823,7 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 	// before any ladder-driven submitted event, so the append-only log reads in
 	// causal order (the violation, then the auto-submit it triggered).
 	payload := violationPayload{Type: vtype, DurationMs: durationMs, ViolationCount: newCount}
-	if err := appendEvent(ctx, tx, a.ID, eventViolation, payload); err != nil {
+	if err := appendEvent(ctx, tx, a.Id.String(), eventViolation, payload); err != nil {
 		return Attempt{}, false, err
 	}
 
@@ -840,7 +840,7 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 	// every later report a terminal-state 409.
 	var submittedPay *submittedPayload
 	if counted {
-		action, maxViolations, err := guardrailLadder(ctx, tx, a.QuizID, a.QuizVersion)
+		action, maxViolations, err := guardrailLadder(ctx, tx, a.QuizId.String(), a.QuizVersion)
 		if err != nil {
 			return Attempt{}, false, err
 		}
@@ -854,7 +854,7 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 			// (submittedPay != nil) must enqueue the grade job in this same
 			// transaction, or the attempt lands 'submitted' and never grades.
 			if submittedPay != nil {
-				if err := s.enqueueGradeJob(ctx, tx, a.ID); err != nil {
+				if err := s.enqueueGradeJob(ctx, tx, a.Id.String()); err != nil {
 					return Attempt{}, false, err
 				}
 			}
@@ -867,9 +867,9 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 	// Publish second: relay the violation delta so the monitor badge increments
 	// (counted) or the type shows on hover (warn/logged), then the submitted
 	// delta if the ladder auto-submitted, in the causal order they committed.
-	s.events.Publish(ctx, a.QuizID, a.ID, eventViolation, payload)
+	s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventViolation, payload)
 	if submittedPay != nil {
-		s.events.Publish(ctx, a.QuizID, a.ID, eventSubmitted, *submittedPay)
+		s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventSubmitted, *submittedPay)
 	}
 	return a, counted, nil
 }
@@ -959,7 +959,7 @@ func (s *Service) moderatableForUpdate(ctx context.Context, tx *sql.Tx, actor au
 	}
 	var ownerID string
 	if err := tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM quizzes WHERE id = $1`, a.QuizID).Scan(&ownerID); err != nil {
+		`SELECT owner_id FROM quizzes WHERE id = $1`, a.QuizId).Scan(&ownerID); err != nil {
 		return Attempt{}, fmt.Errorf("load quiz owner: %w", err)
 	}
 	if !authusers.Can(actor, authusers.ActionAttemptModerate, authusers.Resource{OwnerID: ownerID}) {
@@ -1027,7 +1027,7 @@ func (s *Service) buildDetail(ctx context.Context, db querier, a Attempt) (Detai
 	var shuffle bool
 	if err := db.QueryRowContext(ctx,
 		`SELECT title, shuffle_questions, now() FROM quizzes WHERE id = $1`,
-		a.QuizID).Scan(&d.QuizTitle, &shuffle, &d.Now); err != nil {
+		a.QuizId).Scan(&d.QuizTitle, &shuffle, &d.Now); err != nil {
 		return Detail{}, fmt.Errorf("load quiz: %w", err)
 	}
 
@@ -1037,14 +1037,14 @@ func (s *Service) buildDetail(ctx context.Context, db querier, a Attempt) (Detai
 	// falls back to the query buildDetail always ran before this cache
 	// existed, populating the cache for the next reader.
 	var questionsJSON, guardrails []byte
-	questionsJSON, guardrails, ok := s.snapshots.Get(ctx, a.QuizID, a.QuizVersion)
+	questionsJSON, guardrails, ok := s.snapshots.Get(ctx, a.QuizId.String(), a.QuizVersion)
 	if !ok {
 		if err := db.QueryRowContext(ctx,
 			`SELECT questions, guardrails FROM quiz_versions WHERE quiz_id = $1 AND version = $2`,
-			a.QuizID, a.QuizVersion).Scan(&questionsJSON, &guardrails); err != nil {
+			a.QuizId, a.QuizVersion).Scan(&questionsJSON, &guardrails); err != nil {
 			return Detail{}, fmt.Errorf("load snapshot: %w", err)
 		}
-		s.snapshots.Set(ctx, a.QuizID, a.QuizVersion, questionsJSON, guardrails)
+		s.snapshots.Set(ctx, a.QuizId.String(), a.QuizVersion, questionsJSON, guardrails)
 	}
 	d.Guardrails = guardrails
 	questions, err := decodeSnapshot(questionsJSON)
@@ -1052,13 +1052,13 @@ func (s *Service) buildDetail(ctx context.Context, db querier, a Attempt) (Detai
 		return Detail{}, err
 	}
 	if shuffle {
-		shuffleForAttempt(questions, a.ID)
+		shuffleForAttempt(questions, a.Id.String())
 	}
 	d.Questions = questions
 
 	rows, err := db.QueryContext(ctx,
 		`SELECT question_id, response, time_spent_ms, saved_at
-		 FROM attempt_answers WHERE attempt_id = $1 ORDER BY saved_at, question_id`, a.ID)
+		 FROM attempt_answers WHERE attempt_id = $1 ORDER BY saved_at, question_id`, a.Id)
 	if err != nil {
 		return Detail{}, fmt.Errorf("load answers: %w", err)
 	}
