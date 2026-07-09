@@ -1,13 +1,17 @@
 package quiz_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +72,26 @@ func TestValidateImportFlow(t *testing.T) {
 		}
 		if rowCount != 2 {
 			t.Errorf("row_count = %d, want 2", rowCount)
+		}
+		if report != nil {
+			t.Errorf("error_report = %s, want nil", report)
+		}
+	})
+
+	t.Run("clean xlsx file goes ready", func(t *testing.T) {
+		writeImportFileBytes(t, storage.Dir, "clean.xlsx", buildXLSXFixture(t))
+		importID := seedImport(t, ctx, sqlDB, quizID, "owner@school.test", "clean.xlsx")
+
+		if err := quiz.ValidateImport(ctx, sqlDB, storage, importID); err != nil {
+			t.Fatalf("ValidateImport: %v", err)
+		}
+
+		status, rowCount, report := loadImport(t, ctx, sqlDB, importID)
+		if status != "ready" {
+			t.Errorf("status = %q, want ready", status)
+		}
+		if rowCount != 1 {
+			t.Errorf("row_count = %d, want 1", rowCount)
 		}
 		if report != nil {
 			t.Errorf("error_report = %s, want nil", report)
@@ -187,7 +211,60 @@ func loadImport(t *testing.T, ctx context.Context, sqlDB *sql.DB, importID strin
 
 func writeImportFile(t *testing.T, dir, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+	writeImportFileBytes(t, dir, name, []byte(content))
+}
+
+func writeImportFileBytes(t *testing.T, dir, name string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), content, 0o644); err != nil {
 		t.Fatalf("write import file %s: %v", name, err)
 	}
+}
+
+// buildXLSXFixture builds a minimal real .xlsx (the shared-strings table
+// plus a single-sheet worksheet, the two XML parts quiz.ParseImportXLSX
+// reads) holding one valid truefalse row, to prove the worker's real
+// dispatch path (ValidateImport -> storage.Open -> quiz.ParseImportFile ->
+// quiz.ParseImportXLSX) end to end - the more detailed cell-type/format
+// coverage lives in importxlsx_test.go's unit tests.
+func buildXLSXFixture(t *testing.T) []byte {
+	t.Helper()
+	strs := []string{
+		"type", "question", "option_a", "option_b", "option_c", "option_d",
+		"option_e", "option_f", "correct", "points", "truefalse", "Sky is blue", "true",
+	}
+	var sst strings.Builder
+	fmt.Fprintf(&sst, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="%d" uniqueCount="%d">`, len(strs), len(strs))
+	for _, s := range strs {
+		fmt.Fprintf(&sst, `<si><t>%s</t></si>`, s)
+	}
+	sst.WriteString(`</sst>`)
+
+	worksheet := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>` +
+		`<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>` +
+		`<c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c><c r="E1" t="s"><v>4</v></c>` +
+		`<c r="F1" t="s"><v>5</v></c><c r="G1" t="s"><v>6</v></c><c r="H1" t="s"><v>7</v></c>` +
+		`<c r="I1" t="s"><v>8</v></c><c r="J1" t="s"><v>9</v></c></row>` +
+		`<row r="2"><c r="A2" t="s"><v>10</v></c><c r="B2" t="s"><v>11</v></c><c r="I2" t="s"><v>12</v></c></row>` +
+		`</sheetData></worksheet>`
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range map[string]string{
+		"xl/worksheets/sheet1.xml": worksheet,
+		"xl/sharedStrings.xml":     sst.String(),
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
 }

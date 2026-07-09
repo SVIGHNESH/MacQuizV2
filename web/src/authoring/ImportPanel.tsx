@@ -13,10 +13,10 @@ type Phase =
   | { kind: 'failed'; imp: Import }
 
 /**
- * The Milestone 7 bulk-import review UI (docs/07 section 2): upload a CSV,
- * poll the import until the worker resolves it to ready/failed, then either
- * commit the validated rows as questions or show the row-level error report
- * so the teacher can fix the file and try again.
+ * The Milestone 7 bulk-import review UI (docs/07 section 2): upload a CSV or
+ * XLSX template, poll the import until the worker resolves it to
+ * ready/failed, then either commit the validated rows as questions or show
+ * the row-level error report so the teacher can fix the file and try again.
  */
 export default function ImportPanel({
   quizId,
@@ -59,10 +59,17 @@ export default function ImportPanel({
   const upload = async (file: File) => {
     setError(null)
     setPhase({ kind: 'uploading' })
+    // The server tells CSV and XLSX apart by sniffing the file's own bytes
+    // (quiz.ParseImportFile), not this header - it only needs to be a
+    // generic binary-safe type so no intermediary tries to re-encode the
+    // upload as text.
+    const contentType = file.name.toLowerCase().endsWith('.xlsx')
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'text/csv'
     const result = await api
       .POST('/api/v1/quizzes/{id}/imports', {
         params: { path: { id: quizId } },
-        headers: { 'Content-Type': 'text/csv' },
+        headers: { 'Content-Type': contentType },
         bodySerializer: (body) => body,
         body: file as unknown as string,
       })
@@ -109,7 +116,7 @@ export default function ImportPanel({
 
   return (
     <section className="panel import-panel" aria-label="Bulk import">
-      <span className="field-label">Bulk import (CSV)</span>
+      <span className="field-label">Bulk import (CSV or XLSX)</span>
 
       {phase.kind === 'idle' && (
         <div className="import-upload-row">
@@ -118,12 +125,12 @@ export default function ImportPanel({
             type="button"
             onClick={() => fileInput.current?.click()}
           >
-            Upload CSV
+            Upload CSV or XLSX
           </button>
           <input
             ref={fileInput}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             hidden
             onChange={onPick}
           />

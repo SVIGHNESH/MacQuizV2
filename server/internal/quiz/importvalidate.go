@@ -36,17 +36,12 @@ type ImportRow struct {
 	Input QuestionInput
 }
 
-// ParseImportCSV parses a bulk-upload template (docs/07 section 2 step 3)
-// into normalized question inputs plus a per-row/column error report.
-// Nothing is written to the database: a non-empty error report means the
-// import cannot commit and the teacher must fix and re-upload.
-//
-// The returned error is non-nil only when the file is too malformed to
-// review at all (unreadable CSV structure, missing a required column) -
-// every per-row problem (unknown type, missing correct answer, correct
-// answer not among the options, duplicate question text, malformed points)
-// surfaces as an ImportRowError instead, matching the "review" step's
-// contract of showing failing rows inline rather than rejecting the upload.
+// ParseImportCSV parses a bulk-upload template saved as .csv (docs/07
+// section 2 step 1) into normalized question inputs plus a per-row/column
+// error report; parseImportRecords holds every validation rule shared with
+// ParseImportXLSX. Nothing is written to the database: a non-empty error
+// report means the import cannot commit and the teacher must fix and
+// re-upload.
 func ParseImportCSV(r io.Reader) ([]ImportRow, []ImportRowError, error) {
 	reader := csv.NewReader(r)
 	reader.TrimLeadingSpace = true
@@ -56,6 +51,31 @@ func ParseImportCSV(r io.Reader) ([]ImportRow, []ImportRowError, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("read header: %w", err)
 	}
+	var records [][]string
+	for {
+		rec, rerr := reader.Read()
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return nil, nil, fmt.Errorf("row %d: %w", len(records)+1, rerr)
+		}
+		records = append(records, rec)
+	}
+	return parseImportRecords(header, records)
+}
+
+// parseImportRecords holds every per-row/column validation rule from docs/07
+// section 2 step 3, shared by ParseImportCSV and ParseImportXLSX so the two
+// formats can never silently diverge on what counts as a valid row.
+//
+// The returned error is non-nil only when the file is too malformed to
+// review at all (missing a required column) - every per-row problem
+// (unknown type, missing correct answer, correct answer not among the
+// options, duplicate question text, malformed points) surfaces as an
+// ImportRowError instead, matching the "review" step's contract of showing
+// failing rows inline rather than rejecting the upload.
+func parseImportRecords(header []string, records [][]string) ([]ImportRow, []ImportRowError, error) {
 	col := make(map[string]int, len(header))
 	for i, h := range header {
 		col[strings.ToLower(strings.TrimSpace(h))] = i
@@ -78,14 +98,7 @@ func ParseImportCSV(r io.Reader) ([]ImportRow, []ImportRowError, error) {
 	seenQuestions := map[string]int{} // normalized question text -> first row
 
 	rowNum := 0
-	for {
-		rec, rerr := reader.Read()
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			return nil, nil, fmt.Errorf("row %d: %w", rowNum+1, rerr)
-		}
+	for _, rec := range records {
 		rowNum++
 		if rowNum > MaxImportRows {
 			errs = append(errs, ImportRowError{

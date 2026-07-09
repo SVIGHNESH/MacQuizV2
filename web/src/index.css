@@ -42,7 +42,7 @@ body {
   padding: 10px 16px;
   border-radius: var(--radius-button);
   background: var(--color-ink);
-  color: #fff;
+  color: var(--color-surface);
   font: var(--text-secondary);
   box-shadow: var(--shadow-floating);
   animation: toast-in var(--motion-entrance);

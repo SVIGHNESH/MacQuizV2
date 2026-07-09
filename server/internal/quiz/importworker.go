@@ -49,7 +49,7 @@ func ValidateImport(ctx context.Context, db *sql.DB, storage ImportStorage, impo
 	}
 	defer f.Close()
 
-	rows, rowErrors, err := ParseImportCSV(f)
+	rows, rowErrors, err := ParseImportFile(f)
 	if err != nil {
 		return failImport(ctx, db, importID, err.Error())
 	}
