@@ -10,7 +10,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -57,7 +59,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 	// request-scoped deadline is wrong for a long-lived WebSocket - chi's
 	// Timeout also writes a 504 once the handler returns, which on a hijacked
 	// socket is a "WriteHeader on hijacked connection" error on every close.
-	r.Use(middleware.RealIP)
+	r.Use(clientIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -112,6 +114,37 @@ func New(build BuildInfo, deps Deps) http.Handler {
 	})
 
 	return r
+}
+
+// clientIP overwrites r.RemoteAddr with the caller's real IP (port
+// stripped), so anything keying on RemoteAddr - today, the per-IP login
+// rate limiter (docs/08-security.md section 4) - gets one stable value per
+// client instead of a fresh key per TCP connection.
+//
+// chi's own middleware.RealIP is deprecated: it trusts the leftmost
+// X-Forwarded-For entry, which the client sets and can freely rewrite on
+// every request, letting anyone bypass the login rate limit at will
+// (GHSA-3fxj-6jh8-hvhx). Production sits behind Cloudflare
+// (docs/09-deployment.md section 4), which always overwrites
+// CF-Connecting-IP on every request it proxies - a client cannot forge it
+// once traffic reaches Cloudflare's edge. Local/dev has no proxy in front
+// (docker-compose hits the app directly), so this falls back to the bare
+// TCP peer address in that case.
+func clientIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.Header.Get("CF-Connecting-IP")
+		if ip == "" {
+			if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				ip = host
+			} else {
+				ip = r.RemoteAddr
+			}
+		}
+		if addr, err := netip.ParseAddr(ip); err == nil {
+			r.RemoteAddr = addr.String()
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type healthResponse struct {

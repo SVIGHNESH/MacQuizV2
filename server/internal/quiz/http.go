@@ -210,8 +210,7 @@ func (h *Handler) handleUpdateQuiz(w http.ResponseWriter, r *http.Request) {
 		req.Title = &trimmed
 	}
 
-	q, err := h.svc.UpdateQuiz(r.Context(), actor, id, QuizPatch{
-		Title: req.Title, MaxAttempts: req.MaxAttempts, ShuffleQuestions: req.ShuffleQuestions})
+	q, err := h.svc.UpdateQuiz(r.Context(), actor, id, QuizPatch(req))
 	if h.writeQuizError(w, "update quiz", err, "no such quiz") {
 		return
 	}

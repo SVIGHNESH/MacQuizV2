@@ -204,7 +204,7 @@ func TestAuthoringFlowE2E(t *testing.T) {
 		}
 		for name, methodPath := range paths {
 			var method, path string
-			fmt.Sscanf(methodPath, "%s %s", &method, &path)
+			_, _ = fmt.Sscanf(methodPath, "%s %s", &method, &path)
 			status, body, _ := itest.Call(t, server, method, path, bodies[name], teacher2)
 			if status != 404 || body["code"] != "NOT_FOUND" {
 				t.Fatalf("teacher2 %s = %d %v, want 404 NOT_FOUND", name, status, body)

@@ -1,0 +1,30 @@
+version: "2"
+
+# docs/12-implementation-plan.md Milestone 0: "CI running golangci-lint,
+# go test, and frontend lint/typecheck on PR." CI (.github/workflows/ci.yml)
+# already runs gofmt+go vet+go test+go build; this adds the named linter on
+# top of that, using the default linter set (errcheck, govet, ineffassign,
+# staticcheck, unused).
+linters:
+  settings:
+    errcheck:
+      # Every entry below is a defer'd best-effort cleanup call (closing a
+      # DB handle/rows/file/socket/pub-sub subscription that is already
+      # being torn down, or shutting down telemetry on process exit) where
+      # there is nothing meaningful to do with a failure - the resource is
+      # going away either way. Real, actionable errors elsewhere are left
+      # for errcheck to catch.
+      exclude-functions:
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+        - (*os.File).Close
+        - os.Remove
+        - (io.Closer).Close
+        - (*macquiz/server/internal/telemetry.Provider).Shutdown
+        - (*macquiz/server/internal/realtime.Publisher).Close
+        - (macquiz/server/internal/realtime.Subscriber).Close
+        - (macquiz/server/internal/realtime.Subscription).Close
+        - (*macquiz/server/internal/realtime.SnapshotCache).Close
+        - (*github.com/coder/websocket.Conn).CloseNow
+        - (*github.com/redis/go-redis/v9.baseClient).Close
+        - (*github.com/redis/go-redis/v9.PubSub).Close

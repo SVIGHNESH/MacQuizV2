@@ -132,8 +132,7 @@ func (h *Handler) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, password, err := h.svc.UpdateUser(r.Context(), actor, id,
-		UserPatch{FullName: req.FullName, Status: req.Status, ResetPassword: req.ResetPassword})
+	u, password, err := h.svc.UpdateUser(r.Context(), actor, id, UserPatch(req))
 	if errors.Is(err, ErrNotFound) {
 		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such user")
 		return
