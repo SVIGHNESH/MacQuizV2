@@ -168,12 +168,22 @@
   background: currentcolor;
 }
 
+/* The label takes the readable on-tint text colour; the dot takes the
+   brighter base of the same trio, so the marker reads at 7px. */
 .status-dot-active {
   color: var(--color-success-on-tint);
 }
 
+.status-dot-active::before {
+  background: var(--color-success-dot);
+}
+
 .status-dot-pending {
   color: var(--color-warning-on-tint);
+}
+
+.status-dot-pending::before {
+  background: var(--color-warning);
 }
 
 .status-dot-inactive {

@@ -218,15 +218,18 @@ async function authoringFlow(browser) {
     'the draft status chip reads Draft',
   )
 
-  // Add all four question types.
-  for (const label of [
-    'Single choice',
-    'Multi select',
-    'True / false',
-    'Short answer',
-  ]) {
+  // Add all four question types. Each click is a POST, so wait for the card
+  // it creates rather than for a fixed delay - under a full-suite run the
+  // server is busy enough that 300 ms was not always enough, and the next
+  // click then landed before the previous question existed.
+  const TYPES = ['Single choice', 'Multi select', 'True / false', 'Short answer']
+  for (const [index, label] of TYPES.entries()) {
     await clickButtonWithText(page, label, '.add-question-panel')
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    await page.waitForFunction(
+      (want) => document.querySelectorAll('.question-card').length === want,
+      { timeout: 8000 },
+      index + 1,
+    )
   }
   check(
     (await questionCount(page)) === 4,
