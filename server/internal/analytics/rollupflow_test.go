@@ -446,7 +446,11 @@ func TestRollupFlowE2E(t *testing.T) {
 		if body["mean"].(float64) != 7 || body["median"].(float64) != 7 {
 			t.Fatalf("mean/median = %v/%v, want 7/7", body["mean"], body["median"])
 		}
-		if math.Abs(body["participation"].(float64)-2.0/3.0) > 1e-9 {
+		// participation is now served as a float32 on the wire (the generated
+		// apischema.QuizStats type - see internal/analytics/service.go), so the
+		// tolerance matches float32's ~7-significant-digit precision rather
+		// than float64's.
+		if math.Abs(body["participation"].(float64)-2.0/3.0) > 1e-6 {
 			t.Fatalf("participation = %v, want 0.6667", body["participation"])
 		}
 		// The jsonb columns pass through: item_analysis is the array and
