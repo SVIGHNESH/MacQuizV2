@@ -8,6 +8,13 @@
 # Run nightly by crond inside the backup container (docker-compose.prod.yml);
 # can also be run manually (e.g. before a live exam window) with the same
 # env vars.
+#
+# Optional dead-man's-switch: if BACKUP_HEALTHCHECK_URL is set (e.g. a
+# Healthchecks.io check URL), ping it on start/success/failure so a missing
+# or failed nightly dump pages someone - docs/10-operations.md section 3's
+# "Backup job: nightly dump missing or failed" threshold, which otherwise
+# has no app-emitted metric behind it since this is a cron script, not a
+# request path server/internal/telemetry instruments.
 set -euo pipefail
 
 : "${MACQUIZ_DATABASE_URL:?MACQUIZ_DATABASE_URL is required}"
@@ -22,12 +29,29 @@ weekly_keep="${BACKUP_WEEKLY_KEEP:-8}"
 s3() { aws --endpoint-url "$BACKUP_R2_ENDPOINT" s3 "$@"; }
 s3api() { aws --endpoint-url "$BACKUP_R2_ENDPOINT" s3api "$@"; }
 
+# Best-effort: a monitoring ping must never fail the backup job itself, so
+# every call is curl -fsS with a short timeout and a swallowed error.
+ping_healthcheck() {
+  [ -n "${BACKUP_HEALTHCHECK_URL:-}" ] || return 0
+  curl -fsS -m 10 -o /dev/null "${BACKUP_HEALTHCHECK_URL}${1:-}" || true
+}
+
 today=$(date -u +%F) # YYYY-MM-DD
 dow=$(date -u +%u)   # ISO day of week, 1=Monday .. 7=Sunday
 dump_file="/tmp/macquiz-${today}.dump"
 
-cleanup() { rm -f "$dump_file"; }
+cleanup() {
+  local status=$?
+  rm -f "$dump_file"
+  if [ "$status" -eq 0 ]; then
+    ping_healthcheck ""
+  else
+    ping_healthcheck "/fail"
+  fi
+}
 trap cleanup EXIT
+
+ping_healthcheck "/start"
 
 echo "[backup] dumping database to ${dump_file}"
 pg_dump -Fc -f "$dump_file" "$MACQUIZ_DATABASE_URL"

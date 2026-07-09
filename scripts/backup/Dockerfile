@@ -3,7 +3,7 @@
 # postgres service so pg_dump's format matches the server it dumps.
 FROM postgres:16-alpine
 
-RUN apk add --no-cache aws-cli bash
+RUN apk add --no-cache aws-cli bash curl
 
 COPY backup.sh /backup.sh
 COPY check-trigger.sh /check-trigger.sh

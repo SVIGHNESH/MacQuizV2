@@ -17,6 +17,7 @@ Status: implementation baseline.
   Implemented via a `backup_triggers` table: `quiz.Service.Publish` upserts a same-UTC-day row when a quiz's `starts_at` is today, and the `backup` container's tighter `*/5 * * * *` cron (`check-trigger.sh`) polls it, runs the same dump/upload/prune as the nightly job, and marks the row fulfilled so later polls that day are no-ops.
 - Current RPO: 24 h (nightly) improving to near-zero on exam days via the pre-window dump.
   When 24 h stops being acceptable, add WAL archiving to R2 with pgBackRest for point-in-time recovery (effort, not money).
+- Dead-man's-switch alerting for a missing or failed dump (section 3's "Backup job" threshold): `backup.sh` optionally pings a Healthchecks.io-style URL (`BACKUP_HEALTHCHECK_URL` in `.env.production.example`, unset by default) on start/success/failure, so a night the cron job never runs or exits non-zero pages someone the same way an app-emitted metric threshold would - this is the one section 3 threshold with no OTel metric behind it, since it's a cron script rather than a request path `server/internal/telemetry` instruments.
 
 ## 2. Monitoring on $0
 
@@ -31,7 +32,7 @@ Status: implementation baseline.
   14-day retention on the free tier is accepted.
   OpenTelemetry log export is not implemented; the app logs structured JSON to stdout only (Compose/journald captured), not shipped to Grafana Cloud.
 - Watchtower is deliberately absent: images update only via the deploy pipeline, never automatically under a live quiz.
-- Dashboard and alert-rule definitions are checked in as `scripts/grafana/{dashboard.json,alert-rules.json}` (see `scripts/grafana/README.md`): a Grafana dashboard for the four key series above, plus alert rules for the two section 3 thresholds that are derived from metrics this app emits (autosave p95, queue lag). Grafana Cloud's free tier has no filesystem provisioning, so these are imported once by hand via the UI or the alert-provisioning HTTP API, the same "run by hand" convention `restore-drill.sh` uses. Disk-usage and backup-job alerting are host/cron-level concerns with no app-emitted metric behind them and are out of scope for these files (see the README's "Not covered here").
+- Dashboard and alert-rule definitions are checked in as `scripts/grafana/{dashboard.json,alert-rules.json}` (see `scripts/grafana/README.md`): a Grafana dashboard for the four key series above, plus alert rules for the two section 3 thresholds that are derived from metrics this app emits (autosave p95, queue lag). Grafana Cloud's free tier has no filesystem provisioning, so these are imported once by hand via the UI or the alert-provisioning HTTP API, the same "run by hand" convention `restore-drill.sh` uses. Disk-usage alerting is a host-level concern with no app-emitted metric behind it and is out of scope for these files (see the README's "Not covered here"); backup-job alerting is now covered separately by `backup.sh`'s dead-man's-switch ping (section 1 above), not by a Grafana alert rule.
 
 ## 3. Alert thresholds (initial)
 

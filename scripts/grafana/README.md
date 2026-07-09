@@ -50,11 +50,15 @@ importing.
 
 docs/10 section 3 also lists disk usage on the pg volume and a missing/failed backup job. Neither
 has an application-emitted OTel metric behind it (disk usage is host-level, and the backup job is
-a cron script, not a request path `server/internal/telemetry` instruments) - wiring those up would
-mean a host metrics agent (e.g. Grafana Alloy's node exporter integration) and a dead-man's-switch
-ping from `scripts/backup/backup.sh` (e.g. to Healthchecks.io), which is separate infrastructure
-work, not a dashboard/alert-rule authoring gap. `/healthz` failures (the third row of that table)
-are already covered by UptimeRobot per docs/10 section 2, not Grafana.
+a cron script, not a request path `server/internal/telemetry` instruments), so neither can be a
+Grafana alert rule sourced from this app's own metrics. The backup job is now covered a different
+way: `scripts/backup/backup.sh` pings an optional `BACKUP_HEALTHCHECK_URL` (a Healthchecks.io-style
+dead-man's-switch) on start/success/failure, so a missing or failed nightly dump still pages
+someone - just via that external service's own missed-check alerting, not a Grafana rule. Disk
+usage remains genuinely uncovered: it would need a host metrics agent (e.g. Grafana Alloy's node
+exporter integration), which is separate infrastructure work outside this repo's scope. `/healthz`
+failures (the third row of that table) are already covered by UptimeRobot per docs/10 section 2,
+not Grafana.
 
 These two JSON files have not been live-imported against a real Grafana Cloud stack (this
 environment has none provisioned); they are hand-verified as syntactically valid JSON against
