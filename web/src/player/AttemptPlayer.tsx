@@ -17,7 +17,18 @@ export type PlayerEntry =
 
 const AUTOSAVE_DELAY_MS = 600
 
+// docs/11 section 5 "calm under pressure": urgency is expressed once, and the
+// design's St2 frame fixes the moment - the timer goes red-tint under 2:00.
+const TIMER_URGENT_MS = 120_000
+
 type GuardrailType = 'fullscreen' | 'focus' | 'clipboard'
+
+const QUESTION_TYPE_LABEL: Record<AttemptQuestion['type'], string> = {
+  single: 'Single choice',
+  multi: 'Multiple choice',
+  truefalse: 'True or false',
+  short: 'Short answer',
+}
 
 // docs/06 section 3: a warn-class report (a guardrail set to warn, or the
 // clipboard guardrail, which is always logged-not-counted) still needs
@@ -84,6 +95,10 @@ export default function AttemptPlayer({
   const [remainingMs, setRemainingMs] = useState<number | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [confirming, setConfirming] = useState(false)
+  // Flags are a navigation aid the student uses to come back to a question,
+  // not state the grader cares about - the server has no field for them, so
+  // they live and die with this mount.
+  const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set())
   const [saveError, setSaveError] = useState<string | null>(null)
   // Autosave bookkeeping lives in refs (timers must survive renders);
   // bump forces a render so the indicator reads the current counts.
@@ -507,7 +522,7 @@ export default function AttemptPlayer({
       <div className="player">
         <p className="form-error">{phase.message}</p>
         <button className="button button-quiet" type="button" onClick={onExit}>
-          Back to my quizzes
+          Back to assigned quizzes
         </button>
       </div>
     )
@@ -515,36 +530,72 @@ export default function AttemptPlayer({
 
   if (!detail) return null
 
+  // St3: the lockout is its own danger-tinted surface, not a card on the page
+  // ground. Red is the human decision (docs/11 section 5), so it is spent here
+  // and nowhere else in the student's flow.
+  if (phase.kind === 'done' && phase.reason === 'kicked') {
+    return (
+      <div className="lockout" role="alert">
+        <div className="lockout-body">
+          <span className="lockout-mark" aria-hidden="true">
+            !
+          </span>
+          <h1 className="lockout-title">You've been removed from this quiz</h1>
+          <p className="lockout-copy">
+            Your teacher ended your attempt.{' '}
+            <b>Your work has been kept and will be graded.</b> You can't rejoin
+            unless a teacher readmits you - that would start a fresh attempt.
+          </p>
+          {kickReason && (
+            <div className="lockout-reason">
+              <span className="eyebrow">Reason given</span>
+              <span className="lockout-reason-text">{kickReason}</span>
+            </div>
+          )}
+          <button className="button button-quiet" type="button" onClick={onExit}>
+            Back to assigned quizzes
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (phase.kind === 'done') {
     return (
-      <div className="player">
-        <section className="panel player-done">
-          <h1 className="card-title">
+      <div className="player-done-screen">
+        <section className="card player-done">
+          <span
+            className={`chip chip-lifecycle ${phase.reason === 'manual' ? 'chip-lifecycle-submitted' : 'chip-lifecycle-closed'}`}
+          >
+            {phase.reason === 'manual' ? (
+              <>
+                <span className="chip-dot" aria-hidden="true" />
+                Submitted
+              </>
+            ) : (
+              'Closed'
+            )}
+          </span>
+          <h1 className="player-done-title">
             {phase.reason === 'timeup'
               ? 'Time is up'
-              : phase.reason === 'kicked'
-                ? 'You were removed from this quiz'
-                : phase.reason === 'closed'
-                  ? 'This attempt is closed'
-                  : 'Attempt submitted'}
+              : phase.reason === 'closed'
+                ? 'This attempt is closed'
+                : 'Attempt submitted'}
           </h1>
           <p className="hint">
             {phase.reason === 'timeup'
               ? 'The time limit ran out, so your saved answers were submitted for you.'
-              : phase.reason === 'kicked'
-                ? kickReason
-                  ? `Reason given: ${kickReason}. Your saved answers stand as the submission.`
-                  : 'Your teacher removed you from this quiz. Your saved answers stand as the submission.'
-                : phase.reason === 'closed'
-                  ? 'The attempt already ended - your saved answers stand as the submission.'
-                  : 'Your answers are in. Scores appear on your quiz list once results are released.'}
+              : phase.reason === 'closed'
+                ? 'The attempt already ended - your saved answers stand as the submission.'
+                : 'Your answers are in. Scores appear on your quiz list once results are released.'}
           </p>
           <button
-            className="button button-primary"
+            className="button button-primary player-done-action"
             type="button"
             onClick={onExit}
           >
-            Back to my quizzes
+            Back to assigned quizzes
           </button>
         </section>
       </div>
@@ -555,7 +606,7 @@ export default function AttemptPlayer({
   const unansweredCount = detail.questions.filter(
     (q) => !isAnswered(answers[q.id]),
   ).length
-  const urgent = remainingMs !== null && remainingMs < 60_000
+  const urgent = remainingMs !== null && remainingMs < TIMER_URGENT_MS
 
   // One question shows at a time; the sidebar grid jumps anywhere. Publish
   // requires at least one question (docs/04), so the snapshot is never empty.
@@ -566,53 +617,87 @@ export default function AttemptPlayer({
   const fullscreenGuarded =
     phase.kind === 'playing' && detail.guardrails.fullscreen !== 'off' && !fullscreenOk
 
+  const answeredCount = questionCount - unansweredCount
+  const currentFlagged = flagged.has(currentQuestion.id)
+  const toggleFlag = () => {
+    setFlagged((prev) => {
+      const next = new Set(prev)
+      if (next.has(currentQuestion.id)) next.delete(currentQuestion.id)
+      else next.add(currentQuestion.id)
+      return next
+    })
+  }
+
   return (
     <div className="player" ref={playerRoot}>
       <header className="player-topbar">
-        <div className="player-heading">
-          <p className="eyebrow">Attempt {detail.attempt.attempt_no}</p>
-          <h1 className="page-title">{detail.quiz_title}</h1>
+        <div className="player-identity">
+          <span className="brand-mark brand-mark-small" aria-hidden="true">
+            M
+          </span>
+          <div className="player-identity-text">
+            <h1 className="player-quiz-title">{detail.quiz_title}</h1>
+            <p className="player-quiz-sub">
+              Attempt {detail.attempt.attempt_no} · autosaves as you go
+            </p>
+          </div>
         </div>
-        <span
-          className={`save-badge ${saveError ? 'save-badge-bad' : saving ? 'save-badge-busy' : 'save-badge-ok'}`}
-          role="status"
-        >
-          {saveError ? 'Not saved' : saving ? 'Saving…' : 'All changes saved'}
-        </span>
-        <span
-          className={`countdown${urgent ? ' countdown-urgent' : ''}`}
-          role="timer"
-          aria-label="Time remaining"
-        >
-          {remainingMs === null ? '–:––' : formatRemaining(remainingMs)}
-        </span>
+        <div className="player-topbar-right">
+          <span
+            className={`save-state ${saveError ? 'save-state-bad' : saving ? 'save-state-busy' : 'save-state-ok'}`}
+            role="status"
+          >
+            <span className="save-state-dot" aria-hidden="true" />
+            {saveError ? 'Not saved' : saving ? 'Saving…' : 'All changes saved'}
+          </span>
+          <div className={`player-timer${urgent ? ' player-timer-urgent' : ''}`}>
+            <span className="player-timer-value tabular" role="timer" aria-label="Time remaining">
+              {remainingMs === null ? '–:––' : formatRemaining(remainingMs)}
+            </span>
+            <span className="player-timer-label">Time left</span>
+          </div>
+        </div>
       </header>
 
-      {saveError && <p className="form-error">{saveError}</p>}
-      {quizBanner && (
-        <p className="quiz-banner" role="status">
-          <span>{quizBanner}</span>
-          <button
-            className="quiz-banner-dismiss"
-            type="button"
-            onClick={() => setQuizBanner(null)}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </p>
+      {(saveError || quizBanner) && (
+        <div className="player-banners">
+          {saveError && <p className="form-error">{saveError}</p>}
+          {quizBanner && (
+            <p className="quiz-banner" role="status">
+              <span>{quizBanner}</span>
+              <button
+                className="quiz-banner-dismiss"
+                type="button"
+                onClick={() => setQuizBanner(null)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </p>
+          )}
+        </div>
       )}
 
       {fullscreenGuarded && (
         <div className="fullscreen-lock-overlay" role="alertdialog" aria-modal="true">
-          <div className="panel fullscreen-lock-card">
-            <h2 className="card-title">Return to fullscreen to continue</h2>
+          <div className="fullscreen-lock-card">
+            <span className="chip chip-lifecycle chip-lifecycle-warning">
+              Fullscreen exited
+            </span>
+            <h2 className="fullscreen-lock-title">
+              Return to fullscreen to continue
+            </h2>
             <p className="hint">
-              This quiz requires fullscreen. Leaving it is recorded as a guardrail
-              violation.
+              Your timer is still running against the server deadline. This exit
+              was recorded as a counted violation (
+              <span className="tabular">
+                {detail.attempt.violation_count} of{' '}
+                {detail.guardrails.max_violations}
+              </span>
+              ).
             </p>
             <button
-              className="button button-primary"
+              className="button button-primary fullscreen-lock-action"
               type="button"
               onClick={() => {
                 void document.documentElement
@@ -620,115 +705,149 @@ export default function AttemptPlayer({
                   ?.then(() => setFullscreenOk(true))
               }}
             >
-              Return to fullscreen
+              Re-enter fullscreen
             </button>
           </div>
         </div>
       )}
 
       <div className="player-body">
-        <nav className="panel player-palette" aria-label="Question navigator">
-          <p className="palette-title">Questions</p>
-          <ol className="palette-grid">
+        <nav className="player-nav" aria-label="Question navigator">
+          <div className="player-nav-head">
+            <span className="eyebrow">Questions</span>
+            <span className="player-nav-count tabular">
+              {answeredCount} of {questionCount} answered
+            </span>
+          </div>
+          <ol className="nav-grid">
             {detail.questions.map((question, index) => {
               const answered = isAnswered(answers[question.id])
               const current = index === safeIndex
+              const flag = flagged.has(question.id)
+              // Answered-ness and current-ness are independent facts; the
+              // current cell just paints over the answered one.
+              const state = `${answered ? ' nav-cell-answered' : ' nav-cell-empty'}${current ? ' nav-cell-current' : ''}`
               return (
-                <li key={question.id}>
+                <li className="nav-cell-slot" key={question.id}>
                   <button
                     type="button"
-                    className={`palette-cell${answered ? ' palette-cell-answered' : ''}${current ? ' palette-cell-current' : ''}`}
+                    className={`nav-cell${state}`}
                     aria-current={current ? 'true' : undefined}
-                    aria-label={`Question ${question.position}, ${answered ? 'answered' : 'unanswered'}`}
+                    aria-label={`Question ${question.position}, ${answered ? 'answered' : 'unanswered'}${flag ? ', flagged' : ''}`}
                     onClick={() => setCurrentIndex(index)}
                   >
                     {question.position}
                   </button>
+                  {flag && <span className="nav-flag" aria-hidden="true" />}
                 </li>
               )
             })}
           </ol>
-          <p className="palette-hint">
-            {questionCount - unansweredCount} of {questionCount} answered
-          </p>
+          <div className="nav-legend">
+            <span className="legend-row">
+              <span className="legend-flag" aria-hidden="true" />
+              Flagged for review
+            </span>
+            <span className="legend-row">
+              <span className="legend-answered" aria-hidden="true" />
+              Answered
+            </span>
+          </div>
         </nav>
 
-        <section className="panel player-question">
-          <PlayerQuestion
-            question={currentQuestion}
-            value={answers[currentQuestion.id]}
-            disabled={phase.kind === 'submitting'}
-            onChange={(value) => setAnswer(currentQuestion.id, value)}
-          />
-          <div className="player-question-nav">
-            <button
-              className="button button-quiet"
-              type="button"
-              disabled={safeIndex === 0}
-              onClick={() => setCurrentIndex(safeIndex - 1)}
-            >
-              Previous
-            </button>
-            <span className="player-question-step">
-              Question {safeIndex + 1} of {questionCount}
-            </span>
-            <button
-              className="button button-quiet"
-              type="button"
-              disabled={safeIndex === questionCount - 1}
-              onClick={() => setCurrentIndex(safeIndex + 1)}
-            >
-              Next
-            </button>
+        <section className="player-pane">
+          <div className="player-question-area">
+            <div className="player-question-head">
+              <div className="player-question-headline">
+                <span className="player-question-eyebrow">
+                  Question {safeIndex + 1} of {questionCount}
+                </span>
+                <h2 className="player-question-text">
+                  {currentQuestion.body.text}
+                </h2>
+              </div>
+              <span className="chip chip-type">
+                {QUESTION_TYPE_LABEL[currentQuestion.type]}
+              </span>
+            </div>
+            <PlayerQuestion
+              question={currentQuestion}
+              value={answers[currentQuestion.id]}
+              disabled={phase.kind === 'submitting'}
+              onChange={(value) => setAnswer(currentQuestion.id, value)}
+            />
           </div>
+
+          <footer className="player-footer">
+            {confirming ? (
+              <>
+                <p className="player-footer-note">
+                  {unansweredCount > 0
+                    ? `${unansweredCount} question${unansweredCount === 1 ? ' is' : 's are'} unanswered. Submit anyway?`
+                    : 'All questions answered. Submit now?'}
+                </p>
+                <div className="player-footer-actions">
+                  <button
+                    className="button button-quiet"
+                    type="button"
+                    disabled={phase.kind === 'submitting'}
+                    onClick={() => setConfirming(false)}
+                  >
+                    Keep working
+                  </button>
+                  <button
+                    className="button button-commit"
+                    type="button"
+                    disabled={phase.kind === 'submitting'}
+                    onClick={() => {
+                      submitted.current = true
+                      void submitNow('manual')
+                    }}
+                  >
+                    {phase.kind === 'submitting' ? 'Submitting…' : 'Submit now'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  disabled={safeIndex === 0}
+                  onClick={() => setCurrentIndex(safeIndex - 1)}
+                >
+                  ← Previous
+                </button>
+                <div className="player-footer-actions">
+                  <button
+                    className={`button button-flag${currentFlagged ? ' button-flag-on' : ''}`}
+                    type="button"
+                    aria-pressed={currentFlagged}
+                    onClick={toggleFlag}
+                  >
+                    ⚑ {currentFlagged ? 'Flagged' : 'Flag'}
+                  </button>
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={safeIndex === questionCount - 1}
+                    onClick={() => setCurrentIndex(safeIndex + 1)}
+                  >
+                    Next →
+                  </button>
+                  <button
+                    className="button button-commit"
+                    type="button"
+                    onClick={() => setConfirming(true)}
+                  >
+                    Review and submit
+                  </button>
+                </div>
+              </>
+            )}
+          </footer>
         </section>
       </div>
-
-      <footer className="panel player-footer">
-        {confirming ? (
-          <>
-            <p className="player-footer-note">
-              {unansweredCount > 0
-                ? `${unansweredCount} question${unansweredCount === 1 ? ' is' : 's are'} unanswered. Submit anyway?`
-                : 'All questions answered. Submit now?'}
-            </p>
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={phase.kind === 'submitting'}
-              onClick={() => {
-                submitted.current = true
-                void submitNow('manual')
-              }}
-            >
-              {phase.kind === 'submitting' ? 'Submitting…' : 'Submit now'}
-            </button>
-            <button
-              className="button button-quiet"
-              type="button"
-              disabled={phase.kind === 'submitting'}
-              onClick={() => setConfirming(false)}
-            >
-              Keep working
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="player-footer-note">
-              {unansweredCount > 0
-                ? `${unansweredCount} of ${detail.questions.length} questions still unanswered.`
-                : 'Every question has an answer.'}
-            </p>
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => setConfirming(true)}
-            >
-              Submit attempt
-            </button>
-          </>
-        )}
-      </footer>
     </div>
   )
 }
@@ -746,13 +865,7 @@ function PlayerQuestion({
 }) {
   return (
     <fieldset className="player-fieldset" disabled={disabled}>
-      <legend className="player-question-head">
-        <span className="question-index">{question.position}</span>
-        <span className="player-question-text">{question.body.text}</span>
-        <span className="player-question-points tabular">
-          {question.points} pt{question.points === 1 ? '' : 's'}
-        </span>
-      </legend>
+      <legend className="visually-hidden">{question.body.text}</legend>
 
       {question.type === 'single' && (
         <div className="option-list">

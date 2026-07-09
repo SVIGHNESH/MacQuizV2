@@ -22,6 +22,47 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Present for screen readers, absent for sighted users - used where the
+   visible heading lives outside the labelled control. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shared motion (docs/11 section 3). These live in the global base rather
+   than a feature stylesheet because keyframes are document-scoped: every
+   sheet that animates relies on them being loaded exactly once. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The 2s live-indicator pulse; only truly realtime markers use it. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
 /* --- Toast (docs/11 section 4): one style app-wide, top-center, ink surface,
    semantic dot, auto-dismiss. ------------------------------------------- */
 

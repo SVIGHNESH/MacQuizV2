@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:224px;min-height:100%;background:var(--color-surface);border-right:1px solid var(--color-border-hairline);display:flex;flex-direction:column;font-family:var(--font-sans)">
+  <div style="display:flex;align-items:center;gap:9px;padding:18px 16px 14px">
+    <div style="width:26px;height:26px;border-radius:56%;background:var(--color-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;letter-spacing:-0.03em">M</div>
+    <div style="font-weight:750;font-size:15px;letter-spacing:-0.02em;color:var(--color-ink)">MacQuiz</div>
+    <div style="margin-left:auto;font-size:9.5px;font-weight:650;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted)">{{ roleLabel }}</div>
+  </div>
+  <div style="height:1px;background:var(--color-border-hairline);margin:0 12px 8px"></div>
+  <nav style="display:flex;flex-direction:column;gap:2px;padding:4px 10px">
+    <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+      <div style="{{ it.rowStyle }}">
+        <div style="{{ it.dotStyle }}"></div>
+        <span style="{{ it.labelStyle }}">{{ it.label }}</span>
+        <sc-if value="{{ it.live }}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:750;letter-spacing:0.08em;color:var(--color-danger)">
+            <span style="width:6px;height:6px;border-radius:999px;background:var(--color-danger);animation:mq-pulse 2s ease-in-out infinite"></span>LIVE
+          </span>
+        </sc-if>
+      </div>
+    </sc-for>
+  </nav>
+  <div style="margin-top:auto;padding:12px 14px;border-top:1px solid var(--color-border-hairline);display:flex;align-items:center;gap:9px">
+    <div style="width:28px;height:28px;border-radius:999px;background:var(--color-well);color:var(--color-text-strong);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:650">{{ userInitials }}</div>
+    <div style="line-height:1.25;min-width:0">
+      <div style="font-size:12.5px;font-weight:600;color:var(--color-text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ userName }}</div>
+      <div style="font-size:11px;color:var(--color-text-muted)">{{ userMeta }}</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:224,&quot;height&quot;:560},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;student&quot;,&quot;teacher&quot;,&quot;admin&quot;],&quot;default&quot;:&quot;student&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;active&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;quizzes&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const role = this.props.role || 'student';
+    const active = this.props.active || '';
+    const nav = {
+      student: { label: 'Student', user: ['Dana Reyes','dana.reyes','DR'], items: [
+        ['quizzes','My quizzes'],['results','Results'],['leaderboard','Leaderboard'],['analytics','My analytics'] ] },
+      teacher: { label: 'Teacher', user: ['Morgan Ellis','Facilitator','ME'], items: [
+        ['quizzes','My quizzes'],['live','Live monitor',true],['analytics','Analytics'] ] },
+      admin: { label: 'Admin', user: ['Sam Okafor','Org admin','SO'], items: [
+        ['overview','Overview'],['users','Users'],['groups','Groups'],['audit','Audit log'],['live','Live dashboards',true] ] },
+    };
+    const cfg = nav[role] || nav.student;
+    const items = cfg.items.map(([key,label,live]) => {
+      const on = key === active;
+      return {
+        label, live: !!live && !on ? true : (!!live),
+        rowStyle: `display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer;transition:background var(--motion-micro);${on?'background:var(--color-primary-tint);':''}`,
+        dotStyle: on
+          ? 'width:8px;height:8px;border-radius:3px;background:var(--color-primary)'
+          : 'width:8px;height:8px;border-radius:999px;background:var(--color-text-muted)',
+        labelStyle: `font-size:13px;font-weight:${on?600:550};color:${on?'var(--color-primary-on-tint)':'var(--color-text-strong)'}`,
+      };
+    });
+    return { items, roleLabel: cfg.label, userName: cfg.user[0], userMeta: cfg.user[1], userInitials: cfg.user[2] };
+  }
+}
+</script>
+</body>
+</html>

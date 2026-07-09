@@ -3,10 +3,11 @@ import { useAuth, type SessionUser } from '../auth/context'
 import UsersPanel from './UsersPanel'
 import GroupsPanel from './GroupsPanel'
 import OrgStatsPanel from './OrgStatsPanel'
+import AuditPanel from './AuditPanel'
 import '../authoring/authoring.css'
 import './admin.css'
 
-type View = 'overview' | 'users' | 'groups'
+type View = 'overview' | 'users' | 'groups' | 'audit'
 
 function initials(fullName: string): string {
   return fullName
@@ -18,9 +19,10 @@ function initials(fullName: string): string {
 }
 
 /**
- * The signed-in admin shell (Milestone 1: user and group management): a
- * fixed sidebar rail matching the teacher/student workspaces, switching
- * between account provisioning and cohort management.
+ * The signed-in admin shell: a fixed sidebar rail matching the teacher and
+ * student workspaces, switching between the org overview, account
+ * provisioning, cohort management, and the append-only audit log. Read-only
+ * analytics, no authoring (docs/11 section 6).
  */
 export default function AdminWorkspace({ user }: { user: SessionUser }) {
   const { logout } = useAuth()
@@ -62,6 +64,14 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
             <span className="rail-dot" aria-hidden="true" />
             Groups
           </button>
+          <button
+            className={`rail-item${view === 'audit' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView('audit')}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            Audit log
+          </button>
         </nav>
 
         <div className="rail-user">
@@ -93,8 +103,10 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
           <OrgStatsPanel />
         ) : view === 'users' ? (
           <UsersPanel />
-        ) : (
+        ) : view === 'groups' ? (
           <GroupsPanel />
+        ) : (
+          <AuditPanel />
         )}
       </main>
     </div>

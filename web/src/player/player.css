@@ -14,261 +14,437 @@
   margin-bottom: 16px;
 }
 
-/* --- Assigned list ---------------------------------------------------- */
+/* --- Assigned list (St1) ------------------------------------------------ */
 
-.assigned-list {
+.assigned {
   display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+.assigned-subtitle {
+  margin: 2px 0 0;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.assigned-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
-  max-width: 860px;
+  align-content: start;
 }
 
 .assigned-card {
-  display: grid;
-  gap: 12px;
-}
-
-.assigned-head {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 13px;
+  padding: 18px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-resting);
 }
 
-.assigned-title {
+.assigned-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assigned-attempts {
+  font: 600 11px/1 var(--font-sans);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* The number is ink unless the state itself is semantic - a released score
+   is the one number on this card that carries meaning. */
+.assigned-score {
+  font: 700 14px/1 var(--font-sans);
+  color: var(--color-success);
+}
+
+.assigned-card-title {
+  display: grid;
+  gap: 4px;
+}
+
+.assigned-card-title .card-title {
   margin: 0;
-  flex: 1;
-  font: var(--text-card-title);
-  letter-spacing: var(--tracking-card-title);
 }
 
 .assigned-meta {
   margin: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
   font: var(--text-secondary);
   color: var(--color-text-secondary);
 }
 
-.meta-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--color-text-muted);
-}
-
-.attempt-list {
+/* The card body grows so every action button lines up across the row. */
+.assigned-status,
+.assigned-note,
+.assigned-window {
   margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
+  margin-bottom: auto;
 }
 
-.attempt-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-top: 1px solid var(--color-border-hairline);
-  font: var(--text-secondary);
+.assigned-status {
+  font: 500 11.5px/1.4 var(--font-sans);
   color: var(--color-text-secondary);
-}
-
-.attempt-no {
-  font-weight: 600;
-  color: var(--color-text-strong);
-}
-
-.attempt-when {
-  flex: 1;
-}
-
-.attempt-score {
-  font-weight: 600;
-  color: var(--color-text-strong);
   font-variant-numeric: tabular-nums;
 }
 
-.chip-attempt-in_progress {
-  background: var(--color-primary-tint);
-  color: var(--color-primary-on-tint);
+/* A quiet well carries an explanation the student can't act on. */
+.assigned-note {
+  padding: 9px 11px;
+  border-radius: var(--radius-control);
+  background: var(--color-well);
+  font: 450 11.5px/1.4 var(--font-sans);
+  color: var(--color-text-secondary);
 }
 
-.chip-attempt-submitted,
-.chip-attempt-graded {
-  background: var(--color-success-tint);
-  color: var(--color-success-on-tint);
-}
-
-.chip-attempt-kicked {
+.assigned-note-danger {
   background: var(--color-danger-tint);
   color: var(--color-danger-on-tint);
 }
 
-.assigned-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.assigned-window {
+  display: grid;
+  gap: 2px;
+  font: 500 11.5px/1.4 var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 
-.assigned-note {
-  margin: 0;
-  font: var(--text-secondary);
+.assigned-window-open {
+  color: var(--color-text-secondary);
+}
+
+.assigned-window-close {
   color: var(--color-text-muted);
 }
 
-/* --- Attempt player ---------------------------------------------------- */
+.assigned-card-action {
+  display: grid;
+}
+
+.assigned-card-action .button {
+  padding: 11px;
+}
+
+/* --- Attempt player (St2) -----------------------------------------------
+ * The exam chrome owns the viewport: the rail is gone, and the only two
+ * regions are the navigator on the page ground and the question on surface.
+ */
 
 .player {
-  display: grid;
-  gap: 16px;
-  max-width: 1000px;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
 }
 
 .player-topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--color-border-hairline);
 }
 
-.player-heading {
-  flex: 1;
+.player-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
 }
 
-.countdown {
-  font: 650 18px/1 var(--font-sans);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-hairline);
-  border-radius: var(--radius-button);
-  padding: 10px 14px;
-  box-shadow: var(--shadow-resting);
+.player-identity-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-.countdown-urgent {
+.player-quiz-title {
+  margin: 0;
+  font: 650 13.5px/1.2 var(--font-sans);
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-quiz-sub {
+  margin: 0;
+  font: 500 11.5px/1 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.player-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 12px/1 var(--font-sans);
+  white-space: nowrap;
+}
+
+.save-state-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
+}
+
+.save-state-ok {
+  color: var(--color-success);
+}
+
+.save-state-busy {
+  color: var(--color-text-muted);
+}
+
+.save-state-bad {
   color: var(--color-danger);
-  border-color: var(--color-danger-tint);
+}
+
+/* The timer is the one place urgency is expressed, so it carries no border
+   until it turns: the red tint is the whole signal. */
+.player-timer {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  padding: 4px 10px;
+  border-radius: var(--radius-control);
+  transition: background-color var(--motion-micro);
+}
+
+.player-timer-value {
+  font: 650 26px/1 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.player-timer-label {
+  font: 600 9.5px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.player-timer-urgent {
   background: var(--color-danger-tint);
 }
 
-.review-questions {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 16px;
+.player-timer-urgent .player-timer-value {
+  color: var(--color-danger);
 }
 
-/* Two panes: the question-grid sidebar and the one visible question. */
+.player-timer-urgent .player-timer-label {
+  color: var(--color-danger-on-tint);
+}
+
+.player-banners {
+  display: grid;
+  gap: 8px;
+  padding: 12px 24px 0;
+}
+
 .player-body {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
 
-.player-palette {
-  position: sticky;
-  top: 16px;
-  display: grid;
-  gap: 12px;
+/* --- Question navigator -------------------------------------------------- */
+
+.player-nav {
+  width: 250px;
+  flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-right: 1px solid var(--color-border-hairline);
+  background: var(--color-page);
+  overflow: auto;
 }
 
-.palette-title {
-  margin: 0;
-  font: var(--text-eyebrow);
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
+.player-nav-head {
+  display: grid;
+  gap: 3px;
+}
+
+.player-nav-count {
+  font: 500 12px/1 var(--font-sans);
   color: var(--color-text-secondary);
 }
 
-.palette-grid {
+.nav-grid {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
-.palette-cell {
+.nav-cell-slot {
+  position: relative;
+}
+
+.nav-cell {
   appearance: none;
   width: 100%;
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-control);
-  background: var(--color-surface);
-  font: 600 13px/1 var(--font-sans);
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-strong);
   cursor: pointer;
   transition:
     background-color var(--motion-micro),
-    border-color var(--motion-micro),
-    box-shadow var(--motion-micro);
+    border-color var(--motion-micro);
 }
 
-.palette-cell:hover {
-  background: var(--color-well);
-}
-
-.palette-cell:focus-visible {
+.nav-cell:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.palette-cell-answered,
-.palette-cell-answered:hover {
-  background: var(--color-success-tint);
-  border-color: var(--color-success-dot);
-  color: var(--color-success-on-tint);
+.nav-cell-answered {
+  border: 1px solid var(--color-border-input);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: 600 13px/1 var(--font-sans);
 }
 
-.palette-cell-current {
-  border-color: var(--color-primary);
-  box-shadow: var(--focus-ring);
-}
-
-.palette-hint {
-  margin: 0;
-  font: var(--text-secondary);
+.nav-cell-empty {
+  border: 1px solid var(--color-border-hairline);
+  background: var(--color-surface);
   color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
+  font: 500 13px/1 var(--font-sans);
 }
 
-.player-question {
+.nav-cell-answered:hover,
+.nav-cell-empty:hover {
+  background: var(--color-well);
+}
+
+/* Selection is border + wash + weight, never colour alone (docs/11 s4).
+   Declared last so it paints over whichever answered state it lands on. */
+.nav-cell-current,
+.nav-cell-current:hover {
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+  font: 650 13px/1 var(--font-sans);
+}
+
+/* Amber is evidence, not judgment: a flag marks a question to revisit. */
+.nav-flag {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-dot);
+  border: 1.5px solid var(--color-page);
+}
+
+.nav-legend {
+  margin-top: auto;
   display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 500 11px/1.3 var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.legend-flag {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-dot);
+}
+
+.legend-answered {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-input);
+  background: var(--color-surface);
+}
+
+/* --- Question pane ------------------------------------------------------- */
+
+.player-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.player-question-area {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 34px 44px;
+}
+
+.player-question-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
 }
 
-.player-question-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border-hairline);
+.player-question-headline {
+  display: grid;
+  gap: 6px;
 }
 
-.player-question-step {
-  flex: 1;
-  text-align: center;
-  font: var(--text-secondary);
-  color: var(--color-text-secondary);
+.player-question-eyebrow {
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 840px) {
-  .player-body {
-    grid-template-columns: 1fr;
-  }
+.player-question-text {
+  margin: 0;
+  max-width: 620px;
+  font: 650 20px/1.4 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  text-wrap: pretty;
+}
 
-  .player-palette {
-    position: static;
-  }
+.player-question-head .chip-type {
+  padding: 6px 10px;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .player-fieldset {
@@ -280,50 +456,199 @@
   gap: 12px;
 }
 
-.player-question-head {
-  display: flex;
-  align-items: baseline;
+/* Player option rows are the touch-sized variant of the editor's row. */
+.player-question-area .option-list {
+  display: grid;
   gap: 10px;
-  padding: 0;
+  max-width: 680px;
 }
 
-.player-question-text {
-  flex: 1;
-  font: 600 14.5px/1.45 var(--font-sans);
+.player-question-area .option-row {
+  gap: 14px;
+  padding: 15px 16px;
+  cursor: pointer;
+}
+
+.player-question-area .option-row:hover:not(.option-row-selected) {
+  border-color: var(--color-text-muted);
+}
+
+.player-question-area .option-key {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  font: 650 12px/1 var(--font-sans);
+}
+
+.player-question-area .option-static {
+  font: 500 14px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.player-question-area .option-row-selected .option-key {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.player-question-area .option-row-selected .option-static {
+  font-weight: 550;
   color: var(--color-ink);
-}
-
-.player-question-points {
-  font: var(--text-secondary);
-  color: var(--color-text-muted);
-  white-space: nowrap;
 }
 
 .player-short-input {
   max-width: 420px;
 }
 
+/* --- Footer controls ----------------------------------------------------- */
+
 .player-footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  padding: 16px 44px;
+  border-top: 1px solid var(--color-border-hairline);
+  background: var(--color-surface);
+}
+
+.player-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .player-footer-note {
   margin: 0;
-  flex: 1;
   font: var(--text-secondary);
   color: var(--color-text-secondary);
 }
 
+.button-flag {
+  background: var(--color-warning-tint);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-on-tint);
+}
+
+/* Flagged reads as border + wash + a committed label, never colour alone -
+   a solid amber fill would put white text at ~2.3:1 against #f79009. */
+.button-flag-on {
+  background: var(--color-warning-tint);
+  border-color: var(--color-warning);
+  color: var(--color-warning-on-tint);
+}
+
+@media (max-width: 900px) {
+  .player-body {
+    flex-direction: column;
+  }
+
+  .player-nav {
+    width: 100%;
+    flex: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-hairline);
+  }
+
+  .nav-legend {
+    margin-top: 0;
+  }
+
+  .player-question-area,
+  .player-footer {
+    padding-inline: 20px;
+  }
+}
+
+/* --- Terminal states ----------------------------------------------------- */
+
+.player-done-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--color-page);
+}
+
 .player-done {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   justify-items: start;
+}
+
+.player-done-title {
+  margin: 0;
+  font: 700 19px/1.3 var(--font-sans);
+  letter-spacing: -0.012em;
+  color: var(--color-ink);
 }
 
 .player-done .hint {
   margin: 0;
+}
+
+.player-done-action {
+  justify-self: stretch;
+}
+
+/* St3: the lockout. Danger tint owns the surface because this is the
+   consequence of a human decision, not an integrity observation. */
+.lockout {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 36px;
+  background: var(--color-danger-tint);
+}
+
+.lockout-body {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  max-width: 460px;
+  animation: rise var(--motion-entrance) both;
+}
+
+.lockout-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-danger);
+  color: var(--color-surface);
+  font: 700 22px/1 var(--font-sans);
+}
+
+.lockout-title {
+  margin: 0;
+  font: 750 24px/1.25 var(--font-sans);
+  letter-spacing: -0.015em;
+  color: var(--color-danger-on-tint);
+}
+
+.lockout-copy {
+  margin: 0;
+  font: 500 13.5px/1.55 var(--font-sans);
+  color: var(--color-danger-on-tint);
+}
+
+.lockout-reason {
+  display: grid;
+  gap: 6px;
+  justify-self: stretch;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-surface);
+}
+
+.lockout-reason .eyebrow {
+  color: var(--color-text-muted);
+}
+
+.lockout-reason-text {
+  font: 500 13px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
 }
 
 /* --- Guardrails --------------------------------------------------------- */
@@ -351,6 +676,8 @@
   padding: 0 2px;
 }
 
+/* St2b: the blocker floats over a blurred exam, so the student can see the
+   clock still running behind it. */
 .fullscreen-lock-overlay {
   position: fixed;
   inset: 0;
@@ -358,135 +685,305 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
   background: var(--overlay-modal);
+  backdrop-filter: blur(2px);
 }
 
 .fullscreen-lock-card {
   display: grid;
   gap: 12px;
   justify-items: start;
-  max-width: 380px;
+  width: min(400px, 100%);
+  padding: 28px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-floating);
+  animation: rise var(--motion-entrance) both;
+}
+
+.fullscreen-lock-title {
+  margin: 0;
+  font: 700 18px/1.3 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
 }
 
 .fullscreen-lock-card .hint {
   margin: 0;
 }
 
-/* --- Released review ---------------------------------------------------- */
+.fullscreen-lock-action {
+  justify-self: stretch;
+}
+
+/* --- Released review (St4) ---------------------------------------------- */
 
 .review {
   display: grid;
-  gap: 16px;
-  max-width: 760px;
+  gap: 20px;
+  align-content: start;
 }
 
-/* A grid child would stretch; the back link hugs its text like the editor's. */
-.review .back-button {
-  justify-self: start;
+.review-head {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
 }
 
-.score-banner {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+.review-head .page-title {
+  margin-top: 6px;
 }
 
-.score-figure {
-  font: var(--text-display);
-  letter-spacing: var(--tracking-display);
-  color: var(--color-ink);
-}
-
-.score-max {
+.review-subtitle {
+  margin: 0;
+  font: 500 11.5px/1 var(--font-sans);
   color: var(--color-text-muted);
 }
 
-.score-caption {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: var(--text-secondary);
-  color: var(--color-text-secondary);
-}
-
-.chip-verdict-correct {
-  background: var(--color-success-tint);
-  color: var(--color-success-on-tint);
-}
-
-.chip-verdict-incorrect {
-  background: var(--color-danger-tint);
+.review-override {
   color: var(--color-danger-on-tint);
-}
-
-.chip-verdict-skipped {
-  background: var(--color-well);
-  color: var(--color-text-secondary);
-}
-
-.review-question {
-  display: grid;
-  gap: 12px;
-}
-
-.review-option {
-  cursor: default;
-}
-
-.review-option-key {
-  border-color: var(--color-success-dot);
-  background: var(--color-success-tint);
-}
-
-.review-option-key .option-key {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: var(--color-surface);
-}
-
-.review-option-wrong {
-  border-color: var(--color-danger);
   background: var(--color-danger-tint);
 }
 
-.review-option-wrong .option-key {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  color: var(--color-surface);
+/* --- Answer key ---------------------------------------------------------- */
+
+.answer-key {
+  display: grid;
+  gap: 8px;
 }
 
-.review-tag {
-  font: var(--text-eyebrow);
-  letter-spacing: var(--tracking-eyebrow);
+.answer-key-eyebrow {
+  color: var(--color-text-muted);
+}
+
+.answer-key-table {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.answer-key-header,
+.answer-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 220px) 108px;
+  gap: 12px;
+  align-items: center;
+}
+
+.answer-key-header {
+  padding: 11px 18px;
+  background: var(--color-table-header);
+  border-bottom: 1px solid var(--color-border-hairline);
+  font: 650 10.5px/1 var(--font-sans);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
+}
+
+.answer-key-verdict-head {
+  text-align: right;
+}
+
+/* Hairline dividers, no zebra striping. */
+.answer-row {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-well);
+}
+
+.answer-row:last-child {
+  border-bottom: 0;
+}
+
+.answer-row-num {
+  font: 600 13px/1 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.answer-row-question {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.answer-row-text {
+  font: 500 13px/1.4 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.answer-row-key {
+  font: 500 11.5px/1.3 var(--font-sans);
+  color: var(--color-success);
+}
+
+.answer-row-response {
+  font: 500 12.5px/1.4 var(--font-sans);
+  color: var(--color-text-strong);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.answer-row-blank {
+  color: var(--color-text-muted);
+}
+
+/* Status dot + label, the lighter-than-a-chip row treatment. */
+.answer-verdict {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font: 600 12px/1 var(--font-sans);
   white-space: nowrap;
 }
 
-.review-tag-key {
-  color: var(--color-success-on-tint);
+.answer-verdict-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
 }
 
-.short-review {
-  margin: 0;
+.answer-verdict-correct {
+  color: var(--color-success);
+}
+
+.answer-verdict-incorrect {
+  color: var(--color-danger);
+}
+
+.answer-verdict-skipped {
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 820px) {
+  .answer-key-header,
+  .answer-row {
+    grid-template-columns: 32px minmax(0, 1fr) 96px;
+  }
+
+  /* The response column folds under the question rather than truncating. */
+  .answer-key-header span:nth-child(3) {
+    display: none;
+  }
+
+  .answer-row-response {
+    grid-column: 2;
+  }
+}
+
+/* --- My analytics (St6) -------------------------------------------------- */
+
+.analytics {
   display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+/* Bars keep a stable width whether the student has one quiz or twelve, so a
+   lone bar reads as one data point rather than a centred blob. */
+.trend-chart {
+  margin: 0;
+  padding: 8px 0 0;
+  list-style: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 14px;
+  height: 200px;
+}
+
+.trend-bar-slot {
+  flex: 0 1 76px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.short-review-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
+/* Charts use primary plus its tints; the latest quiz is the one that reads
+   as current, so it alone gets full primary. */
+.trend-bar {
+  width: 100%;
+  max-width: 38px;
+  align-self: end;
+  min-height: 2px;
+  border-radius: 6px 6px 0 0;
+  background: var(--color-chart-tint-1);
+  transition: var(--motion-progress);
 }
 
-.short-review-row dt {
-  font: 600 12.5px/1.4 var(--font-sans);
+.trend-bar-latest {
+  background: var(--color-primary);
+}
+
+.trend-value {
+  font: 600 10.5px/1 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.trend-label {
+  font: 500 10px/1 var(--font-sans);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.trend-label-latest {
+  font-weight: 600;
   color: var(--color-text-strong);
-  min-width: 130px;
 }
 
-.short-review-row dd {
+/* --- Withheld result (St4b) --------------------------------------------- */
+
+.review-withheld {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+}
+
+.withheld-card {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.withheld-title {
   margin: 0;
-  font: var(--text-body);
+  font: 700 19px/1.3 var(--font-sans);
+  letter-spacing: -0.012em;
   color: var(--color-ink);
+}
+
+.withheld-card .hint {
+  margin: 0;
+}
+
+.withheld-score {
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 22px;
+  border-radius: var(--radius-control);
+  background: var(--color-well);
+}
+
+.withheld-score-mask {
+  font: 700 22px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.withheld-score-label {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.withheld-action {
+  justify-self: stretch;
 }

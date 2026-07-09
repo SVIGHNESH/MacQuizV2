@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import {
+  formatElapsed,
   formatWhen,
   type AttemptResult,
   type ResultQuestion,
 } from './model'
 
 /**
- * The released review (docs/08): the score, the per-question grading, and -
- * only here, after release - the answer key. The server refuses this read
- * until the quiz's results are released, so a 409 renders as "not yet",
- * never as an error.
+ * The released review (docs/11 St4): the score as the screen's one inverted
+ * hero card, then the answer key - exposed here and only here, after release
+ * (docs/08). The server refuses this read until results are released, so a
+ * 409 renders as the withheld card (St4b), never as an error.
  */
 export default function ResultReview({
   attemptId,
@@ -54,27 +55,38 @@ export default function ResultReview({
       <div className="review">
         <p className="form-error">{loadError}</p>
         <button className="button button-quiet" type="button" onClick={onBack}>
-          Back to my quizzes
+          Back to assigned quizzes
         </button>
       </div>
     )
   }
 
+  // St4b: submitted and graded, score withheld until the teacher releases.
   if (notReleased) {
     return (
-      <div className="review">
-        <section className="panel player-done">
-          <h1 className="card-title">Results not released yet</h1>
+      <div className="review-withheld">
+        <section className="card withheld-card">
+          <span className="chip chip-lifecycle chip-lifecycle-submitted">
+            <span className="chip-dot" aria-hidden="true" />
+            Submitted
+          </span>
+          <h1 className="withheld-title">Results not released yet</h1>
           <p className="hint">
-            Your teacher has not released the results for this quiz. Check
-            back later.
+            Your attempt was received and graded automatically. Your score is
+            withheld until your teacher releases results.
           </p>
+          <div className="withheld-score" aria-label="Score not released">
+            <span className="withheld-score-mask" aria-hidden="true">
+              ••&nbsp;%
+            </span>
+            <span className="withheld-score-label">not released</span>
+          </div>
           <button
-            className="button button-primary"
+            className="button button-quiet withheld-action"
             type="button"
             onClick={onBack}
           >
-            Back to my quizzes
+            Back to assigned quizzes
           </button>
         </section>
       </div>
@@ -89,43 +101,87 @@ export default function ResultReview({
     )
   }
 
+  const correctCount = result.questions.filter((q) => q.is_correct).length
+  const percent =
+    result.max_score > 0
+      ? Math.round((result.score / result.max_score) * 100)
+      : null
+  // The clock the student actually raced: start to submit, against the budget
+  // the server pinned at start (least(duration, quiz end)).
+  const timeTaken = result.attempt.submitted_at
+    ? formatElapsed(result.attempt.started_at, result.attempt.submitted_at)
+    : null
+  const budget = formatElapsed(
+    result.attempt.started_at,
+    result.attempt.deadline_at,
+  )
+
   return (
     <div className="review">
-      <button className="back-button" type="button" onClick={onBack}>
-        ← My quizzes
-      </button>
-
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">Attempt {result.attempt.attempt_no} results</p>
-          <h1 className="page-title">{result.quiz_title}</h1>
-        </div>
+      <header className="review-head">
+        <button className="back-button" type="button" onClick={onBack}>
+          ← Assigned quizzes
+        </button>
+        <h1 className="page-title">{result.quiz_title} - your result</h1>
+        <p className="review-subtitle">
+          Attempt {result.attempt.attempt_no} · released{' '}
+          {formatWhen(result.released_at)}
+        </p>
       </header>
 
-      <section className="panel score-banner">
-        <span className="score-figure tabular">
-          {result.score} <span className="score-max">/ {result.max_score}</span>
-        </span>
-        <span className="score-caption">
-          points
-          {result.percentile !== null && (
-            <>
-              <span className="meta-dot" aria-hidden="true" />
-              {formatPercentile(result.percentile)} percentile
-            </>
-          )}
-          <span className="meta-dot" aria-hidden="true" />
-          released {formatWhen(result.released_at)}
-        </span>
-      </section>
+      {result.score_overridden && (
+        <p className="quiz-banner review-override" role="status">
+          This attempt was scored zero after your removal from the quiz.
+        </p>
+      )}
 
-      <ol className="review-questions">
-        {result.questions.map((question) => (
-          <li key={question.id} className="panel review-question">
-            <ReviewQuestion question={question} />
-          </li>
-        ))}
-      </ol>
+      {/* At most one inverted ink card per screen: the hero number. */}
+      <div className="stat-cards">
+        <div className="stat-card stat-card-hero">
+          <span className="stat-card-eyebrow">Score</span>
+          <span className="stat-card-hero-value tabular score-figure">
+            {percent === null ? `${result.score}` : `${percent}%`}
+          </span>
+          <span className="stat-card-hero-sub tabular">
+            {correctCount} of {result.questions.length} correct
+          </span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card-value tabular">
+            {result.score} / {result.max_score}
+          </span>
+          <span className="stat-card-label">Points</span>
+        </div>
+        {timeTaken && (
+          <div className="stat-card">
+            <span className="stat-card-value tabular">{timeTaken}</span>
+            <span className="stat-card-label">Time taken · of {budget}</span>
+          </div>
+        )}
+        {result.percentile !== null && (
+          <div className="stat-card">
+            <span className="stat-card-value tabular">
+              {formatPercentile(result.percentile)}
+            </span>
+            <span className="stat-card-label">Percentile · in this quiz</span>
+          </div>
+        )}
+      </div>
+
+      <section className="answer-key">
+        <span className="eyebrow answer-key-eyebrow">Answer key</span>
+        <div className="answer-key-table">
+          <div className="answer-key-header">
+            <span>#</span>
+            <span>Question</span>
+            <span>Your answer</span>
+            <span className="answer-key-verdict-head">Verdict</span>
+          </div>
+          {result.questions.map((question) => (
+            <AnswerRow key={question.id} question={question} />
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -141,133 +197,101 @@ function formatPercentile(percentile: number): string {
   return `${rounded}${suffix}`
 }
 
-function verdictOf(q: ResultQuestion): {
-  className: string
-  label: string
-} {
-  if (q.is_correct === null) return { className: 'skipped', label: 'Not answered' }
-  if (q.is_correct) return { className: 'correct', label: 'Correct' }
-  return { className: 'incorrect', label: 'Incorrect' }
+function keysOf(raw: unknown): string[] {
+  if (typeof raw === 'string') return [raw]
+  if (Array.isArray(raw)) return raw.filter((k): k is string => typeof k === 'string')
+  return []
 }
 
-/** The key and the response, rendered per question type. */
-function ReviewQuestion({ question }: { question: ResultQuestion }) {
-  const verdict = verdictOf(question)
+/**
+ * "B · Encrypted vault" - the option letter, then what it said. The table
+ * never lists the options themselves, so a bare letter would be unreadable;
+ * every key carries its text, including each key of a multi.
+ */
+function labelForKeys(question: ResultQuestion, keys: string[]): string {
+  return keys
+    .map((key) => {
+      const option = (question.options ?? []).find((o) => o.key === key)
+      const letter = key.toUpperCase()
+      return option ? `${letter} · ${option.text}` : letter
+    })
+    .join(', ')
+}
+
+/** What the student put down, in the shape their question type takes. */
+function yourAnswer(question: ResultQuestion): string {
+  switch (question.type) {
+    case 'single':
+    case 'multi': {
+      const keys = keysOf(question.response)
+      return keys.length ? labelForKeys(question, keys) : ''
+    }
+    case 'truefalse':
+      return typeof question.response === 'boolean'
+        ? question.response
+          ? 'True'
+          : 'False'
+        : ''
+    case 'short':
+      return typeof question.response === 'string' ? question.response.trim() : ''
+  }
+}
+
+/** The key, shown only where the student did not already find it. */
+function correctAnswer(question: ResultQuestion): string {
+  switch (question.type) {
+    case 'single':
+    case 'multi':
+      return labelForKeys(question, keysOf(question.correct))
+    case 'truefalse':
+      return question.correct === true
+        ? 'True'
+        : question.correct === false
+          ? 'False'
+          : ''
+    case 'short': {
+      const accepted = (question.correct as { accepted?: unknown })?.accepted
+      return keysOf(accepted).join(', ')
+    }
+  }
+}
+
+function AnswerRow({ question }: { question: ResultQuestion }) {
+  const answered = yourAnswer(question)
+  const verdict =
+    question.is_correct === null
+      ? { tone: 'skipped', label: 'Not answered' }
+      : question.is_correct
+        ? { tone: 'correct', label: 'Correct' }
+        : { tone: 'incorrect', label: 'Incorrect' }
+  const key = question.is_correct ? '' : correctAnswer(question)
+  const keyLabel =
+    question.type === 'short'
+      ? 'Accepted'
+      : question.type === 'multi'
+        ? 'Correct answers'
+        : 'Correct answer'
 
   return (
-    <div>
-      <div className="player-question-head">
-        <span className="question-index">{question.position}</span>
-        <span className="player-question-text">{question.body.text}</span>
-        <span className={`chip chip-verdict chip-verdict-${verdict.className}`}>
-          {verdict.label}
-        </span>
-        <span className="player-question-points tabular">
-          {question.points_awarded} / {question.points} pt
-          {question.points === 1 ? '' : 's'}
-        </span>
+    <div className="answer-row">
+      <span className="answer-row-num tabular">
+        {String(question.position).padStart(2, '0')}
+      </span>
+      <div className="answer-row-question">
+        <span className="answer-row-text">{question.body.text}</span>
+        {key && (
+          <span className="answer-row-key">
+            {keyLabel}: {key}
+          </span>
+        )}
       </div>
-
-      {(question.type === 'single' || question.type === 'multi') && (
-        <ChoiceReview question={question} />
-      )}
-      {question.type === 'truefalse' && <TrueFalseReview question={question} />}
-      {question.type === 'short' && <ShortReview question={question} />}
+      <span className="answer-row-response">
+        {answered || <span className="answer-row-blank">—</span>}
+      </span>
+      <span className={`answer-verdict answer-verdict-${verdict.tone}`}>
+        <span className="answer-verdict-dot" aria-hidden="true" />
+        {verdict.label}
+      </span>
     </div>
-  )
-}
-
-function ChoiceReview({ question }: { question: ResultQuestion }) {
-  const correctKeys = new Set(
-    question.type === 'single'
-      ? typeof question.correct === 'string'
-        ? [question.correct]
-        : []
-      : Array.isArray(question.correct)
-        ? question.correct.filter((k): k is string => typeof k === 'string')
-        : [],
-  )
-  const pickedKeys = new Set(
-    question.type === 'single'
-      ? typeof question.response === 'string'
-        ? [question.response]
-        : []
-      : Array.isArray(question.response)
-        ? question.response.filter((k): k is string => typeof k === 'string')
-        : [],
-  )
-
-  return (
-    <div className="option-list">
-      {(question.options ?? []).map((option) => {
-        const isKey = correctKeys.has(option.key)
-        const picked = pickedKeys.has(option.key)
-        const tone = isKey
-          ? 'review-option-key'
-          : picked
-            ? 'review-option-wrong'
-            : ''
-        return (
-          <div key={option.key} className={`option-row review-option ${tone}`}>
-            <span className="option-key">{option.key.toUpperCase()}</span>
-            <span className="option-static">{option.text}</span>
-            {picked && <span className="review-tag">Your answer</span>}
-            {isKey && (
-              <span className="review-tag review-tag-key">Correct answer</span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function TrueFalseReview({ question }: { question: ResultQuestion }) {
-  return (
-    <div className="option-list">
-      {[true, false].map((bool) => {
-        const isKey = question.correct === bool
-        const picked = question.response === bool
-        const tone = isKey
-          ? 'review-option-key'
-          : picked
-            ? 'review-option-wrong'
-            : ''
-        return (
-          <div key={String(bool)} className={`option-row review-option ${tone}`}>
-            <span className="option-key">{bool ? 'T' : 'F'}</span>
-            <span className="option-static">{bool ? 'True' : 'False'}</span>
-            {picked && <span className="review-tag">Your answer</span>}
-            {isKey && (
-              <span className="review-tag review-tag-key">Correct answer</span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function ShortReview({ question }: { question: ResultQuestion }) {
-  const accepted = (question.correct as { accepted?: unknown })?.accepted
-  const acceptedList = Array.isArray(accepted)
-    ? accepted.filter((a): a is string => typeof a === 'string')
-    : []
-
-  return (
-    <dl className="short-review">
-      <div className="short-review-row">
-        <dt>Your answer</dt>
-        <dd>
-          {typeof question.response === 'string' && question.response !== ''
-            ? question.response
-            : '(no answer)'}
-        </dd>
-      </div>
-      <div className="short-review-row">
-        <dt>Accepted answer{acceptedList.length === 1 ? '' : 's'}</dt>
-        <dd>{acceptedList.join(', ')}</dd>
-      </div>
-    </dl>
   )
 }

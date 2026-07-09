@@ -43,14 +43,15 @@ export default function LoginScreen() {
   return (
     <main className="shell">
       <section className="card auth-card">
-        <header className="masthead">
-          <span className="brand-mark" aria-hidden="true">
-            M
-          </span>
-          <div>
-            <p className="eyebrow">MacQuiz</p>
-            <h1 className="page-title">Sign in</h1>
-          </div>
+        <span className="brand-mark brand-mark-auth" aria-hidden="true">
+          M
+        </span>
+        <header className="auth-heading">
+          <h1 className="page-title">Sign in to MacQuiz</h1>
+          <p className="auth-subtitle">
+            Use the credentials your administrator issued. Accounts aren't
+            self-created.
+          </p>
         </header>
 
         <form className="form" onSubmit={onSubmit} noValidate>
@@ -92,16 +93,19 @@ export default function LoginScreen() {
           )}
 
           <button
-            className="button button-primary"
+            className="button button-primary auth-submit"
             type="submit"
             disabled={submitting}
           >
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
 
+          {/* No self-serve reset exists (docs/08): the only recovery path is
+              an administrator reissuing a one-time credential. */}
           <p className="form-footnote">
             First time here? Sign in with the one-time password your
-            administrator gave you; you will pick your own right after.
+            administrator gave you; you will pick your own right after. Locked
+            out? Ask your administrator.
           </p>
         </form>
       </section>

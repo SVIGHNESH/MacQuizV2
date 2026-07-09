@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --color-ink:#131a26; --color-text-strong:#344054; --color-text-secondary:#667085; --color-text-muted:#98a2b3;
+    --color-border-input:#d0d5dd; --color-border-hairline:#e9ebef; --color-well:#f2f4f7; --color-page:#f4f5f7;
+    --color-table-header:#fafbfc; --color-surface:#ffffff;
+    --color-primary:#2563eb; --color-primary-hover:#1d4ed8; --color-primary-tint:#eff4ff; --color-primary-on-tint:#1849a9; --color-primary-selection-wash:#f5f8ff;
+    --color-success:#079455; --color-success-dot:#12b76a; --color-success-tint:#ecfdf3; --color-success-on-tint:#067647;
+    --color-warning:#dc6803; --color-warning-dot:#f79009; --color-warning-tint:#fffaeb; --color-warning-on-tint:#93370d;
+    --color-danger:#d92d20; --color-danger-hover:#b42318; --color-danger-tint:#fef3f2; --color-danger-on-tint:#b42318;
+    --color-chart-tint-1:#b3ccf9; --color-chart-tint-2:#c7d7fe;
+    --color-slate-950:#020617; --color-slate-900:#0f172a; --color-slate-800:#1e293b; --color-slate-400:#94a3b8;
+    --font-sans:'Inter','Inter Variable',system-ui,-apple-system,sans-serif;
+    --text-eyebrow:650 11px/1.3 var(--font-sans);
+    --tracking-eyebrow:0.1em;
+    --radius-control:8px; --radius-button:10px; --radius-option-row:12px; --radius-card:16px; --radius-pill:999px;
+    --shadow-resting:0 1px 2px rgba(16,24,40,.04); --shadow-floating:0 24px 64px -16px rgba(16,24,40,.4); --shadow-primary-lift:0 1px 2px rgba(37,99,235,.4);
+    --focus-ring:0 0 0 3px rgba(37,99,235,.12); --overlay-modal:rgba(13,18,28,.52);
+    --motion-micro:0.15s ease; --motion-entrance:0.35s cubic-bezier(0.22,1,0.36,1); --motion-pulse-period:2s; --motion-progress:width 0.4s ease;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e7e9ee; font-family:var(--font-sans); color:var(--color-ink); -webkit-font-smoothing:antialiased; }
+  a { color:var(--color-primary); text-decoration:none; }
+  a:hover { color:var(--color-primary-hover); }
+  @keyframes mqpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.82)} }
+  @keyframes mqrise { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes mqtoast { from{opacity:0;transform:translate(-50%,-10px)} to{opacity:1;transform:translate(-50%,0)} }
+  .mq-tab:hover { color:var(--color-text-strong); }
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important} }
+</style>
+</helmet>
+<div style="padding:56px 64px 120px;display:flex;flex-direction:column;gap:8px;min-width:2600px">
+
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+    <div style="width:44px;height:44px;border-radius:13px;background:var(--color-primary);color:#fff;font:800 25px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;letter-spacing:-0.04em">M</div>
+    <div style="display:flex;flex-direction:column">
+      <span style="font:800 34px/1.1 var(--font-sans);letter-spacing:-0.025em;color:var(--color-ink)">MacQuiz v2 — frontend</span>
+      <span style="font:500 14px/1.4 var(--font-sans);color:var(--color-text-secondary)">Complete screen gallery · closed-enrollment, server-authoritative assessments · dense, calm, data-forward</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:36px">
+    <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-secondary);background:var(--color-surface);border:1px solid var(--color-border-hairline);padding:7px 11px;border-radius:var(--radius-pill)">Shared shell</span>
+    <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-secondary);background:var(--color-surface);border:1px solid var(--color-border-hairline);padding:7px 11px;border-radius:var(--radius-pill)">Student · 6</span>
+    <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-secondary);background:var(--color-surface);border:1px solid var(--color-border-hairline);padding:7px 11px;border-radius:var(--radius-pill)">Teacher · 6</span>
+    <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-secondary);background:var(--color-surface);border:1px solid var(--color-border-hairline);padding:7px 11px;border-radius:var(--radius-pill)">Admin · 4</span>
+  </div>
+
+  <!-- ===================== SHARED SHELL ===================== -->
+  <div style="display:flex;align-items:baseline;gap:14px;margin:8px 0 4px">
+    <span style="font:800 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:var(--color-ink)">Shared shell</span>
+    <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-text-secondary)">No self-signup · one-time credentials · role-scoped rails · 404 for unassigned resources (never 403)</span>
+  </div>
+  <div style="height:1px;background:var(--color-border-hairline);margin:6px 0 26px"></div>
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start;margin-bottom:64px">
+
+    <!-- Login -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">Sh1 · Sign in</span>
+      <div style="width:520px;height:560px;background:var(--color-page);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);display:flex;align-items:center;justify-content:center;overflow:hidden">
+        <div style="width:380px;background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:34px 32px;display:flex;flex-direction:column;gap:18px">
+          <div style="width:38px;height:38px;border-radius:11px;background:var(--color-primary);color:#fff;font:800 21px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;letter-spacing:-0.04em">M</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font:700 20px/1.25 var(--font-sans);letter-spacing:-0.015em;color:var(--color-ink)">Sign in to MacQuiz</span>
+            <span style="font:450 12.5px/1.45 var(--font-sans);color:var(--color-text-secondary)">Use the credentials your administrator issued. Accounts aren't self-created.</span>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:550 12px/1 var(--font-sans);color:var(--color-text-strong)">Email or username</span>
+            <input value="dana.ferro@northwind.co" readonly style="font:450 13.5px/1 var(--font-sans);color:var(--color-ink);padding:11px 12px;border:1px solid var(--color-border-input);border-radius:var(--radius-button);background:var(--color-surface);outline:none"/>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:550 12px/1 var(--font-sans);color:var(--color-text-strong)">Password</span>
+            <input type="password" value="passwordvalue" readonly style="font:450 13.5px/1 var(--font-sans);color:var(--color-ink);padding:11px 12px;border:1px solid var(--color-primary);border-radius:var(--radius-button);background:var(--color-surface);outline:none;box-shadow:var(--focus-ring)"/>
+          </label>
+          <button style="font:600 13.5px/1 var(--font-sans);color:#fff;background:var(--color-primary);border:none;padding:12px;border-radius:var(--radius-button);cursor:pointer;box-shadow:var(--shadow-primary-lift);margin-top:2px">Sign in</button>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <a href="#" style="font:500 12.5px/1 var(--font-sans)">Forgot password?</a>
+            <span style="font:500 12.5px/1 var(--font-sans);color:var(--color-text-muted)">Need access? Ask your admin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Forced password change -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">Sh2 · First login — set a password</span>
+      <div style="width:520px;height:560px;background:var(--color-page);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);display:flex;align-items:center;justify-content:center;overflow:hidden">
+        <div style="width:380px;background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:34px 32px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:inline-flex;align-items:center;gap:7px;align-self:flex-start;background:var(--color-primary-tint);border:1px solid #d5e2ff;color:var(--color-primary-on-tint);font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;padding:6px 10px;border-radius:var(--radius-pill)">One-time credential</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font:700 20px/1.25 var(--font-sans);letter-spacing:-0.015em;color:var(--color-ink)">Set a new password</span>
+            <span style="font:450 12.5px/1.45 var(--font-sans);color:var(--color-text-secondary)">Your temporary password can't be reused. Choose a new one to finish setting up your account.</span>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:550 12px/1 var(--font-sans);color:var(--color-text-strong)">New password</span>
+            <input type="password" value="passwordvalue" readonly style="font:450 13.5px/1 var(--font-sans);padding:11px 12px;border:1px solid var(--color-border-input);border-radius:var(--radius-button);outline:none"/>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:550 12px/1 var(--font-sans);color:var(--color-text-strong)">Confirm new password</span>
+            <input type="password" value="passwordvalue" readonly style="font:450 13.5px/1 var(--font-sans);padding:11px 12px;border:1px solid var(--color-border-input);border-radius:var(--radius-button);outline:none"/>
+          </label>
+          <div style="display:flex;flex-direction:column;gap:6px;background:var(--color-well);border-radius:var(--radius-control);padding:11px 12px">
+            <span style="font:600 11.5px/1 var(--font-sans);color:var(--color-text-strong)">Password must include</span>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:500 12px/1.3 var(--font-sans);color:var(--color-success)">✓ At least 12 characters</span>
+              <span style="font:500 12px/1.3 var(--font-sans);color:var(--color-success)">✓ Upper &amp; lowercase letters</span>
+              <span style="font:500 12px/1.3 var(--font-sans);color:var(--color-text-muted)">○ A number or symbol</span>
+            </div>
+          </div>
+          <button style="font:600 13.5px/1 var(--font-sans);color:#fff;background:var(--color-ink);border:none;padding:12px;border-radius:var(--radius-button);cursor:pointer">Set password and continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error states stack -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">Sh3 · Error &amp; edge states</span>
+      <div style="width:520px;display:flex;flex-direction:column;gap:16px">
+        <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:20px 22px;display:flex;gap:14px;align-items:flex-start">
+          <span style="width:9px;height:9px;border-radius:999px;background:var(--color-warning);margin-top:5px;flex:0 0 9px"></span>
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+            <span style="font:650 14px/1.3 var(--font-sans);color:var(--color-ink)">Too many attempts</span>
+            <span style="font:450 12.5px/1.45 var(--font-sans);color:var(--color-text-secondary)">You've hit the rate limit. Try again in <b style="font-variant-numeric:tabular-nums;color:var(--color-text-strong)">27&nbsp;s</b>. Your progress is safe.</span>
+            <button style="align-self:flex-start;margin-top:8px;font:600 12.5px/1 var(--font-sans);color:var(--color-text-strong);background:var(--color-surface);border:1px solid var(--color-border-input);padding:8px 13px;border-radius:var(--radius-button);cursor:pointer">Retry in 27&nbsp;s</button>
+          </div>
+        </div>
+        <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:20px 22px;display:flex;gap:14px;align-items:flex-start">
+          <span style="width:9px;height:9px;border-radius:999px;background:var(--color-text-muted);margin-top:5px;flex:0 0 9px"></span>
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+            <span style="font:650 14px/1.3 var(--font-sans);color:var(--color-ink)">Window has closed</span>
+            <span style="font:450 12.5px/1.45 var(--font-sans);color:var(--color-text-secondary)">The submission window for <b style="color:var(--color-text-strong)">Q3 compliance refresher</b> ended at 15:00. This quiz is no longer accepting attempts.</span>
+          </div>
+        </div>
+        <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:20px 22px;display:flex;gap:14px;align-items:flex-start">
+          <span style="width:9px;height:9px;border-radius:999px;background:var(--color-text-muted);margin-top:5px;flex:0 0 9px"></span>
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+            <span style="font:650 14px/1.3 var(--font-sans);color:var(--color-ink)">Not found</span>
+            <span style="font:450 12.5px/1.45 var(--font-sans);color:var(--color-text-secondary)">We couldn't find that page, or it isn't assigned to you. <a href="#">Back to your quizzes</a>.</span>
+          </div>
+        </div>
+        <div style="background:var(--color-well);border:1px dashed var(--color-border-input);border-radius:var(--radius-card);padding:16px 18px;display:flex;flex-direction:column;gap:3px">
+          <span style="font:600 12px/1.3 var(--font-sans);color:var(--color-text-strong)">Empty state pattern</span>
+          <span style="font:450 12px/1.45 var(--font-sans);color:var(--color-text-secondary)">Used across lists — quiet well, one-line explanation, single next action. No illustrations competing for attention.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== STUDENT ===================== -->
+  <div style="display:flex;align-items:baseline;gap:14px;margin:8px 0 4px">
+    <span style="font:800 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:var(--color-ink)">Student</span>
+    <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-text-secondary)">Take assigned quizzes in a window · cosmetic countdown against a server deadline · released results only</span>
+  </div>
+  <div style="height:1px;background:var(--color-border-hairline);margin:6px 0 26px"></div>
+
+  <!-- St1 Assigned quizzes -->
+  <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:44px">
+    <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St1 · Assigned quizzes</span>
+    <div style="width:1180px;height:720px;border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;display:flex;background:var(--color-surface)">
+      <dc-import name="Rail" role="student" active="Assigned quizzes" hint-size="224px,100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--color-page);min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--color-border-hairline);background:var(--color-surface)">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font:750 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:var(--color-ink)">Assigned quizzes</span>
+            <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">3 open · times shown in your local time (IST)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font:500 12px/1 var(--font-sans);color:var(--color-text-secondary);background:var(--color-well);padding:8px 12px;border-radius:var(--radius-pill)">Filter: <b style="color:var(--color-text-strong)">All</b></div>
+        </div>
+        <div style="padding:24px 28px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;overflow:auto;align-content:start">
+
+          <!-- Live in-progress -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="display:inline-flex;align-items:center;gap:6px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-danger);background:var(--color-danger-tint);padding:5px 9px;border-radius:var(--radius-pill)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-danger);animation:mqpulse var(--motion-pulse-period) infinite"></span>Live</span>
+              <span style="font:600 11px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">1 / 1 attempt</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Data handling essentials</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">15 questions · 20 min · closes 14:00</span>
+            </div>
+            <div style="height:5px;background:var(--color-well);border-radius:999px;overflow:hidden"><div style="width:53%;height:100%;background:var(--color-primary);border-radius:999px"></div></div>
+            <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-secondary);font-variant-numeric:tabular-nums">In progress · 8 of 15 answered</span>
+            <button style="font:600 13px/1 var(--font-sans);color:#fff;background:var(--color-primary);border:none;padding:11px;border-radius:var(--radius-button);cursor:pointer;box-shadow:var(--shadow-primary-lift);margin-top:2px">Resume attempt</button>
+          </div>
+
+          <!-- Live not started -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="display:inline-flex;align-items:center;gap:6px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-danger);background:var(--color-danger-tint);padding:5px 9px;border-radius:var(--radius-pill)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-danger);animation:mqpulse var(--motion-pulse-period) infinite"></span>Live</span>
+              <span style="font:600 11px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">0 / 1 attempt</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Security awareness Q3</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">20 questions · 30 min · closes 16:30</span>
+            </div>
+            <div style="background:var(--color-well);border-radius:var(--radius-control);padding:9px 11px;font:450 11.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Fullscreen required. Leaving the tab is recorded.</div>
+            <button style="font:600 13px/1 var(--font-sans);color:#fff;background:var(--color-primary);border:none;padding:11px;border-radius:var(--radius-button);cursor:pointer;box-shadow:var(--shadow-primary-lift);margin-top:2px">Start attempt</button>
+          </div>
+
+          <!-- Scheduled -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-primary-on-tint);background:var(--color-primary-tint);padding:5px 9px;border-radius:var(--radius-pill)">Scheduled</span>
+              <span style="font:600 11px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">0 / 2 attempts</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Incident response drill</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">12 questions · 25 min</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-secondary)">Opens Mon, Jul 13 · 09:00</span>
+              <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-muted)">Closes Mon, Jul 13 · 17:00</span>
+            </div>
+            <button disabled style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);background:var(--color-well);border:none;padding:11px;border-radius:var(--radius-button);cursor:not-allowed;margin-top:2px">Opens in 3 days</button>
+          </div>
+
+          <!-- Submitted, awaiting release -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="display:inline-flex;align-items:center;gap:6px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-success-on-tint);background:var(--color-success-tint);padding:5px 9px;border-radius:var(--radius-pill)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-success-dot)"></span>Submitted</span>
+              <span style="font:600 11px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">1 / 1 attempt</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Code of conduct refresher</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Submitted Jul 8 · 11:42</span>
+            </div>
+            <div style="background:var(--color-well);border-radius:var(--radius-control);padding:9px 11px;font:450 11.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Results not released yet. You'll be notified when your teacher releases scores.</div>
+            <button disabled style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);background:var(--color-well);border:none;padding:11px;border-radius:var(--radius-button);cursor:not-allowed;margin-top:2px">Results pending</button>
+          </div>
+
+          <!-- Closed, released -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-text-strong);background:var(--color-well);padding:5px 9px;border-radius:var(--radius-pill)">Closed</span>
+              <span style="font:700 14px/1 var(--font-sans);color:var(--color-success);font-variant-numeric:tabular-nums">88%</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Onboarding basics</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Released Jul 5 · score visible</span>
+            </div>
+            <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-secondary);font-variant-numeric:tabular-nums">22 / 25 correct</span>
+            <button style="font:600 13px/1 var(--font-sans);color:var(--color-text-strong);background:var(--color-surface);border:1px solid var(--color-border-input);padding:11px;border-radius:var(--radius-button);cursor:pointer;margin-top:2px">Review answers</button>
+          </div>
+
+          <!-- Kicked -->
+          <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="display:inline-flex;align-items:center;gap:6px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-danger-on-tint);background:var(--color-danger-tint);padding:5px 9px;border-radius:var(--radius-pill)">Removed</span>
+              <span style="font:600 11px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">1 / 1 attempt</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:650 15px/1.3 var(--font-sans);letter-spacing:-0.008em;color:var(--color-ink)">Policy assessment</span>
+              <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Attempt terminated · work kept for grading</span>
+            </div>
+            <div style="background:var(--color-danger-tint);border-radius:var(--color-control,var(--radius-control));padding:9px 11px;font:450 11.5px/1.4 var(--font-sans);color:var(--color-danger-on-tint)">Removed by teacher after 3 counted violations.</div>
+            <button disabled style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);background:var(--color-well);border:none;padding:11px;border-radius:var(--radius-button);cursor:not-allowed;margin-top:2px">Closed</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- St2 Attempt player -->
+  <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:44px">
+    <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St2 · Attempt player — live · timer goes red under 2:00 · pick an option, flag, navigate</span>
+    <div style="width:1180px;height:720px;position:relative;border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;display:flex;flex-direction:column;background:var(--color-surface)">
+      <!-- exam top bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--color-border-hairline);background:var(--color-surface)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:28px;height:28px;border-radius:8px;background:var(--color-primary);color:#fff;font:800 15px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;letter-spacing:-0.04em">M</div>
+          <div style="display:flex;flex-direction:column;line-height:1.15">
+            <span style="font:650 13.5px/1.2 var(--font-sans);color:var(--color-ink)">Data handling essentials</span>
+            <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-muted)">Attempt 1 · autosaves as you go</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px">
+          <span style="display:inline-flex;align-items:center;gap:6px;font:500 12px/1 var(--font-sans);color:var(--color-success)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-success-dot)"></span>All changes saved</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+            <span style="font:650 26px/1 var(--font-sans);font-variant-numeric:tabular-nums;letter-spacing:-0.01em;color:{{ timerColor }}">{{ timeText }}</span>
+            <span style="font:600 9.5px/1 var(--font-sans);letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted)">Time left</span>
+          </div>
+        </div>
+      </div>
+      <!-- body: nav grid + question -->
+      <div style="flex:1;display:flex;min-height:0">
+        <!-- navigator -->
+        <div style="width:250px;flex:0 0 250px;border-right:1px solid var(--color-border-hairline);background:var(--color-page);padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted)">Questions</span>
+            <span style="font:500 12px/1 var(--font-sans);color:var(--color-text-secondary);font-variant-numeric:tabular-nums">{{ answeredText }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+            <sc-for list="{{ grid }}" as="c" hint-placeholder-count="15">
+              <div style="position:relative">
+                <sc-if value="{{ c.isCurrent }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ c.go }}" style="width:100%;aspect-ratio:1;border-radius:var(--radius-control);border:1.5px solid var(--color-primary);background:var(--color-primary-tint);color:var(--color-primary-on-tint);font:650 13px/1 var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer">{{ c.n }}</button>
+                </sc-if>
+                <sc-if value="{{ c.isAnswered }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ c.go }}" style="width:100%;aspect-ratio:1;border-radius:var(--radius-control);border:1px solid var(--color-border-input);background:var(--color-surface);color:var(--color-ink);font:600 13px/1 var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer">{{ c.n }}</button>
+                </sc-if>
+                <sc-if value="{{ c.isEmpty }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ c.go }}" style="width:100%;aspect-ratio:1;border-radius:var(--radius-control);border:1px solid var(--color-border-hairline);background:var(--color-surface);color:var(--color-text-muted);font:500 13px/1 var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer">{{ c.n }}</button>
+                </sc-if>
+                <sc-if value="{{ c.flagged }}" hint-placeholder-val="{{ true }}">
+                  <span style="position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:999px;background:var(--color-warning-dot);border:1.5px solid var(--color-page)"></span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:7px;font:500 11px/1.3 var(--font-sans);color:var(--color-text-secondary)"><span style="width:9px;height:9px;border-radius:999px;background:var(--color-warning-dot);flex:0 0 9px"></span>Flagged for review</div>
+            <div style="display:flex;align-items:center;gap:7px;font:500 11px/1.3 var(--font-sans);color:var(--color-text-secondary)"><span style="width:9px;height:9px;border-radius:3px;border:1px solid var(--color-border-input);background:var(--color-surface);flex:0 0 9px"></span>Answered</div>
+          </div>
+        </div>
+        <!-- question pane -->
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--color-surface)">
+          <div style="flex:1;padding:34px 44px;overflow:auto;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.1em;text-transform:uppercase;color:var(--color-primary)">{{ curLabel }}</span>
+                <span style="font:650 20px/1.4 var(--font-sans);letter-spacing:-0.01em;color:var(--color-ink);max-width:620px;text-wrap:pretty">If a student's connection drops mid-attempt and they readmit, what happens to their work?</span>
+              </div>
+              <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-text-muted);background:var(--color-well);padding:6px 10px;border-radius:var(--radius-pill);white-space:nowrap">Single choice</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;max-width:680px">
+              <sc-for list="{{ opts }}" as="o" hint-placeholder-count="4">
+                <sc-if value="{{ o.selected }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:14px;text-align:left;padding:15px 16px;border-radius:var(--radius-option-row);border:1.5px solid var(--color-primary);background:var(--color-primary-selection-wash);cursor:pointer;box-shadow:var(--focus-ring);transition:background var(--motion-micro)">
+                    <span style="width:26px;height:26px;flex:0 0 26px;border-radius:999px;background:var(--color-primary);color:#fff;font:650 12px/1 var(--font-sans);display:flex;align-items:center;justify-content:center">{{ o.k }}</span>
+                    <span style="font:550 14px/1.4 var(--font-sans);color:var(--color-ink)">{{ o.t }}</span>
+                  </button>
+                </sc-if>
+                <sc-if value="{{ o.unselected }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ o.pick }}" class="mq-tab" style="display:flex;align-items:center;gap:14px;text-align:left;padding:15px 16px;border-radius:var(--radius-option-row);border:1px solid var(--color-border-input);background:var(--color-surface);cursor:pointer;transition:border-color var(--motion-micro),background var(--motion-micro)">
+                    <span style="width:26px;height:26px;flex:0 0 26px;border-radius:999px;background:var(--color-well);color:var(--color-text-strong);font:650 12px/1 var(--font-sans);display:flex;align-items:center;justify-content:center">{{ o.k }}</span>
+                    <span style="font:500 14px/1.4 var(--font-sans);color:var(--color-text-strong)">{{ o.t }}</span>
+                  </button>
+                </sc-if>
+              </sc-for>
+            </div>
+          </div>
+          <!-- footer controls -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 44px;border-top:1px solid var(--color-border-hairline);background:var(--color-surface)">
+            <button onClick="{{ prevQ }}" style="font:600 13px/1 var(--font-sans);color:var(--color-text-strong);background:var(--color-surface);border:1px solid var(--color-border-input);padding:11px 18px;border-radius:var(--radius-button);cursor:pointer">← Previous</button>
+            <div style="display:flex;align-items:center;gap:10px">
+              <button onClick="{{ toggleFlag }}" style="font:600 13px/1 var(--font-sans);color:var(--color-warning-on-tint);background:var(--color-warning-tint);border:1px solid #f4e0b8;padding:11px 16px;border-radius:var(--radius-button);cursor:pointer">⚑ Flag</button>
+              <button onClick="{{ nextQ }}" style="font:600 13px/1 var(--font-sans);color:#fff;background:var(--color-primary);border:none;padding:11px 20px;border-radius:var(--radius-button);cursor:pointer;box-shadow:var(--shadow-primary-lift)">Next →</button>
+              <button style="font:600 13px/1 var(--font-sans);color:#fff;background:var(--color-ink);border:none;padding:11px 20px;border-radius:var(--radius-button);cursor:pointer">Review and submit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- guardrail toast -->
+      <sc-if value="{{ playerToast }}" hint-placeholder-val="{{ null }}">
+        <div style="position:absolute;top:64px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:11px;background:var(--color-ink);color:#fff;padding:12px 16px;border-radius:var(--radius-button);box-shadow:var(--shadow-floating);animation:mqtoast .3s ease;z-index:20">
+          <span style="width:8px;height:8px;border-radius:999px;background:{{ playerToast.color }};flex:0 0 8px"></span>
+          <span style="font:550 12.5px/1.3 var(--font-sans)">{{ playerToast.text }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- St2b Fullscreen blocker + St3 Lockout -->
+  <div style="display:flex;gap:40px;flex-wrap:wrap;margin-bottom:44px;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St2b · Fullscreen blocker overlay</span>
+      <div style="width:570px;height:400px;border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;position:relative;background:var(--color-ink);display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:0;background:var(--overlay-modal);backdrop-filter:blur(2px)"></div>
+        <div style="position:relative;width:400px;background:var(--color-surface);border-radius:var(--radius-card);box-shadow:var(--shadow-floating);padding:28px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+          <span style="display:inline-flex;align-items:center;gap:7px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-warning-on-tint);background:var(--color-warning-tint);padding:6px 10px;border-radius:var(--radius-pill)">Fullscreen exited</span>
+          <span style="font:700 18px/1.3 var(--font-sans);letter-spacing:-0.01em;color:var(--color-ink)">Return to fullscreen to continue</span>
+          <span style="font:450 12.5px/1.5 var(--font-sans);color:var(--color-text-secondary)">Your timer is still running against the server deadline. This exit was recorded as a counted violation (2 of 3).</span>
+          <button style="align-self:stretch;font:600 13px/1 var(--font-sans);color:#fff;background:var(--color-primary);border:none;padding:12px;border-radius:var(--radius-button);cursor:pointer;box-shadow:var(--shadow-primary-lift)">Re-enter fullscreen</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St3 · Lockout — removed from quiz</span>
+      <div style="width:570px;height:400px;border:1px solid #f6cfca;border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;background:var(--color-danger-tint);display:flex;align-items:center;justify-content:center;padding:36px">
+        <div style="max-width:420px;display:flex;flex-direction:column;gap:14px;align-items:flex-start">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--color-danger);color:#fff;font:700 22px/1 var(--font-sans);display:flex;align-items:center;justify-content:center">!</div>
+          <span style="font:750 24px/1.25 var(--font-sans);letter-spacing:-0.015em;color:var(--color-danger-on-tint)">You've been removed from this quiz</span>
+          <span style="font:500 13.5px/1.55 var(--font-sans);color:var(--color-danger-on-tint)">Your teacher ended your attempt after 3 counted integrity violations. <b>Your work has been kept and will be graded.</b> You can't rejoin unless a teacher readmits you — that would start a fresh attempt.</span>
+          <div style="display:flex;flex-direction:column;gap:6px;background:var(--color-surface);border:1px solid #f6cfca;border-radius:var(--radius-control);padding:12px 14px;align-self:stretch">
+            <span style="font:600 11px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-text-muted)">Reason given</span>
+            <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-text-strong)">Repeated tab switching during the exam</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- St4 Result review (released) -->
+  <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:44px">
+    <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St4 · Result review — released · score, verdicts, answer key</span>
+    <div style="width:1180px;height:720px;border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;display:flex;background:var(--color-surface)">
+      <dc-import name="Rail" role="student" active="Results" hint-size="224px,100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--color-page);min-width:0">
+        <div style="display:flex;flex-direction:column;gap:2px;padding:20px 28px;border-bottom:1px solid var(--color-border-hairline);background:var(--color-surface)">
+          <span style="font:500 11.5px/1 var(--font-sans);color:var(--color-text-muted)"><a href="#">Results</a> · Onboarding basics</span>
+          <span style="font:750 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:var(--color-ink)">Onboarding basics — your result</span>
+        </div>
+        <div style="padding:24px 28px;display:flex;flex-direction:column;gap:20px;overflow:auto">
+          <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px">
+            <div style="background:var(--color-ink);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.1em;text-transform:uppercase;color:var(--color-slate-400)">Score</span>
+              <span style="font:750 34px/1 var(--font-sans);color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">88%</span>
+              <span style="font:500 12px/1 var(--font-sans);color:var(--color-slate-400);font-variant-numeric:tabular-nums">22 of 25 correct</span>
+            </div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:6px">
+              <span style="font:750 26px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">A−</span>
+              <span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Grade band</span>
+            </div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:6px">
+              <span style="font:750 26px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">14:22</span>
+              <span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Time taken · of 20:00</span>
+            </div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:6px">
+              <span style="font:750 26px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">6th</span>
+              <span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Rank · of 48</span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted);margin-bottom:8px">Answer key</span>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);overflow:hidden">
+              <div style="display:grid;grid-template-columns:44px 1fr 220px 92px;gap:12px;padding:11px 18px;background:var(--color-table-header);border-bottom:1px solid var(--color-border-hairline)">
+                <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted)">#</span>
+                <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted)">Question</span>
+                <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted)">Your answer</span>
+                <span style="font:650 10.5px/1 var(--font-sans);letter-spacing:0.08em;text-transform:uppercase;color:var(--color-text-muted);text-align:right">Verdict</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 220px 92px;gap:12px;padding:14px 18px;border-bottom:1px solid var(--color-well);align-items:center">
+                <span style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">01</span>
+                <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-ink)">Where should confidential documents be stored?</span>
+                <span style="font:500 12.5px/1.4 var(--font-sans);color:var(--color-text-strong)">B · Encrypted vault</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;font:600 12px/1 var(--font-sans);color:var(--color-success)"><span style="width:7px;height:7px;border-radius:999px;background:var(--color-success-dot)"></span>Correct</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 220px 92px;gap:12px;padding:14px 18px;border-bottom:1px solid var(--color-well);align-items:center">
+                <span style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">02</span>
+                <div style="display:flex;flex-direction:column;gap:3px"><span style="font:500 13px/1.4 var(--font-sans);color:var(--color-ink)">How often is the access review run?</span><span style="font:500 11.5px/1.3 var(--font-sans);color:var(--color-success)">Correct answer: C · Quarterly</span></div>
+                <span style="font:500 12.5px/1.4 var(--font-sans);color:var(--color-text-strong)">A · Annually</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;font:600 12px/1 var(--font-sans);color:var(--color-danger)"><span style="width:7px;height:7px;border-radius:999px;background:var(--color-danger)"></span>Incorrect</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 220px 92px;gap:12px;padding:14px 18px;border-bottom:1px solid var(--color-well);align-items:center">
+                <span style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">03</span>
+                <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-ink)">A phishing email asks for your password. You should…</span>
+                <span style="font:500 12.5px/1.4 var(--font-sans);color:var(--color-text-strong)">D · Report it</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;font:600 12px/1 var(--font-sans);color:var(--color-success)"><span style="width:7px;height:7px;border-radius:999px;background:var(--color-success-dot)"></span>Correct</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 220px 92px;gap:12px;padding:14px 18px;align-items:center">
+                <span style="font:600 13px/1 var(--font-sans);color:var(--color-text-muted);font-variant-numeric:tabular-nums">04</span>
+                <span style="font:500 13px/1.4 var(--font-sans);color:var(--color-ink)">Two-factor authentication protects against…</span>
+                <span style="font:500 12.5px/1.4 var(--font-sans);color:var(--color-text-strong)">A, C · selected</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;font:600 12px/1 var(--font-sans);color:var(--color-success)"><span style="width:7px;height:7px;border-radius:999px;background:var(--color-success-dot)"></span>Correct</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- St4b withheld + St5 leaderboard -->
+  <div style="display:flex;gap:40px;flex-wrap:wrap;margin-bottom:44px;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St4b · Result — pre-release (withheld)</span>
+      <div style="width:520px;height:520px;background:var(--color-page);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);display:flex;align-items:center;justify-content:center;padding:32px">
+        <div style="width:400px;background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);padding:28px;display:flex;flex-direction:column;gap:14px;align-items:flex-start">
+          <span style="display:inline-flex;align-items:center;gap:6px;font:650 10.5px/1 var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;color:var(--color-success-on-tint);background:var(--color-success-tint);padding:6px 10px;border-radius:var(--radius-pill)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-success-dot)"></span>Submitted</span>
+          <span style="font:700 19px/1.3 var(--font-sans);letter-spacing:-0.012em;color:var(--color-ink)">Code of conduct refresher</span>
+          <span style="font:450 13px/1.55 var(--font-sans);color:var(--color-text-secondary)">Your attempt was received and graded automatically. Your score is withheld until your teacher releases results.</span>
+          <div style="align-self:stretch;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--color-well);border-radius:var(--radius-control);padding:22px;font:700 22px/1 var(--font-sans);color:var(--color-text-muted);letter-spacing:0.06em">•• % <span style="font:500 12px/1 var(--font-sans);color:var(--color-text-muted);letter-spacing:0">not released</span></div>
+          <span style="font:500 11.5px/1.4 var(--font-sans);color:var(--color-text-muted)">Submitted Jul 8 · 11:42 · 25 questions</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St5 · Leaderboard — the dark island</span>
+      <div style="width:520px;height:520px;background:var(--color-slate-950);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;display:flex;flex-direction:column;padding:26px">
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:20px">
+          <span style="font:600 10.5px/1 var(--font-sans);letter-spacing:0.12em;text-transform:uppercase;color:var(--color-slate-400)">Leaderboard</span>
+          <span style="font:750 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:#fff">Data handling essentials</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-800);border-radius:var(--radius-option-row);padding:14px 16px">
+            <span style="width:30px;height:30px;flex:0 0 30px;border-radius:999px;background:linear-gradient(150deg,#fde68a,#d4a017);color:#3a2c05;font:750 13px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums">1</span>
+            <span style="flex:1;font:650 14px/1 var(--font-sans);color:#fff">Arjun Iyer</span>
+            <span style="font:700 15px/1 var(--font-sans);color:#fff;font-variant-numeric:tabular-nums">96%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-900);border-radius:var(--radius-option-row);padding:14px 16px">
+            <span style="width:30px;height:30px;flex:0 0 30px;border-radius:999px;background:linear-gradient(150deg,#e2e8f0,#94a3b8);color:#1e293b;font:750 13px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums">2</span>
+            <span style="flex:1;font:650 14px/1 var(--font-sans);color:#fff">Meera Joshi</span>
+            <span style="font:700 15px/1 var(--font-sans);color:#fff;font-variant-numeric:tabular-nums">94%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-900);border-radius:var(--radius-option-row);padding:14px 16px">
+            <span style="width:30px;height:30px;flex:0 0 30px;border-radius:999px;background:linear-gradient(150deg,#f6c89a,#b06a2c);color:#3a1f05;font:750 13px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums">3</span>
+            <span style="flex:1;font:650 14px/1 var(--font-sans);color:#fff">Leah Osei</span>
+            <span style="font:700 15px/1 var(--font-sans);color:#fff;font-variant-numeric:tabular-nums">91%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-900);border-radius:var(--radius-option-row);padding:13px 16px">
+            <span style="width:30px;flex:0 0 30px;text-align:center;font:650 13px/1 var(--font-sans);color:var(--color-slate-400);font-variant-numeric:tabular-nums">4</span>
+            <span style="flex:1;font:550 14px/1 var(--font-sans);color:#cbd5e1">Sam Wright</span>
+            <span style="font:650 15px/1 var(--font-sans);color:#cbd5e1;font-variant-numeric:tabular-nums">90%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-900);border-radius:var(--radius-option-row);padding:13px 16px">
+            <span style="width:30px;flex:0 0 30px;text-align:center;font:650 13px/1 var(--font-sans);color:var(--color-slate-400);font-variant-numeric:tabular-nums">5</span>
+            <span style="flex:1;font:550 14px/1 var(--font-sans);color:#cbd5e1">Nina Kaur</span>
+            <span style="font:650 15px/1 var(--font-sans);color:#cbd5e1;font-variant-numeric:tabular-nums">89%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;background:var(--color-slate-800);border:1px solid #334155;border-radius:var(--radius-option-row);padding:13px 16px">
+            <span style="width:30px;flex:0 0 30px;text-align:center;font:650 13px/1 var(--font-sans);color:var(--color-primary);font-variant-numeric:tabular-nums">6</span>
+            <span style="flex:1;font:650 14px/1 var(--font-sans);color:#fff">You — Dana Ferro</span>
+            <span style="font:700 15px/1 var(--font-sans);color:#fff;font-variant-numeric:tabular-nums">88%</span>
+          </div>
+        </div>
+        <span style="margin-top:auto;font:500 11px/1.4 var(--font-sans);color:var(--color-slate-400)">Ranks update as attempts are graded · ties broken by time taken</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- St6 My analytics -->
+  <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:44px">
+    <span style="font:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--color-text-muted)">St6 · My analytics</span>
+    <div style="width:1180px;height:720px;border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);box-shadow:var(--shadow-resting);overflow:hidden;display:flex;background:var(--color-surface)">
+      <dc-import name="Rail" role="student" active="My analytics" hint-size="224px,100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--color-page);min-width:0">
+        <div style="display:flex;flex-direction:column;gap:2px;padding:20px 28px;border-bottom:1px solid var(--color-border-hairline);background:var(--color-surface)">
+          <span style="font:750 22px/1.2 var(--font-sans);letter-spacing:-0.02em;color:var(--color-ink)">My analytics</span>
+          <span style="font:450 12.5px/1.4 var(--font-sans);color:var(--color-text-secondary)">Across 9 completed quizzes</span>
+        </div>
+        <div style="padding:24px 28px;display:flex;flex-direction:column;gap:20px;overflow:auto">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:18px;display:flex;flex-direction:column;gap:5px"><span style="font:750 28px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">84%</span><span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Average accuracy</span></div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:18px;display:flex;flex-direction:column;gap:5px"><span style="font:750 28px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">48s</span><span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Avg time / question</span></div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:18px;display:flex;flex-direction:column;gap:5px"><span style="font:750 28px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">100%</span><span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Completion rate</span></div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:18px;display:flex;flex-direction:column;gap:5px"><span style="font:750 28px/1 var(--font-sans);color:var(--color-ink);font-variant-numeric:tabular-nums">9</span><span style="font:550 11px/1 var(--font-sans);color:var(--color-text-secondary)">Quizzes completed</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px">
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:18px">
+              <span style="font:650 14px/1 var(--font-sans);color:var(--color-ink)">Accuracy trend</span>
+              <div style="display:flex;align-items:flex-end;gap:14px;height:180px;padding-top:8px">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%"><div style="width:100%;max-width:38px;height:62%;background:var(--color-chart-tint-1);border-radius:6px 6px 0 0"></div><span style="font:500 10px/1 var(--font-sans);color:var(--color-text-muted)">Apr</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%"><div style="width:100%;max-width:38px;height:71%;background:var(--color-chart-tint-1);border-radius:6px 6px 0 0"></div><span style="font:500 10px/1 var(--font-sans);color:var(--color-text-muted)">May</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%"><div style="width:100%;max-width:38px;height:68%;background:var(--color-chart-tint-1);border-radius:6px 6px 0 0"></div><span style="font:500 10px/1 var(--font-sans);color:var(--color-text-muted)">Jun</span></div>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%"><div style="width:100%;max-width:38px;height:82%;background:var(--color-primary);border-radius:6px 6px 0 0"></div><span style="font:600 10px/1 var(--font-sans);color:var(--color-text-strong)">Jul</span></div>
+              </div>
+            </div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border-hairline);border-radius:var(--radius-card);padding:20px;display:flex;flex-direction:column;gap:16px">
+              <span style="font:650 14px/1 var(--font-sans);color:var(--color-ink)">Topic strengths</span>
+              <div style="display:flex;flex-direction:column;gap:13px">
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 var(--font-sans);color:var(--color-text-strong)">Data privacy</span><span style="font:600 12px/1 var(--font-sans);color:var(--color-text-strong);font-variant-numeric:tabular-nums">92%</span></div><div style="height:6px;background:var(--color-well);border-radius:999px;overflow:hidden"><div style="width:92%;height:100%;background:var(--color-primary);border-radius:999px"></div></div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 var(--font-sans);color:var(--color-text-strong)">Access control</span><span style="font:600 12px/1 var(--font-sans);color:var(--color-text-strong);font-variant-numeric:tabular-nums">80%</span></div><div style="height:6px;background:var(--color-well);border-radius:999px;overflow:hidden"><div style="width:80%;height:100%;background:var(--color-primary);border-radius:999px"></div></div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 var(--font-sans);color:var(--color-text-strong)">Incident response</span><span style="font:600 12px/1 var(--font-sans);color:var(--color-text-strong);font-variant-numeric:tabular-nums">67%</span></div><div style="height:6px;background:var(--color-well);border-radius:999px;overflow:hidden"><div style="width:67%;height:100%;background:var(--color-chart-tint-1);border-radius:999px"></div></div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 var(--font-sans);color:var(--color-text-strong)">Phishing</span><span style="font:600 12px/1 var(--font-sans);color:var(--color-text-strong);font-variant-numeric:tabular-nums">88%</span></div><div style="height:6px;background:var(--color-well);border-radius:999px;overflow:hidden"><div style="width:88%;height:100%;background:var(--color-primary);border-radius:999px"></div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    timeLeft: 154,
+    curQ: 3,
+    answers: { 0:'B', 1:'A', 2:'D', 4:'C', 6:'A' },
+    flagged: { 4:true, 9:true },
+    playerToast: null,
+    monitorToast: null,
+    kickStep: 0,
+    kickTarget: '',
+    kickReason: '',
+  };
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      this.setState((s) => ({ timeLeft: s.timeLeft > 0 ? s.timeLeft - 1 : 0 }));
+    }, 1000);
+    // demo the guardrail toast once
+    this._gt = setTimeout(() => this.fireToast('player', 'Tab switch recorded · violation 2 of 3', 'var(--color-warning-dot)'), 2200);
+  }
+  componentWillUnmount() { clearInterval(this._t); clearTimeout(this._gt); }
+
+  fmt(sec) {
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  fireToast(area, text, color) {
+    const key = area + 'Toast';
+    this.setState({ [key]: { text, color } });
+    clearTimeout(this['_to_'+area]);
+    this['_to_'+area] = setTimeout(() => this.setState({ [key]: null }), 3400);
+  }
+
+  renderVals() {
+    const s = this.state;
+    // question navigator grid (15 questions)
+    const grid = Array.from({ length: 15 }, (_, i) => {
+      const answered = s.answers[i] !== undefined;
+      const current = i === s.curQ;
+      const flagged = !!s.flagged[i];
+      return { n: i + 1, flagged,
+        isCurrent: current,
+        isAnswered: answered && !current,
+        isEmpty: !answered && !current,
+        go: () => this.setState({ curQ: i }) };
+    });
+    const answered = Object.keys(s.answers).length;
+    const opts = [
+      { k:'A', t:'It re-runs from the last committed autosave point' },
+      { k:'B', t:'The attempt is discarded and must be restarted' },
+      { k:'C', t:'The server deadline pauses until reconnect' },
+      { k:'D', t:'A fresh attempt is created automatically' },
+    ].map(o => ({ ...o, selected: s.answers[s.curQ] === o.k, unselected: s.answers[s.curQ] !== o.k, pick: () => this.setState((st) => ({ answers: { ...st.answers, [st.curQ]: o.k } })) }));
+
+    const low = s.timeLeft < 120;
+
+    return {
+      timeText: this.fmt(s.timeLeft),
+      timerColor: low ? 'var(--color-danger)' : 'var(--color-ink)',
+      timerBg: low ? 'var(--color-danger-tint)' : 'var(--color-well)',
+      timerBorder: low ? '#f6cfca' : 'var(--color-border-hairline)',
+      grid,
+      answeredText: answered + ' of 15 answered',
+      curLabel: 'Question ' + (s.curQ + 1) + ' of 15',
+      opts,
+      curFlagged: !!s.flagged[s.curQ],
+      selectAnswer: (k) => this.setState((st) => ({ answers: { ...st.answers, [st.curQ]: k } })),
+      gotoQ: (i) => this.setState({ curQ: i }),
+      prevQ: () => this.setState((st) => ({ curQ: Math.max(0, st.curQ - 1) })),
+      nextQ: () => this.setState((st) => ({ curQ: Math.min(14, st.curQ + 1) })),
+      toggleFlag: () => this.setState((st) => { const f = { ...st.flagged }; if (f[st.curQ]) delete f[st.curQ]; else f[st.curQ] = true; return { flagged: f }; }),
+      playerToast: s.playerToast,
+      monitorToast: s.monitorToast,
+      // kick flow
+      kickStep: s.kickStep,
+      kickTarget: s.kickTarget,
+      kickReason: s.kickReason,
+      kickOpen: s.kickStep > 0,
+      kickAtStep1: s.kickStep === 1,
+      kickAtStep2: s.kickStep === 2,
+      kickCanNext: !!s.kickReason,
+      openKick: (name) => this.setState({ kickStep: 1, kickTarget: name, kickReason: '' }),
+      pickReason: (r) => this.setState({ kickReason: r }),
+      kickNext: () => this.setState((st) => st.kickReason ? { kickStep: 2 } : {}),
+      kickBack: () => this.setState({ kickStep: 1 }),
+      closeKick: () => this.setState({ kickStep: 0 }),
+      confirmKick: () => { const n = this.state.kickTarget; this.setState({ kickStep: 0 }); this.fireToast('monitor', n + ' removed · attempt terminated, work kept for grading', 'var(--color-danger)'); },
+      forceClose: () => this.fireToast('monitor', 'Quiz force-closed · 47 in-progress attempts auto-submitted', 'var(--color-danger)'),
+      extendTime: () => this.fireToast('monitor', 'Deadline extended +5 min · 47 students notified', 'var(--color-primary)'),
+    };
+  }
+}
+</script>
+</body>
+</html>

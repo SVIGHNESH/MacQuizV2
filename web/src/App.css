@@ -21,23 +21,203 @@
   animation: rise var(--motion-entrance) both;
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* --- Auth cards (Sh1, Sh2) ---------------------------------------------- */
+
+.auth-card {
+  width: min(380px, 100%);
+  display: grid;
+  justify-items: start;
+  gap: 18px;
+  padding: 34px 32px;
 }
 
-.masthead {
+.brand-mark-auth {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  font: 800 21px/1 var(--font-sans);
+  letter-spacing: -0.04em;
+}
+
+.auth-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.auth-card .page-title {
+  margin: 0;
+  font: 700 20px/1.25 var(--font-sans);
+  letter-spacing: -0.015em;
+}
+
+.auth-subtitle {
+  margin: 0;
+  font: 450 12.5px/1.45 var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.auth-card .form {
+  width: 100%;
+  padding-top: 0;
+}
+
+.auth-card .input {
+  border-radius: var(--radius-button);
+  padding: 11px 12px;
+}
+
+.auth-submit {
+  padding: 12px;
+}
+
+/* --- Stat cards (docs/11 section 4): value first, label under it -------- */
+
+/* Flex, not grid: the card count varies with what the server actually knows
+   (percentile and time-taken are both optional), and each card still has to
+   share the row rather than claim it. */
+.stat-cards {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--color-border-hairline);
+}
+
+.stat-card {
+  flex: 1 1 140px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.stat-card-value {
+  font: 750 26px/1 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.stat-card-label {
+  font: 550 11px/1.3 var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.stat-card-hero {
+  flex: 1.3 1 200px;
+  border: 0;
+  background: var(--color-ink);
+}
+
+.stat-card-eyebrow {
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-slate-400);
+}
+
+.stat-card-hero-value {
+  font: 750 34px/1 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--color-surface);
+}
+
+.stat-card-hero-sub {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--color-slate-400);
+}
+
+/* --- Chart panel: a titled surface any dashboard bar chart sits on ----- */
+
+.chart-panel {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.chart-title {
+  margin: 0;
+  font: 650 14px/1 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.chart-panel .hint {
+  margin: 0;
+}
+
+/* --- Status dot + label (docs/11 section 4) -----------------------------
+   Lighter than a chip, for table rows. 7px dot + 12px/600 label in the
+   matching text colour; only transient states animate. */
+
+.status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1 var(--font-sans);
+  white-space: nowrap;
+}
+
+.status-dot::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
+}
+
+.status-dot-active {
+  color: var(--color-success-on-tint);
+}
+
+.status-dot-pending {
+  color: var(--color-warning-on-tint);
+}
+
+.status-dot-inactive {
+  color: var(--color-text-muted);
+}
+
+/* --- Password checklist (Sh2) -------------------------------------------- */
+
+.checklist {
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px;
+  border-radius: var(--radius-control);
+  background: var(--color-well);
+}
+
+.checklist-title {
+  font: 600 11.5px/1 var(--font-sans);
+  color: var(--color-text-strong);
+}
+
+.checklist-title-advice {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+}
+
+.checklist-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font: 500 12px/1.3 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.checklist-item-met {
+  color: var(--color-success);
 }
 
 .brand-mark {
@@ -74,6 +254,64 @@
   border-radius: var(--radius-pill);
 }
 
+/* Lifecycle chips (docs/11 section 4): tint background + dark text, always
+   built from one semantic trio. The dot is optional and only earns its
+   animation on a truly realtime state. */
+.chip-lifecycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  font: 650 10.5px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
+}
+
+.chip-lifecycle-live {
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.chip-lifecycle-live .chip-dot {
+  animation: pulse var(--motion-pulse-period) infinite;
+}
+
+.chip-lifecycle-scheduled {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+}
+
+.chip-lifecycle-submitted {
+  background: var(--color-success-tint);
+  color: var(--color-success-on-tint);
+}
+
+.chip-lifecycle-submitted .chip-dot {
+  background: var(--color-success-dot);
+}
+
+.chip-lifecycle-closed {
+  background: var(--color-well);
+  color: var(--color-text-strong);
+}
+
+.chip-lifecycle-removed {
+  background: var(--color-danger-tint);
+  color: var(--color-danger-on-tint);
+}
+
+.chip-lifecycle-warning {
+  background: var(--color-warning-tint);
+  color: var(--color-warning-on-tint);
+}
+
 .chip-role {
   background: var(--color-primary-tint);
   color: var(--color-primary-on-tint);
@@ -87,15 +325,9 @@
   padding-top: 18px;
 }
 
-.form-intro {
-  margin: 0;
-  padding-top: 14px;
-  font: var(--text-body);
-  color: var(--color-text-strong);
-}
-
-.form-intro strong {
+.auth-subtitle strong {
   font-weight: 650;
+  color: var(--color-text-strong);
 }
 
 .field {
@@ -187,6 +419,18 @@
   background: var(--color-primary-hover);
 }
 
+/* Ink marks point-of-no-return actions (docs/11 section 4): review and
+   submit, and the first-login password commit that kills the one-time
+   credential. */
+.button-commit {
+  background: var(--color-ink);
+  color: var(--color-surface);
+}
+
+.button-commit:hover:not(:disabled) {
+  background: var(--color-ink-hover);
+}
+
 .button-quiet {
   background: var(--color-surface);
   border-color: var(--color-border-input);
@@ -243,4 +487,12 @@
   color: var(--color-text-secondary);
   background: var(--color-well);
   border-radius: var(--radius-option-row);
+}
+
+/* Plain secondary prose. Unlike .hint it claims no surface of its own, so it
+   can sit next to a well without stacking two of them. */
+.body-copy {
+  margin: 0;
+  font: 450 12.5px/1.5 var(--font-sans);
+  color: var(--color-text-secondary);
 }

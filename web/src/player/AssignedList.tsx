@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import {
-  ASSIGNED_STATUS_LABEL,
-  ATTEMPT_STATUS_LABEL,
+  formatClock,
+  formatDayAndClock,
   formatDuration,
   formatWhen,
   type AssignedQuiz,
+  type AttemptSummary,
 } from './model'
 
 /**
- * The student home: every assigned quiz with its window, the caller's own
- * attempt history, and the one action the quiz's state allows - start,
- * resume, or review. Scores come release-gated from the server; a null
- * score on a finished attempt reads as withheld, never as zero.
+ * The student home (docs/11 St1): every assigned quiz as one card carrying a
+ * lifecycle chip, its window, and the single action its state allows - start,
+ * resume, or review. Scores come release-gated from the server; a null score
+ * on a finished attempt reads as withheld, never as zero.
  */
 export default function AssignedList({
   onStart,
@@ -54,17 +55,29 @@ export default function AssignedList({
     )
   }
 
+  // "Open" is what the student can act on right now, not merely what is
+  // inside its window - a submitted quiz in a live window is not open to them.
+  const openCount = quizzes.filter((quiz) => {
+    const kind = cardState(quiz).kind
+    return kind === 'start' || kind === 'resume'
+  }).length
+
   return (
-    <div className="assigned-list">
+    <div className="assigned">
       <div className="page-head">
         <div>
-          <p className="eyebrow">Student workspace</p>
-          <h1 className="page-title">My quizzes</h1>
+          <h1 className="page-title">Assigned quizzes</h1>
+          <p className="assigned-subtitle">
+            {openCount === 0
+              ? 'Nothing open right now'
+              : `${openCount} open`}{' '}
+            · times shown in your local time
+          </p>
         </div>
       </div>
 
       {quizzes.length === 0 ? (
-        <section className="panel empty-state">
+        <section className="empty-state">
           <h2 className="card-title">Nothing assigned yet</h2>
           <p className="hint">
             When a teacher assigns you a quiz it appears here with its open
@@ -72,18 +85,65 @@ export default function AssignedList({
           </p>
         </section>
       ) : (
-        quizzes.map((quiz) => (
-          <AssignedCard
-            key={quiz.id}
-            quiz={quiz}
-            onStart={onStart}
-            onResume={onResume}
-            onReview={onReview}
-          />
-        ))
+        <div className="assigned-grid">
+          {quizzes.map((quiz) => (
+            <AssignedCard
+              key={quiz.id}
+              quiz={quiz}
+              onStart={onStart}
+              onResume={onResume}
+              onReview={onReview}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
+}
+
+/** The attempt whose state the card speaks for: the student's most recent. */
+function latestAttempt(quiz: AssignedQuiz): AttemptSummary | undefined {
+  return quiz.attempts.reduce<AttemptSummary | undefined>(
+    (latest, attempt) =>
+      !latest || attempt.attempt_no > latest.attempt_no ? attempt : latest,
+    undefined,
+  )
+}
+
+/**
+ * One card, one state, one action. The chip and the button are read off the
+ * same value so they can never disagree - and an open window with attempts
+ * left always wins over a finished attempt, otherwise submitting attempt 1
+ * would strand a student who is entitled to attempt 2.
+ */
+type CardState =
+  | { kind: 'removed' }
+  | { kind: 'resume'; attempt: AttemptSummary }
+  | { kind: 'start'; fresh: boolean }
+  | { kind: 'scheduled' }
+  | { kind: 'awaiting-release' }
+  | { kind: 'released'; attempt: AttemptSummary; score: number }
+  | { kind: 'exhausted' }
+  | { kind: 'closed' }
+
+function cardState(quiz: AssignedQuiz): CardState {
+  const latest = latestAttempt(quiz)
+  const inProgress = quiz.attempts.find((a) => a.status === 'in_progress')
+  const attemptsLeft = quiz.max_attempts - quiz.attempts.length
+  const released = quiz.results_released_at !== null
+
+  if (latest?.status === 'kicked') return { kind: 'removed' }
+  if (inProgress) return { kind: 'resume', attempt: inProgress }
+  if (quiz.status === 'live' && attemptsLeft > 0) {
+    return { kind: 'start', fresh: quiz.attempts.length === 0 }
+  }
+  if (quiz.status === 'scheduled') return { kind: 'scheduled' }
+  if (latest && released && latest.score !== null) {
+    return { kind: 'released', attempt: latest, score: latest.score }
+  }
+  if (latest) return { kind: 'awaiting-release' }
+  if (quiz.status === 'live') return { kind: 'exhausted' }
+  return { kind: 'closed' }
 }
 
 function AssignedCard({
@@ -97,96 +157,163 @@ function AssignedCard({
   onResume: (attemptId: string) => void
   onReview: (attemptId: string) => void
 }) {
-  const inProgress = quiz.attempts.find((a) => a.status === 'in_progress')
-  const attemptsLeft = quiz.max_attempts - quiz.attempts.length
-  const released = quiz.results_released_at !== null
+  const state = cardState(quiz)
 
   return (
-    <section className="panel assigned-card">
-      <header className="assigned-head">
-        <h2 className="card-title assigned-title">{quiz.title}</h2>
-        <span className={`chip chip-status chip-status-${quiz.status}`}>
-          {ASSIGNED_STATUS_LABEL[quiz.status]}
+    <section className="assigned-card">
+      <header className="assigned-card-head">
+        <CardChip state={state} />
+        <span className="assigned-attempts tabular">
+          {state.kind === 'released' ? (
+            <span className="assigned-score">{state.score} pts</span>
+          ) : (
+            <>
+              {quiz.attempts.length} / {quiz.max_attempts} attempt
+              {quiz.max_attempts === 1 ? '' : 's'}
+            </>
+          )}
         </span>
       </header>
 
-      <p className="assigned-meta">
-        {formatWhen(quiz.starts_at)} – {formatWhen(quiz.ends_at)}
-        <span className="meta-dot" aria-hidden="true" />
-        {formatDuration(quiz.duration_sec)} limit
-        <span className="meta-dot" aria-hidden="true" />
-        {quiz.question_count} question{quiz.question_count === 1 ? '' : 's'}
-        <span className="meta-dot" aria-hidden="true" />
-        {quiz.attempts.length} of {quiz.max_attempts} attempt
-        {quiz.max_attempts === 1 ? '' : 's'} used
-      </p>
+      <div className="assigned-card-title">
+        <h2 className="card-title">{quiz.title}</h2>
+        <p className="assigned-meta">
+          {quiz.question_count} question{quiz.question_count === 1 ? '' : 's'} ·{' '}
+          {formatDuration(quiz.duration_sec)}
+          {quiz.status === 'live' && ` · closes ${formatClock(quiz.ends_at)}`}
+        </p>
+      </div>
 
-      {quiz.attempts.length > 0 && (
-        <ul className="attempt-list">
-          {quiz.attempts.map((attempt) => (
-            <li key={attempt.id} className="attempt-row">
-              <span className="attempt-no">Attempt {attempt.attempt_no}</span>
-              <span
-                className={`chip chip-attempt chip-attempt-${attempt.status}`}
-              >
-                {ATTEMPT_STATUS_LABEL[attempt.status]}
-              </span>
-              <span className="attempt-when">
-                {attempt.submitted_at
-                  ? `Submitted ${formatWhen(attempt.submitted_at)}`
-                  : `Started ${formatWhen(attempt.started_at)}`}
-              </span>
-              <span className="attempt-score">
-                {attempt.score !== null
-                  ? `${attempt.score} pts`
-                  : attempt.status === 'in_progress'
-                    ? ''
-                    : 'Score withheld'}
-              </span>
-              {released && attempt.status === 'graded' && (
-                <button
-                  className="button button-small button-quiet"
-                  type="button"
-                  onClick={() => onReview(attempt.id)}
-                >
-                  Review
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <CardBody quiz={quiz} state={state} />
 
-      <div className="assigned-actions">
-        {quiz.status === 'scheduled' && (
-          <p className="assigned-note">Opens {formatWhen(quiz.starts_at)}.</p>
-        )}
-        {quiz.status === 'live' &&
-          (inProgress ? (
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => onResume(inProgress.id)}
-            >
-              Resume attempt
-            </button>
-          ) : attemptsLeft > 0 ? (
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => onStart(quiz.id)}
-            >
-              {quiz.attempts.length === 0 ? 'Start quiz' : 'Start new attempt'}
-            </button>
-          ) : (
-            <p className="assigned-note">No attempts left.</p>
-          ))}
-        {quiz.status === 'closed' && !released && (
-          <p className="assigned-note">
-            Closed. Results have not been released yet.
-          </p>
+      <div className="assigned-card-action">
+        {state.kind === 'resume' ? (
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={() => onResume(state.attempt.id)}
+          >
+            Resume attempt
+          </button>
+        ) : state.kind === 'start' ? (
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={() => onStart(quiz.id)}
+          >
+            {state.fresh ? 'Start attempt' : 'Start new attempt'}
+          </button>
+        ) : state.kind === 'released' ? (
+          <button
+            className="button button-quiet"
+            type="button"
+            onClick={() => onReview(state.attempt.id)}
+          >
+            Review answers
+          </button>
+        ) : (
+          <button className="button button-quiet" type="button" disabled>
+            {state.kind === 'scheduled'
+              ? `Opens ${formatWhen(quiz.starts_at)}`
+              : state.kind === 'awaiting-release'
+                ? 'Results pending'
+                : state.kind === 'exhausted'
+                  ? 'No attempts left'
+                  : 'Closed'}
+          </button>
         )}
       </div>
     </section>
   )
+}
+
+function CardChip({ state }: { state: CardState }) {
+  switch (state.kind) {
+    case 'removed':
+      return (
+        <span className="chip chip-lifecycle chip-lifecycle-removed">
+          Removed
+        </span>
+      )
+    case 'resume':
+    case 'start':
+    case 'exhausted':
+      return (
+        <span className="chip chip-lifecycle chip-lifecycle-live">
+          <span className="chip-dot" aria-hidden="true" />
+          Live
+        </span>
+      )
+    case 'scheduled':
+      return (
+        <span className="chip chip-lifecycle chip-lifecycle-scheduled">
+          Scheduled
+        </span>
+      )
+    case 'awaiting-release':
+      return (
+        <span className="chip chip-lifecycle chip-lifecycle-submitted">
+          <span className="chip-dot" aria-hidden="true" />
+          Submitted
+        </span>
+      )
+    case 'released':
+    case 'closed':
+      return (
+        <span className="chip chip-lifecycle chip-lifecycle-closed">Closed</span>
+      )
+  }
+}
+
+/** The one line between the title and the action that explains the state. */
+function CardBody({ quiz, state }: { quiz: AssignedQuiz; state: CardState }) {
+  switch (state.kind) {
+    case 'removed':
+      return (
+        <p className="assigned-note assigned-note-danger">
+          Attempt terminated · your work was kept and will be graded.
+        </p>
+      )
+    case 'resume':
+      return (
+        <p className="assigned-status">
+          In progress · started {formatWhen(state.attempt.started_at)}
+        </p>
+      )
+    case 'start':
+    case 'exhausted':
+      return (
+        <p className="assigned-status">
+          Closes {formatWhen(quiz.ends_at)} · one sitting once you start.
+        </p>
+      )
+    case 'scheduled':
+      return (
+        <div className="assigned-window">
+          <span className="assigned-window-open">
+            Opens {formatDayAndClock(quiz.starts_at)}
+          </span>
+          <span className="assigned-window-close">
+            Closes {formatDayAndClock(quiz.ends_at)}
+          </span>
+        </div>
+      )
+    case 'awaiting-release':
+      return (
+        <p className="assigned-note">
+          Results not released yet. Your score appears here once your teacher
+          releases them.
+        </p>
+      )
+    case 'released':
+      return (
+        <p className="assigned-status">
+          {state.attempt.submitted_at
+            ? `Released · submitted ${formatWhen(state.attempt.submitted_at)}`
+            : 'Released · score visible'}
+        </p>
+      )
+    case 'closed':
+      return <p className="assigned-status">This quiz is no longer open.</p>
+  }
 }

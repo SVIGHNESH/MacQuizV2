@@ -18,6 +18,67 @@ function changeErrorMessage(err: AuthActionError): string {
   }
 }
 
+/**
+ * The requirement list, split by what is actually true. Only the length rule
+ * and the confirmation match gate the submit - the rest is advice, and it says
+ * so, because a checklist that claims "must" about a rule the server never
+ * enforces teaches the wrong thing about the account it just created.
+ */
+function PasswordChecklist({
+  password,
+  confirmation,
+}: {
+  password: string
+  confirmation: string
+}) {
+  const required = [
+    {
+      label: `At least ${MIN_PASSWORD_LENGTH} characters`,
+      met: password.length >= MIN_PASSWORD_LENGTH,
+    },
+    {
+      label: 'Both copies match',
+      met: password.length > 0 && password === confirmation,
+    },
+  ]
+  const advice = [
+    {
+      label: 'Upper and lowercase letters',
+      met: /[a-z]/.test(password) && /[A-Z]/.test(password),
+    },
+    { label: 'A number or symbol', met: /[^A-Za-z]/.test(password) },
+  ]
+
+  return (
+    <div className="checklist">
+      <span className="checklist-title">Password must include</span>
+      <ul className="checklist-items">
+        {required.map((item) => (
+          <ChecklistItem key={item.label} {...item} />
+        ))}
+      </ul>
+      <span className="checklist-title checklist-title-advice">
+        Stronger if it has
+      </span>
+      <ul className="checklist-items">
+        {advice.map((item) => (
+          <ChecklistItem key={item.label} {...item} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ChecklistItem({ label, met }: { label: string; met: boolean }) {
+  return (
+    <li className={`checklist-item${met ? ' checklist-item-met' : ''}`}>
+      <span aria-hidden="true">{met ? '✓' : '○'}</span>
+      <span>{label}</span>
+      {met && <span className="visually-hidden"> - met</span>}
+    </li>
+  )
+}
+
 export default function ChangePasswordScreen({ user }: { user: SessionUser }) {
   const { changePassword, logout } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
@@ -60,21 +121,18 @@ export default function ChangePasswordScreen({ user }: { user: SessionUser }) {
   return (
     <main className="shell">
       <section className="card auth-card">
-        <header className="masthead">
-          <span className="brand-mark" aria-hidden="true">
-            M
-          </span>
-          <div>
-            <p className="eyebrow">MacQuiz</p>
-            <h1 className="page-title">Set your password</h1>
-          </div>
-        </header>
+        <span className="chip chip-lifecycle chip-lifecycle-scheduled">
+          One-time credential
+        </span>
 
-        <p className="form-intro">
-          You are signed in as <strong>{user.email}</strong> with a one-time
-          password. Choose your own to continue; the one-time password stops
-          working immediately.
-        </p>
+        <header className="auth-heading">
+          <h1 className="page-title">Set your password</h1>
+          <p className="auth-subtitle">
+            You are signed in as <strong>{user.email}</strong> with a one-time
+            password. Choose your own to continue; the one-time password stops
+            working immediately.
+          </p>
+        </header>
 
         <form className="form" onSubmit={onSubmit} noValidate>
           <div className="field">
@@ -106,10 +164,6 @@ export default function ChangePasswordScreen({ user }: { user: SessionUser }) {
               onChange={(e) => setNewPassword(e.target.value)}
               required
             />
-            <p className="field-hint">
-              At least {MIN_PASSWORD_LENGTH} characters. A short sentence works
-              well.
-            </p>
           </div>
 
           <div className="field">
@@ -127,14 +181,20 @@ export default function ChangePasswordScreen({ user }: { user: SessionUser }) {
             />
           </div>
 
+          <PasswordChecklist
+            password={newPassword}
+            confirmation={confirmPassword}
+          />
+
           {error && (
             <p className="form-error" role="alert">
               {error}
             </p>
           )}
 
+          {/* Ink marks the point of no return: the one-time password dies here. */}
           <button
-            className="button button-primary"
+            className="button button-commit"
             type="submit"
             disabled={submitting}
           >

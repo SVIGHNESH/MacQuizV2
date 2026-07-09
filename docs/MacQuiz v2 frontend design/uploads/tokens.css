@@ -6,7 +6,6 @@
 :root {
   /* Neutral ramp */
   --color-ink: #131a26;
-  --color-ink-hover: #0a0e16;
   --color-text-strong: #344054;
   --color-text-secondary: #667085;
   --color-text-muted: #98a2b3;
@@ -35,14 +34,12 @@
   --color-warning-dot: #f79009;
   --color-warning-tint: #fffaeb;
   --color-warning-on-tint: #93370d;
-  --color-warning-border: #f4e0b8;
 
   /* Danger / live / kick */
   --color-danger: #d92d20;
   --color-danger-hover: #b42318;
   --color-danger-tint: #fef3f2;
   --color-danger-on-tint: #b42318;
-  --color-danger-border: #f6cfca;
 
   /* Chart fills: primary plus its 40% tints; semantic only with meaning */
   --color-chart-tint-1: #b3ccf9;

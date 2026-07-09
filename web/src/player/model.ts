@@ -32,6 +32,29 @@ export function formatWhen(iso: string): string {
   return DATE_TIME.format(new Date(iso))
 }
 
+const CLOCK = new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/** Just the wall clock, for a window edge inside a card's meta line. */
+export function formatClock(iso: string): string {
+  return CLOCK.format(new Date(iso))
+}
+
+const DAY_TIME = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+})
+
+/** "Mon, 13 Jul · 09:00" - a scheduled window edge, days out. */
+export function formatDayAndClock(iso: string): string {
+  const date = new Date(iso)
+  return `${DAY_TIME.format(date)} · ${CLOCK.format(date)}`
+}
+
 export function formatDuration(seconds: number): string {
   if (seconds % 3600 === 0) {
     const h = seconds / 3600
@@ -53,6 +76,11 @@ export function formatRemaining(ms: number): string {
   const s = total % 60
   const pad = (n: number) => String(n).padStart(2, '0')
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
+}
+
+/** Elapsed time between two instants as m:ss / h:mm:ss, for stat cards. */
+export function formatElapsed(fromIso: string, toIso: string): string {
+  return formatRemaining(Date.parse(toIso) - Date.parse(fromIso))
 }
 
 /** The student's response for one question, in the wire shape the grader reads. */

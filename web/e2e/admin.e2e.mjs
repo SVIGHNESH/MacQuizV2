@@ -23,6 +23,9 @@ import puppeteer from 'puppeteer-core'
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 const CHROMIUM = process.env.E2E_CHROMIUM ?? '/usr/bin/chromium'
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@macquiz.local'
+// docker-compose.yml MACQUIZ_BOOTSTRAP_ADMIN_NAME - the audit log stores only
+// actor_id, so the panel joins it against the accounts list to show this.
+const ADMIN_NAME = process.env.E2E_ADMIN_NAME ?? 'Dev Admin'
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'admin-dev-password'
 const SHOT_DIR = '/tmp/macquiz-e2e'
 
@@ -124,6 +127,12 @@ async function adminConsoleFlow(browser) {
     await waitForText(page, '.page-title', 'Overview'),
     'admin signs in and lands on the Overview console',
   )
+  await page.waitForSelector('.stat-card-hero', { timeout: 5000 })
+  check(
+    await waitForText(page, '.stat-card-hero', 'Active users'),
+    'the overview leads with the active-users hero card',
+  )
+  await shot(page, 'admin-00-overview.png')
 
   await clickButtonWithText(page, 'Users', '.rail-nav')
   check(
@@ -132,7 +141,7 @@ async function adminConsoleFlow(browser) {
   )
 
   // --- Provision a teacher --------------------------------------------------
-  await page.click('.page-head .button-primary')
+  await clickButtonWithText(page, 'Provision user')
   await type(page, '.admin-user-form input[type=email]', teacherEmail)
   await type(page, '.admin-user-form input[type=text]', 'Terry Tester')
   await page.select('.admin-user-form select', 'teacher')
@@ -144,13 +153,17 @@ async function adminConsoleFlow(browser) {
   )
   const revealed = await textOf(page, '.admin-credential-value')
   check(revealed.trim().length > 0, 'the revealed credential is non-empty')
+  check(
+    await waitForText(page, '.credential-notice', 'must reset this password'),
+    'the provision modal states the first-login consequence',
+  )
   await shot(page, 'admin-01-credential-reveal.png')
 
   check(
     await waitForText(page, '.admin-user-table', teacherEmail),
     'the new teacher appears in the accounts table',
   )
-  await page.click('.admin-credential-reveal .button-quiet')
+  await page.click('.admin-credential-reveal .button-commit')
 
   // --- Disable then re-enable the teacher -----------------------------------
   const teacherRow = await page.evaluateHandle(
@@ -227,7 +240,7 @@ async function adminConsoleFlow(browser) {
   await page.waitForSelector('.admin-group-table', { timeout: 5000 })
   const groupRow = await page.evaluateHandle(
     (name) =>
-      [...document.querySelectorAll('.admin-group-table .qt-row')].find((row) =>
+      [...document.querySelectorAll('.admin-group-table .group-card')].find((row) =>
         row.textContent.includes(name),
       ),
     groupName,
@@ -251,8 +264,8 @@ async function adminConsoleFlow(browser) {
   await checkbox?.click()
   await page.click('.admin-members-panel .button-primary')
   check(
-    await waitForText(page, '.admin-group-table', '1'),
-    'saving membership updates the member_count shown in the table',
+    await waitForText(page, '.admin-group-table', '1 member'),
+    'saving membership updates the member_count shown on the card',
   )
   await shot(page, 'admin-03-group-members-saved.png')
 
@@ -260,7 +273,7 @@ async function adminConsoleFlow(browser) {
   // /groups/:id/members endpoint - it must reload pre-checked, not blank.
   const groupRowAgain = await page.evaluateHandle(
     (name) =>
-      [...document.querySelectorAll('.admin-group-table .qt-row')].find((row) =>
+      [...document.querySelectorAll('.admin-group-table .group-card')].find((row) =>
         row.textContent.includes(name),
       ),
     groupName,
@@ -277,6 +290,32 @@ async function adminConsoleFlow(browser) {
   }, studentEmail)
   check(rechecked, 'reopening the membership editor shows the saved student pre-checked')
   await shot(page, 'admin-04-group-members-reopened.png')
+
+  // --- Audit log ------------------------------------------------------------
+  // Everything this run just did (provision, disable, create group, set
+  // members) is append-only evidence; the log must already show it.
+  await clickButtonWithText(page, 'Audit log', '.rail-nav')
+  check(
+    await waitForText(page, '.page-title', 'Audit log', 5000),
+    'the Audit log nav item opens the append-only trail',
+  )
+  await page.waitForSelector('.audit-row', { timeout: 5000 })
+  check(
+    await waitForText(page, '.audit-table', 'created'),
+    'the log records the accounts and cohorts this run created',
+  )
+  // actor_id is a uuid on the wire; the row must resolve it to a human name.
+  check(
+    await waitForText(page, '.audit-actor', ADMIN_NAME),
+    'the log resolves actor_id to the admin account name',
+  )
+  const resolvesResources = await page.evaluate(() =>
+    [...document.querySelectorAll('.audit-resource')].every(
+      (cell) => cell.textContent.trim().length > 0,
+    ),
+  )
+  check(resolvesResources, 'every entry names the resource it acted on')
+  await shot(page, 'admin-05-audit-log.png')
 
   await page.close()
 }

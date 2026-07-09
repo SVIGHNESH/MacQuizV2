@@ -4,6 +4,12 @@
  * only adds what is genuinely admin-specific.
  */
 
+.admin-subtitle {
+  margin: 2px 0 0;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
 .admin-user-form {
   display: grid;
   grid-template-columns: 160px 1fr 1fr;
@@ -15,28 +21,86 @@
   grid-column: 1 / -1;
 }
 
+/* --- Provision modal (one-time credential) ------------------------------ */
+
 .admin-credential-reveal {
   display: grid;
-  gap: 10px;
-  background: var(--color-success-tint);
-  border: 1px solid var(--color-success);
+  justify-items: start;
+  gap: 14px;
 }
 
-.admin-credential-reveal .card-title {
+.credential-title {
   margin: 0;
-  color: var(--color-success-on-tint);
+  font: 700 17px/1.3 var(--font-sans);
+  letter-spacing: -0.015em;
+  color: var(--color-ink);
+}
+
+.admin-credential-reveal strong {
+  font-weight: 650;
+  color: var(--color-text-strong);
+}
+
+.credential-well {
+  justify-self: stretch;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius-option-row);
+  background: var(--color-well);
+}
+
+.credential-well .eyebrow {
+  color: var(--color-text-muted);
+  letter-spacing: 0.08em;
+}
+
+.credential-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .admin-credential-value {
-  font: 650 15px/1.4 var(--font-sans);
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font:
+    600 15px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.04em;
   color: var(--color-ink);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-hairline);
-  border-radius: var(--radius-control);
-  padding: 10px 14px;
-  width: fit-content;
   user-select: all;
 }
+
+/* Amber is evidence: the credential's expiry is a fact, not a warning
+   about the admin's behaviour. */
+.credential-notice {
+  justify-self: stretch;
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-button);
+  background: var(--color-warning-tint);
+  font: 500 12px/1.45 var(--font-sans);
+  color: var(--color-warning-on-tint);
+}
+
+.credential-notice > span:first-child {
+  font: 800 13px/1.35 var(--font-sans);
+  color: var(--color-warning);
+}
+
+.credential-done {
+  justify-self: stretch;
+  padding: 11px;
+}
+
+/* --- Users -------------------------------------------------------------- */
 
 .admin-filter-row {
   display: flex;
@@ -47,9 +111,13 @@
   width: 180px;
 }
 
+.admin-search {
+  width: 240px;
+}
+
 .admin-user-table .qt-head,
 .admin-user-table .qt-row {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 78px 92px 92px 128px;
+  grid-template-columns: minmax(0, 2fr) 92px 128px 156px;
 }
 
 .admin-user-table .qt-head > *,
@@ -57,7 +125,27 @@
   min-width: 0;
 }
 
-.admin-user-table .qt-title {
+/* Disabled is a state, not a warning - it recedes rather than shouting. */
+.admin-user-row-disabled .admin-user-cell {
+  opacity: 0.65;
+}
+
+.admin-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-user-identity {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.admin-user-name {
+  font: 550 13px/1.3 var(--font-sans);
+  color: var(--color-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -67,6 +155,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font: 500 11px/1.3 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.admin-user-role {
   font: var(--text-secondary);
   color: var(--color-text-secondary);
 }
@@ -81,20 +174,219 @@
   width: 100%;
 }
 
-.admin-group-table .qt-head,
-.admin-group-table .qt-row {
-  grid-template-columns: minmax(0, 1fr) 100px 110px 140px;
+/* --- Groups as cards ---------------------------------------------------- */
+
+.admin-group-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
 }
 
-.admin-group-table .qt-head > *,
-.admin-group-table .qt-row > * {
+.group-card {
+  display: grid;
+  gap: 10px;
+  padding: 15px 16px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-option-row);
+  background: var(--color-surface);
+}
+
+/* A cohort with no members cannot be used as an audience yet; the dashed
+   well says so without an error tone. */
+.group-card-empty {
+  border-style: dashed;
+  border-color: var(--color-border-input);
+  background: var(--color-well);
+}
+
+.group-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-card-name {
+  margin: 0;
+  flex: 1;
   min-width: 0;
-}
-
-.admin-group-table .qt-title {
+  font: 650 14px/1.3 var(--font-sans);
+  color: var(--color-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.group-card-count {
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.group-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-card-hint {
+  flex: 1;
+  font: 500 11.5px/1.4 var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+/* --- Org overview ------------------------------------------------------- */
+
+.admin-overview-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .admin-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Bars keep a stable width whether the org has one week of history or
+   twelve, so a lone week reads as one data point, not a filled panel. */
+.week-chart {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 10px;
+  height: 170px;
+}
+
+.week-bar-slot {
+  flex: 0 1 56px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.week-bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 5px 5px 0 0;
+  background: var(--color-chart-tint-1);
+  transition: var(--motion-progress);
+}
+
+.week-bar-latest {
+  background: var(--color-primary);
+}
+
+.week-label {
+  font: 500 10px/1 var(--font-sans);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.role-bars {
+  display: grid;
+  gap: 14px;
+}
+
+.role-bar-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font: 500 13px/1 var(--font-sans);
+}
+
+.role-bar-label {
+  color: var(--color-text-strong);
+}
+
+.role-bar-count {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.role-bar-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-well);
+  overflow: hidden;
+}
+
+.role-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: var(--motion-progress);
+}
+
+/* --- Audit log ---------------------------------------------------------- */
+
+/* The header row is the panel's top edge; the shared 6px table-panel inset
+   would show a sliver of surface above it. */
+.admin-audit-panel {
+  padding: 0;
+}
+
+.audit-head,
+.audit-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1.5fr) minmax(0, 1.4fr);
+  gap: 12px;
+  padding: 12px 18px;
+  align-items: center;
+}
+
+.audit-head {
+  background: var(--color-table-header);
+  border-bottom: 1px solid var(--color-border-hairline);
+  font: 650 10.5px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.audit-row {
+  border-bottom: 1px solid var(--color-well);
+  font: 500 12.5px/1.4 var(--font-sans);
+}
+
+.audit-row:last-child {
+  border-bottom: 0;
+}
+
+.audit-time {
+  color: var(--color-text-muted);
+}
+
+.audit-actor {
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.audit-verb {
+  font-weight: 600;
+}
+
+.audit-verb-consequential {
+  color: var(--color-danger-on-tint);
+}
+
+.audit-resource {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.audit-resource-id {
+  color: var(--color-text-muted);
+}
+
+.audit-more {
+  justify-self: start;
 }
 
 .admin-cohort-table .qt-head,

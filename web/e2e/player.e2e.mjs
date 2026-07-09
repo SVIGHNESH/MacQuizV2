@@ -106,17 +106,18 @@ async function clickButtonWithText(page, text, scope = '') {
 // wait until the single visible question panel shows that position.
 async function goToQuestion(page, position) {
   const clicked = await page.evaluate((pos) => {
-    const cell = document.querySelectorAll('.palette-cell')[pos - 1]
+    const cell = document.querySelectorAll('.nav-cell')[pos - 1]
     if (!cell) return false
     cell.click()
     return true
   }, position)
   if (!clicked) throw new Error(`no grid cell for question ${position}`)
+  // The navigator's current cell is the only one carrying the position of
+  // the question the pane is showing.
   await page.waitForFunction(
     (pos) =>
-      document
-        .querySelector('.player-question .question-index')
-        ?.textContent.trim() === String(pos),
+      document.querySelector('.nav-cell-current')?.textContent.trim() ===
+      String(pos),
     { timeout: 5000 },
     position,
   )
@@ -128,7 +129,7 @@ async function goToQuestion(page, position) {
 async function pickOption(page, position, optionText) {
   await goToQuestion(page, position)
   const clicked = await page.evaluate((want) => {
-    const panel = document.querySelector('.player-question')
+    const panel = document.querySelector('.player-question-area')
     if (!panel) return false
     const row = [...panel.querySelectorAll('.option-row')].find(
       (el) =>
@@ -295,15 +296,15 @@ async function playerFlow(browser) {
   await type(page, '#login-password', studentPassword)
   await page.click('button[type=submit]')
   check(
-    await waitForText(page, '.page-title', 'My quizzes'),
-    'the student lands on the My quizzes workspace',
+    await waitForText(page, '.page-title', 'Assigned quizzes'),
+    'the student lands on the assigned quizzes workspace',
   )
   check(
     await waitForText(page, '.assigned-card', QUIZ_TITLE, 8000),
     'the assigned list shows the quiz',
   )
   check(
-    await waitForText(page, '.assigned-card .chip-status', 'Live'),
+    await waitForText(page, '.assigned-card .chip-lifecycle', 'Live'),
     'the quiz reads Live inside its window',
   )
   check(
@@ -314,22 +315,27 @@ async function playerFlow(browser) {
 
   // Start: one visible question, the four-cell sidebar grid, and a running
   // countdown.
-  await clickButtonWithText(page, 'Start quiz')
+  await clickButtonWithText(page, 'Start attempt')
   check(
-    await waitForText(page, '.player-topbar .page-title', QUIZ_TITLE, 8000),
+    await waitForText(page, '.player-quiz-title', QUIZ_TITLE, 8000),
     'starting opens the player with the quiz title',
   )
   check(
-    (await page.$$('.palette-cell')).length === 4,
+    (await page.$$('.nav-cell')).length === 4,
     'the sidebar grid lists all four snapshot questions',
   )
   check(
-    (await page.$$('.player-question')).length === 1,
+    (await page.$$('.player-question-text')).length === 1,
     'the player shows a single question at a time',
   )
   check(
-    await page.$eval('.countdown', (el) => /\d:\d\d/.test(el.textContent)),
+    await page.$eval('.player-timer-value', (el) => /\d:\d\d/.test(el.textContent)),
     'the countdown is running',
+  )
+  // The exam chrome owns the viewport: the workspace rail must be gone.
+  check(
+    (await page.$$('.rail')).length === 0,
+    'the rail is hidden during a live attempt',
   )
   check(
     await page.evaluate(
@@ -346,16 +352,22 @@ async function playerFlow(browser) {
   await goToQuestion(page, 4)
   await type(page, '.player-short-input', 'mitochondria')
   check(
-    await waitForText(page, '.player-footer-note', 'Every question has an answer'),
-    'the footer counts every question as answered',
+    await waitForText(page, '.player-nav-count', '4 of 4 answered'),
+    'the navigator counts every question as answered',
   )
   check(
-    (await page.$$('.palette-cell-answered')).length === 4,
+    (await page.$$('.nav-cell-answered')).length === 4,
     'the sidebar grid marks every question answered',
   )
   check(
-    await waitForText(page, '.save-badge', 'All changes saved', 8000),
+    await waitForText(page, '.save-state', 'All changes saved', 8000),
     'every answer autosaves',
+  )
+  // Flagging is a client-side navigation aid: the marker rides the cell.
+  await clickButtonWithText(page, 'Flag')
+  check(
+    (await page.$$('.nav-flag')).length === 1,
+    'flagging the current question marks its grid cell',
   )
   await shot(page, '31-player-answered.png')
 
@@ -368,12 +380,12 @@ async function playerFlow(browser) {
   )
   await clickButtonWithText(page, 'Resume attempt')
   check(
-    await waitForText(page, '.player-topbar .page-title', QUIZ_TITLE, 8000),
+    await waitForText(page, '.player-quiz-title', QUIZ_TITLE, 8000),
     'resume reopens the player',
   )
   check(
     await page.evaluate(() => {
-      const q1 = document.querySelector('.player-question')
+      const q1 = document.querySelector('.player-question-area')
       const picked = [...q1.querySelectorAll('.option-row')].find((row) =>
         row.querySelector('input').checked,
       )
@@ -384,7 +396,7 @@ async function playerFlow(browser) {
     'the single-choice answer survives the reload',
   )
   check(
-    (await page.$$('.palette-cell-answered')).length === 4,
+    (await page.$$('.nav-cell-answered')).length === 4,
     'the resumed sidebar grid remembers every answered question',
   )
   await goToQuestion(page, 4)
@@ -397,20 +409,20 @@ async function playerFlow(browser) {
 
   // Submit through the inline confirm, then back to the list: the attempt
   // is terminal and its score withheld until release.
-  await clickButtonWithText(page, 'Submit attempt')
+  await clickButtonWithText(page, 'Review and submit')
   await clickButtonWithText(page, 'Submit now')
   check(
     await waitForText(page, '.player-done', 'Attempt submitted', 8000),
     'submitting lands on the done panel',
   )
   await shot(page, '33-submitted.png')
-  await clickButtonWithText(page, 'Back to my quizzes')
+  await clickButtonWithText(page, 'Back to assigned quizzes')
   check(
-    await waitForText(page, '.attempt-row', 'Attempt 1', 8000),
-    'the list shows the finished attempt',
+    await waitForText(page, '.assigned-card .chip-lifecycle', 'Submitted', 8000),
+    'the list shows the finished attempt as submitted',
   )
   check(
-    await waitForText(page, '.attempt-score', 'Score withheld'),
+    await waitForText(page, '.assigned-note', 'Results not released yet'),
     'the score stays withheld before release',
   )
   await shot(page, '34-score-withheld.png')
@@ -448,42 +460,98 @@ async function waitForRelease(endsAt) {
 async function reviewFlow(page) {
   await page.reload({ waitUntil: 'networkidle0' })
   check(
-    await waitForText(page, '.assigned-card .chip-status', 'Closed', 8000),
+    await waitForText(page, '.assigned-card .chip-lifecycle', 'Closed', 8000),
     'after the window the quiz reads Closed',
   )
   check(
-    await waitForText(page, '.attempt-score', '4 pts', 8000),
-    'the released score shows on the attempt row',
+    await waitForText(page, '.assigned-score', '4 pts', 8000),
+    'the released score shows on the card',
   )
   await shot(page, '35-score-released.png')
 
-  await clickButtonWithText(page, 'Review')
+  await clickButtonWithText(page, 'Review answers')
+  // 4 of 6 points is 67%; the hero card carries the percentage, the points
+  // card the raw fraction.
   check(
-    await waitForText(page, '.score-figure', '4', 8000) &&
-      (await waitForText(page, '.score-figure', '/ 6')),
-    'the review banner shows 4 / 6 points',
+    await waitForText(page, '.score-figure', '67%', 8000),
+    'the hero card shows the score as a percentage',
   )
-  const verdicts = await page.$$eval('.chip-verdict-correct', (els) => els.length)
+  check(
+    await waitForText(page, '.stat-card-value', '4 / 6'),
+    'the points card shows 4 / 6',
+  )
+  check(
+    await waitForText(page, '.stat-card-hero-sub', '3 of 4 correct'),
+    'the hero card counts the correct questions',
+  )
+  const verdicts = await page.$$eval(
+    '.answer-verdict-correct',
+    (els) => els.length,
+  )
   check(verdicts === 3, `three questions read Correct (got ${verdicts})`)
   check(
-    (await page.$$eval('.chip-verdict-incorrect', (els) => els.length)) === 1,
+    (await page.$$eval('.answer-verdict-incorrect', (els) => els.length)) === 1,
     'the deliberately wrong multi reads Incorrect',
   )
+  // The answer key spells out both missed options with their text, since the
+  // table never lists the options themselves.
   check(
     await page.evaluate(() => {
-      const q2 = document.querySelectorAll('.review-question')[1]
-      const keyRows = [...q2.querySelectorAll('.review-option-key')].map(
-        (row) => row.querySelector('.option-static').textContent.trim(),
-      )
-      return keyRows.length === 2 && keyRows.includes('2') && keyRows.includes('5')
+      const key = document
+        .querySelectorAll('.answer-row')[1]
+        ?.querySelector('.answer-row-key')?.textContent
+      return Boolean(key?.includes('· 2') && key?.includes('· 5'))
     }),
     'the review marks both correct options of the missed multi',
   )
   check(
-    await waitForText(page, '.short-review', 'mitochondria'),
-    'the short answer review shows the accepted answer',
+    await waitForText(page, '.answer-row-response', 'mitochondria'),
+    'the short answer row shows what the student typed',
+  )
+  // The key is evidence the student still needs; a question they already got
+  // right does not restate it.
+  check(
+    await page.evaluate(
+      () =>
+        document.querySelectorAll('.answer-row').length === 4 &&
+        document.querySelectorAll('.answer-row-key').length === 1,
+    ),
+    'only the missed question restates the answer key',
   )
   await shot(page, '36-review.png')
+
+  // St6: the student's own rollup. The worker writes it on the close+grade
+  // sweep, so it is normally there by the time the review renders; the screen
+  // must still degrade to an empty state rather than to zeroes if it lags.
+  await clickButtonWithText(page, 'My analytics')
+  check(
+    await waitForText(page, '.page-title', 'My analytics', 8000),
+    'the rail reaches the analytics destination',
+  )
+  const rolledUp = await page
+    .waitForSelector('.stat-cards', { timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (rolledUp) {
+    check(
+      await waitForText(page, '.stat-card-value', '67%', 4000),
+      'average accuracy matches the released 4/6 attempt',
+    )
+    check(
+      await waitForText(page, '.stat-card-value', '100%', 4000),
+      'completion rate counts the one closed quiz as done',
+    )
+    check(
+      (await page.$$('.trend-bar')).length === 1,
+      'the accuracy trend plots the one graded quiz',
+    )
+  } else {
+    check(
+      await waitForText(page, '.empty-state', 'Nothing to summarise yet'),
+      'a missing rollup reads as an empty state, not as zeroes',
+    )
+  }
+  await shot(page, '37-my-analytics.png')
 }
 
 await mkdir(SHOT_DIR, { recursive: true })

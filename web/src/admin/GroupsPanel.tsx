@@ -220,34 +220,39 @@ export default function GroupsPanel() {
           </p>
         </section>
       ) : (
-        <section className="panel table-panel">
-          <div className="quiz-table admin-group-table" role="table" aria-label="Groups">
-            <div className="qt-head" role="row">
-              <span role="columnheader">Name</span>
-              <span role="columnheader" className="qt-num">
-                Members
-              </span>
-              <span role="columnheader">Created</span>
-              <span role="columnheader" aria-label="Actions" />
-            </div>
-            {groups.map((group) => (
-              <div key={group.id} className="qt-row" role="row">
-                <span className="qt-title">{group.name}</span>
-                <span className="qt-num tabular">{group.member_count}</span>
-                <span className="qt-date">{DATE_FORMAT.format(new Date(group.created_at))}</span>
-                <span className="qt-actions">
-                  <button
-                    className="button button-small button-quiet"
-                    type="button"
-                    onClick={() => openMembers(group)}
-                  >
-                    Edit members
-                  </button>
+        <div className="admin-group-table" aria-label="Groups">
+          {groups.map((group) => (
+            <section
+              key={group.id}
+              className={`group-card${group.member_count === 0 ? ' group-card-empty' : ''}`}
+            >
+              <header className="group-card-head">
+                <h2 className="group-card-name">{group.name}</h2>
+                <span className="group-card-count tabular">
+                  {group.member_count} member{group.member_count === 1 ? '' : 's'}
                 </span>
+              </header>
+              <div className="group-card-foot">
+                {group.member_count === 0 ? (
+                  <span className="group-card-hint">
+                    Empty cohort · add members to use it as an audience
+                  </span>
+                ) : (
+                  <span className="group-card-hint">
+                    Created {DATE_FORMAT.format(new Date(group.created_at))}
+                  </span>
+                )}
+                <button
+                  className="button button-small button-quiet"
+                  type="button"
+                  onClick={() => openMembers(group)}
+                >
+                  Manage
+                </button>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )

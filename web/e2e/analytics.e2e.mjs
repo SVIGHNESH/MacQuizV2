@@ -98,10 +98,29 @@ async function clickButtonWithText(page, text, scope = '') {
   if (!clicked) throw new Error(`no button with text "${text}" in "${scope}"`)
 }
 
+async function goToQuestion(page, position) {
+  const clicked = await page.evaluate((pos) => {
+    const cell = document.querySelectorAll('.nav-cell')[pos - 1]
+    if (!cell) return false
+    cell.click()
+    return true
+  }, position)
+  if (!clicked) throw new Error(`no grid cell for question ${position}`)
+  await page.waitForFunction(
+    (pos) =>
+      document.querySelector('.nav-cell-current')?.textContent.trim() ===
+      String(pos),
+    { timeout: 5000 },
+    position,
+  )
+}
+
+// Only one question is on screen at a time, so navigate to it first.
 async function pickOption(page, position, optionText) {
+  await goToQuestion(page, position)
   const clicked = await page.evaluate(
-    (pos, want) => {
-      const panel = document.querySelectorAll('.player-question')[pos - 1]
+    (want) => {
+      const panel = document.querySelector('.player-question-area')
       if (!panel) return false
       const row = [...panel.querySelectorAll('.option-row')].find(
         (el) =>
@@ -112,7 +131,6 @@ async function pickOption(page, position, optionText) {
       row.querySelector('input').click()
       return true
     },
-    position,
     optionText,
   )
   if (!clicked) throw new Error(`no option "${optionText}" in question ${position}`)
@@ -262,12 +280,12 @@ async function takeAttempt(browser, email, password, secondAnswer) {
   await type(page, '#login-password', password)
   await page.click('button[type=submit]')
   await waitForText(page, '.assigned-card', QUIZ_TITLE, 8000)
-  await clickButtonWithText(page, 'Start quiz')
-  await waitForText(page, '.player-topbar .page-title', QUIZ_TITLE, 8000)
+  await clickButtonWithText(page, 'Start attempt')
+  await waitForText(page, '.player-quiz-title', QUIZ_TITLE, 8000)
   await pickOption(page, 1, 'Mars')
   await pickOption(page, 2, secondAnswer)
-  await waitForText(page, '.save-badge', 'All changes saved', 8000)
-  await clickButtonWithText(page, 'Submit attempt')
+  await waitForText(page, '.save-state', 'All changes saved', 8000)
+  await clickButtonWithText(page, 'Review and submit')
   await clickButtonWithText(page, 'Submit now')
   await waitForText(page, '.player-done', 'Attempt submitted', 8000)
   await context.close()

@@ -3,6 +3,7 @@ import { useAuth, type SessionUser } from '../auth/context'
 import AssignedList from './AssignedList'
 import AttemptPlayer, { type PlayerEntry } from './AttemptPlayer'
 import ResultReview from './ResultReview'
+import MyAnalytics from './MyAnalytics'
 import '../authoring/authoring.css'
 import './player.css'
 
@@ -10,6 +11,7 @@ type View =
   | { kind: 'list' }
   | { kind: 'player'; entry: PlayerEntry }
   | { kind: 'result'; attemptId: string }
+  | { kind: 'analytics' }
 
 // docs/05 section 3's user:{id}:notify envelope, same shape as the
 // attempt:{id} channel's RealtimeEvent (AttemptPlayer.tsx) minus attempt_id -
@@ -120,6 +122,13 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
     setNotices((prev) => prev.filter((n) => n.id !== id))
   }
 
+  // docs/11 section 5, "calm under pressure": during a live attempt nothing
+  // competes with the timer, so the exam chrome replaces the whole shell -
+  // no rail, no notices, no sign-out sitting next to a running clock.
+  if (view.kind === 'player') {
+    return <AttemptPlayer entry={view.entry} onExit={toList} />
+  }
+
   return (
     <div className="workspace">
       <aside className="rail">
@@ -132,12 +141,22 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className="rail-item rail-item-active"
+            className={`rail-item${view.kind !== 'analytics' ? ' rail-item-active' : ''}`}
             type="button"
+            aria-current={view.kind !== 'analytics' ? 'page' : undefined}
             onClick={toList}
           >
             <span className="rail-dot" aria-hidden="true" />
-            My quizzes
+            Assigned quizzes
+          </button>
+          <button
+            className={`rail-item${view.kind === 'analytics' ? ' rail-item-active' : ''}`}
+            type="button"
+            aria-current={view.kind === 'analytics' ? 'page' : undefined}
+            onClick={() => setView({ kind: 'analytics' })}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            My analytics
           </button>
         </nav>
 
@@ -195,12 +214,10 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
             onReview={(attemptId) => setView({ kind: 'result', attemptId })}
           />
         )}
-        {view.kind === 'player' && (
-          <AttemptPlayer entry={view.entry} onExit={toList} />
-        )}
         {view.kind === 'result' && (
           <ResultReview attemptId={view.attemptId} onBack={toList} />
         )}
+        {view.kind === 'analytics' && <MyAnalytics studentId={user.id} />}
       </main>
     </div>
   )
