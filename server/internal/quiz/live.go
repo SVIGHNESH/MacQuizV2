@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"macquiz/server/internal/apischema"
 	"macquiz/server/internal/authusers"
 )
 
@@ -20,36 +24,22 @@ import (
 // attempt (docs/05 section 6 - a student is in exactly one roster state, so
 // the snapshot collapses to max(attempt_no) rather than fanning out one row
 // per attempt the way the results table does). Students who never started
-// keep the attempt fields null and read as "not_started".
-type LiveRow struct {
-	StudentID string `json:"student_id"`
-	FullName  string `json:"full_name"`
-	Email     string `json:"email"`
-	// State is the dashboard roster state derived from the attempt status:
-	// not_started, in_progress, disconnected, submitted (covers graded), or
-	// kicked. disconnected is in_progress plus one wrinkle: the attempt's most
-	// recent attempt.disconnected/attempt.reconnected event (docs/05 section
-	// 4's "materialized from attempts plus recent attempt_events") says the
-	// heartbeat lapsed and nothing has cleared it since.
-	State string `json:"state"`
+// keep the attempt fields null and read as "not_started". It is a direct
+// alias to the generated apischema.LiveRosterRow type (api/openapi.yaml,
+// oapi-codegen - see internal/apischema), so this response can never
+// silently drift from the spec.
+type LiveRow = apischema.LiveRosterRow
 
-	AttemptID  *string    `json:"attempt_id"`
-	AttemptNo  *int       `json:"attempt_no"`
-	Status     *string    `json:"status"`
-	SubmitKind *string    `json:"submit_kind"`
-	StartedAt  *time.Time `json:"started_at"`
-	DeadlineAt *time.Time `json:"deadline_at"`
-	// AnsweredCount is how many of the attempt's questions have a non-null
-	// saved response; the client pairs it with QuestionCount for a progress
-	// bar. CurrentQuestion is the 1-based ordinal of the last question the
-	// student saved an answer for (attempts.current_question), the same
-	// cursor the attempt.progress delta carries.
-	AnsweredCount   *int     `json:"answered_count"`
-	CurrentQuestion *int     `json:"current_question"`
-	QuestionCount   *int     `json:"question_count"`
-	ViolationCount  *int     `json:"violation_count"`
-	Score           *float64 `json:"score"`
-	MaxScore        *float64 `json:"max_score"`
+// liveFloat32 narrows a nullable float64 score/max-score column to the
+// *float32 the generated wire type expects. These are display-only scores
+// (docs/07 section 3), never a financial computation, so float32's ~7
+// significant digits lose nothing that matters on the wire.
+func liveFloat32(v sql.NullFloat64) *float32 {
+	if !v.Valid {
+		return nil
+	}
+	f := float32(v.Float64)
+	return &f
 }
 
 // LiveRoster returns the owner-or-admin live view of a quiz. Authorization is
@@ -115,16 +105,72 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 
 	roster := []LiveRow{}
 	for rows.Next() {
-		var r LiveRow
+		var studentID, fullName, email string
+		var attemptID, status, submitKind sql.NullString
+		var attemptNo, answeredCount, currentQuestion, questionCount, violationCount sql.NullInt64
+		var startedAt, deadlineAt sql.NullTime
+		var score, maxScore sql.NullFloat64
 		var lastConnEvent *string
-		if err := rows.Scan(&r.StudentID, &r.FullName, &r.Email,
-			&r.AttemptID, &r.AttemptNo, &r.Status, &r.SubmitKind, &r.StartedAt,
-			&r.DeadlineAt, &r.ViolationCount, &r.Score, &r.AnsweredCount,
-			&r.CurrentQuestion, &r.QuestionCount, &r.MaxScore, &lastConnEvent); err != nil {
+		if err := rows.Scan(&studentID, &fullName, &email,
+			&attemptID, &attemptNo, &status, &submitKind, &startedAt,
+			&deadlineAt, &violationCount, &score, &answeredCount,
+			&currentQuestion, &questionCount, &maxScore, &lastConnEvent); err != nil {
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("scan live row: %w", err)
 		}
+		studentUUID, err := uuid.Parse(studentID)
+		if err != nil {
+			return Quiz{}, nil, time.Time{}, fmt.Errorf("parse student id: %w", err)
+		}
+		r := LiveRow{
+			StudentId: studentUUID,
+			FullName:  fullName,
+			Email:     openapi_types.Email(email),
+			Score:     liveFloat32(score),
+			MaxScore:  liveFloat32(maxScore),
+		}
+		if attemptID.Valid {
+			id, err := uuid.Parse(attemptID.String)
+			if err != nil {
+				return Quiz{}, nil, time.Time{}, fmt.Errorf("parse attempt id: %w", err)
+			}
+			r.AttemptId = &id
+		}
+		if attemptNo.Valid {
+			n := int(attemptNo.Int64)
+			r.AttemptNo = &n
+		}
+		if status.Valid {
+			st := apischema.LiveRosterRowStatus(status.String)
+			r.Status = &st
+		}
+		if submitKind.Valid {
+			sk := apischema.LiveRosterRowSubmitKind(submitKind.String)
+			r.SubmitKind = &sk
+		}
+		if startedAt.Valid {
+			r.StartedAt = &startedAt.Time
+		}
+		if deadlineAt.Valid {
+			r.DeadlineAt = &deadlineAt.Time
+		}
+		if answeredCount.Valid {
+			n := int(answeredCount.Int64)
+			r.AnsweredCount = &n
+		}
+		if currentQuestion.Valid {
+			n := int(currentQuestion.Int64)
+			r.CurrentQuestion = &n
+		}
+		if questionCount.Valid {
+			n := int(questionCount.Int64)
+			r.QuestionCount = &n
+		}
+		if violationCount.Valid {
+			n := int(violationCount.Int64)
+			r.ViolationCount = &n
+		}
 		disconnected := lastConnEvent != nil && *lastConnEvent == "attempt.disconnected"
-		r.State = rosterState(r.Status, r.SubmitKind, disconnected)
+		r.State = rosterState(status, submitKind, disconnected)
 		roster = append(roster, r)
 	}
 	return q, roster, now, rows.Err()
@@ -158,23 +204,23 @@ func (s *Service) OwnerOf(ctx context.Context, quizID string) (ownerID string, f
 // only ever applies on top of in_progress (docs/05 section 5: "the clock
 // keeps running") - a submitted, graded, or kicked attempt's last
 // connectivity event is stale history, not a live state.
-func rosterState(status, submitKind *string, disconnected bool) string {
-	if status == nil {
-		return "not_started"
+func rosterState(status, submitKind sql.NullString, disconnected bool) apischema.LiveRosterRowState {
+	if !status.Valid {
+		return apischema.LiveRosterRowStateNotStarted
 	}
-	if submitKind != nil && *submitKind == "kicked" {
-		return "kicked"
+	if submitKind.Valid && submitKind.String == "kicked" {
+		return apischema.LiveRosterRowStateKicked
 	}
-	switch *status {
+	switch status.String {
 	case "in_progress":
 		if disconnected {
-			return "disconnected"
+			return apischema.LiveRosterRowStateDisconnected
 		}
-		return "in_progress"
+		return apischema.LiveRosterRowStateInProgress
 	case "submitted", "graded":
-		return "submitted"
+		return apischema.LiveRosterRowStateSubmitted
 	case "kicked":
-		return "kicked"
+		return apischema.LiveRosterRowStateKicked
 	}
-	return "not_started"
+	return apischema.LiveRosterRowStateNotStarted
 }
