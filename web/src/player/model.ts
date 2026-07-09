@@ -7,6 +7,8 @@ export type AttemptQuestion = components['schemas']['AttemptQuestion']
 export type Attempt = components['schemas']['Attempt']
 export type AttemptResult = components['schemas']['AttemptResult']
 export type ResultQuestion = components['schemas']['ResultQuestion']
+export type Leaderboard = components['schemas']['Leaderboard']
+export type LeaderboardEntry = components['schemas']['LeaderboardEntry']
 
 export const ASSIGNED_STATUS_LABEL: Record<AssignedQuiz['status'], string> = {
   scheduled: 'Scheduled',

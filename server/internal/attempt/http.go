@@ -70,6 +70,7 @@ func (h *Handler) Routes() http.Handler {
 		r.Post("/{id}/submit", h.handleSubmit)
 		r.Post("/{id}/events", h.handleReportViolation)
 		r.Get("/{id}/result", h.handleResult)
+		r.Get("/{id}/leaderboard", h.handleLeaderboard)
 	})
 	// Kick is a live-moderation power for teachers and admins (docs/06 section
 	// 4); the owner-vs-admin resource decision stays in the service, where a
@@ -376,6 +377,27 @@ func (h *Handler) handleResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, result)
+}
+
+// handleLeaderboard serves GET /attempts/{id}/leaderboard: the quiz's ranked
+// standings, gated exactly like the attempt's own result.
+func (h *Handler) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	board, err := h.svc.Leaderboard(r.Context(), actor, id)
+	if err != nil {
+		if errors.Is(err, ErrResultsNotReleased) {
+			httpapi.WriteError(w, http.StatusConflict, httpapi.CodeResultsNotReleased,
+				"results for this quiz have not been released yet")
+			return
+		}
+		h.writeAttemptError(w, "read leaderboard", err, "no such attempt")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, board)
 }
 
 // writeAttemptError maps service errors onto the docs/04 wire vocabulary; it

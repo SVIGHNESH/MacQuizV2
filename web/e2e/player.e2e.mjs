@@ -39,6 +39,10 @@ const teacherEmail = `examiner.e2e.${run}@macquiz.local`
 const teacherPassword = 'graded-fairly-every-time'
 const studentEmail = `mira.e2e.${run}@macquiz.local`
 const studentPassword = 'mira-takes-the-quiz'
+// A second student, so the leaderboard (St5) has someone to rank against.
+// She answers perfectly through the API, never the browser.
+const rivalEmail = `arjun.e2e.${run}@macquiz.local`
+const rivalPassword = 'arjun-answers-everything'
 const QUIZ_TITLE = 'Space and cells check'
 
 // The window: live 3 s from publish, open for 100 s, 85 s per attempt.
@@ -199,8 +203,8 @@ async function request(cookies, method, path, body, wantStatus) {
   return res.status === 204 ? null : res.json()
 }
 
-// A ready teacher and student, and the teacher's published 4-question quiz
-// (one of each type, 6 points total) assigned to the student.
+// A ready teacher and two students, and the teacher's published 4-question
+// quiz (one of each type, 6 points total) assigned to both.
 async function provision() {
   const admin = await login(ADMIN_EMAIL, ADMIN_PASSWORD)
   const teacher = await request(admin.cookies, 'POST', '/api/v1/users', {
@@ -213,12 +217,18 @@ async function provision() {
     email: studentEmail,
     full_name: 'Mira Patel',
   }, 201)
+  const rival = await request(admin.cookies, 'POST', '/api/v1/users', {
+    role: 'student',
+    email: rivalEmail,
+    full_name: 'Arjun Iyer',
+  }, 201)
   await fetch(`${BASE}/api/v1/auth/logout`, {
     method: 'POST',
     headers: { Cookie: admin.cookies },
   })
   await completeReset(teacherEmail, teacher.initial_password, teacherPassword)
   await completeReset(studentEmail, student.initial_password, studentPassword)
+  await completeReset(rivalEmail, rival.initial_password, rivalPassword)
 
   const t = await login(teacherEmail, teacherPassword)
   const quiz = await request(t.cookies, 'POST', '/api/v1/quizzes', {
@@ -263,12 +273,14 @@ async function provision() {
       points: 2,
     },
   ]
+  const questionIds = []
   for (const q of questions) {
-    await request(t.cookies, 'POST', `/api/v1/quizzes/${quizId}/questions`, q, 201)
+    const created = await request(t.cookies, 'POST', `/api/v1/quizzes/${quizId}/questions`, q, 201)
+    questionIds.push(created.question.id)
   }
 
   await request(t.cookies, 'PUT', `/api/v1/quizzes/${quizId}/assignments`, {
-    student_ids: [student.user.id],
+    student_ids: [student.user.id, rival.user.id],
   }, 200)
 
   const startsAt = new Date(Date.now() + LIVE_DELAY_MS)
@@ -281,6 +293,21 @@ async function provision() {
 
   // Into the live window before the student arrives.
   await new Promise((resolve) => setTimeout(resolve, LIVE_DELAY_MS + 1_000))
+
+  // The rival takes the same quiz through the API and answers every question
+  // correctly, so the released review has a leaderboard to draw: 6/6 above
+  // the browser student's 4/6.
+  const r = await login(rivalEmail, rivalPassword)
+  const started = await request(r.cookies, 'POST', `/api/v1/quizzes/${quizId}/attempts`, undefined, 201)
+  const rivalAttempt = started.attempt.id
+  const correct = ['b', ['a', 'c'], true, 'mitochondria']
+  for (const [i, questionId] of questionIds.entries()) {
+    await request(r.cookies, 'PUT',
+      `/api/v1/attempts/${rivalAttempt}/answers/${questionId}`,
+      { response: correct[i] }, 200)
+  }
+  await request(r.cookies, 'POST', `/api/v1/attempts/${rivalAttempt}/submit`, undefined, 200)
+
   return { quizId, endsAt }
 }
 
@@ -519,6 +546,52 @@ async function reviewFlow(page) {
     'only the missed question restates the answer key',
   )
   await shot(page, '36-review.png')
+
+  // St5: the dark island. The rival scored 6/6 through the API, so the
+  // browser student sits second, and her own row is the one marked "You".
+  check(
+    await waitForText(page, '.leaderboard-title', QUIZ_TITLE, 8000),
+    'the released review carries the leaderboard',
+  )
+  check(
+    await waitForText(page, '.stat-card-label', 'Rank · of 2'),
+    'the rank stat card counts both ranked students',
+  )
+  const board = await page.evaluate(() =>
+    [...document.querySelectorAll('.leaderboard-row')].map((row) => ({
+      rank: row.querySelector('.leaderboard-medal, .leaderboard-rank')
+        ?.textContent,
+      name: row.querySelector('.leaderboard-name')?.textContent,
+      score: row.querySelector('.leaderboard-score')?.textContent,
+      self: row.classList.contains('leaderboard-row-self'),
+      lifted: row.classList.contains('leaderboard-row-lifted'),
+    })),
+  )
+  check(
+    board.length === 2 &&
+      board[0].rank === '1' &&
+      board[0].name === 'Arjun Iyer' &&
+      board[0].score === '100%' &&
+      board[0].lifted &&
+      !board[0].self,
+    `rank 1 is the perfect scorer, on the lifted row (got ${JSON.stringify(board[0])})`,
+  )
+  check(
+    board[1]?.rank === '2' &&
+      board[1]?.name === 'You - Mira Patel' &&
+      board[1]?.score === '67%' &&
+      board[1]?.self,
+    `rank 2 is the reader's own outlined row (got ${JSON.stringify(board[1])})`,
+  )
+  check(
+    await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector('.leaderboard'))
+          .backgroundColor === 'rgb(2, 6, 23)',
+    ),
+    'the leaderboard renders on the slate-950 dark island',
+  )
+  await shot(page, '36b-leaderboard.png')
 
   // St6: the student's own rollup. The worker writes it on the close+grade
   // sweep, so it is normally there by the time the review renders; the screen

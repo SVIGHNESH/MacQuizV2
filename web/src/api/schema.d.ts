@@ -895,6 +895,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{id}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The quiz leaderboard as seen from one of your attempts (owner)
+         * @description The "dark island" leaderboard of docs/11-frontend-design-system.md section 4: every student's best graded attempt on this attempt's quiz, ranked by accuracy with ties broken by time taken. Gated exactly like the attempt's own result - owner-only (anyone else reads 404), refused with 409 RESULTS_NOT_RELEASED until the quiz's results are released and this attempt is graded - so no score becomes visible a moment before the release moment that governs it.
+         */
+        get: operations["getAttemptLeaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/questions/{id}": {
         parameters: {
             query?: never;
@@ -1520,6 +1540,25 @@ export interface components {
             /** Format: date-time */
             released_at: string;
             questions: components["schemas"]["ResultQuestion"][];
+        };
+        /** @description One student's standing on a quiz, from their best graded attempt. */
+        LeaderboardEntry: {
+            /** @description Competition rank (1-based). Students whose accuracy and time taken both tie share a rank, and the next rank skips accordingly. */
+            rank: number;
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            /** @description Share of the pinned snapshot's points earned, 0..1. Null when the snapshot the student saw carries no points at all; such students rank last. */
+            accuracy: number | null;
+            /** @description True on the reading student's own row. */
+            is_self: boolean;
+        };
+        /** @description A quiz's ranked standings as seen by one student: the leading entries plus, always, the reader's own row even when it falls outside them. */
+        Leaderboard: {
+            quiz_title: string;
+            /** @description How many students are ranked in all - the "of 48" beside a rank - which may exceed the length of `entries`. */
+            total: number;
+            entries: components["schemas"]["LeaderboardEntry"][];
         };
     };
     responses: {
@@ -3109,6 +3148,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttemptResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ResultsNotReleased"];
+        };
+    };
+    getAttemptLeaderboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ranked leaderboard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Leaderboard"];
                 };
             };
             401: components["responses"]["Unauthorized"];

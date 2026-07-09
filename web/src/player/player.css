@@ -987,3 +987,134 @@
 .withheld-action {
   justify-self: stretch;
 }
+
+/* The dark island (docs/11 section 4): the one sanctioned dark surface. Its
+   slate ramp never leaks into the light screens around it. */
+.leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 26px;
+  border-radius: var(--radius-card);
+  background: var(--color-slate-950);
+  box-shadow: var(--shadow-resting);
+}
+
+.leaderboard-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.leaderboard-eyebrow {
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-slate-400);
+}
+
+.leaderboard-title {
+  margin: 0;
+  font: 750 22px/1.2 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--color-surface);
+}
+
+.leaderboard-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-option-row);
+  background: var(--color-slate-900);
+}
+
+/* Rank 1's row lifts one slate step. */
+.leaderboard-row-lifted {
+  padding: 14px 16px;
+  background: var(--color-slate-800);
+}
+
+.leaderboard-row-self {
+  border-color: #334155;
+  background: var(--color-slate-800);
+}
+
+.leaderboard-rank {
+  flex: 0 0 30px;
+  width: 30px;
+  text-align: center;
+  font: 650 13px/1 var(--font-sans);
+  color: var(--color-slate-400);
+}
+
+.leaderboard-row-self .leaderboard-rank {
+  color: var(--color-primary);
+}
+
+/* Gold, silver, bronze gradient medallions for ranks 1-3. */
+.leaderboard-medal {
+  display: flex;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  font: 750 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-medal-1 {
+  background: linear-gradient(150deg, #fde68a, #d4a017);
+  color: #3a2c05;
+}
+
+.leaderboard-medal-2 {
+  background: linear-gradient(150deg, #e2e8f0, #94a3b8);
+  color: var(--color-slate-800);
+}
+
+.leaderboard-medal-3 {
+  background: linear-gradient(150deg, #f6c89a, #b06a2c);
+  color: #3a1f05;
+}
+
+.leaderboard-name {
+  flex: 1;
+  font: 550 14px/1 var(--font-sans);
+  color: #cbd5e1;
+}
+
+.leaderboard-score {
+  font: 650 15px/1 var(--font-sans);
+  color: #cbd5e1;
+}
+
+.leaderboard-row-lifted .leaderboard-name,
+.leaderboard-row-self .leaderboard-name {
+  font-weight: 650;
+  color: var(--color-surface);
+}
+
+.leaderboard-row-lifted .leaderboard-score,
+.leaderboard-row-self .leaderboard-score {
+  font-weight: 700;
+  color: var(--color-surface);
+}
+
+.leaderboard-note {
+  margin: 0;
+  font: 500 11px/1.4 var(--font-sans);
+  color: var(--color-slate-400);
+}

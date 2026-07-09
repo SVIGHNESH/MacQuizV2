@@ -551,6 +551,29 @@ type ItemStat struct {
 	Responses     int                `json:"responses"`
 }
 
+// Leaderboard A quiz's ranked standings as seen by one student: the leading entries plus, always, the reader's own row even when it falls outside them.
+type Leaderboard struct {
+	Entries   []LeaderboardEntry `json:"entries"`
+	QuizTitle string             `json:"quiz_title"`
+
+	// Total How many students are ranked in all - the "of 48" beside a rank - which may exceed the length of `entries`.
+	Total int `json:"total"`
+}
+
+// LeaderboardEntry One student's standing on a quiz, from their best graded attempt.
+type LeaderboardEntry struct {
+	// Accuracy Share of the pinned snapshot's points earned, 0..1. Null when the snapshot the student saw carries no points at all; such students rank last.
+	Accuracy *float32 `json:"accuracy"`
+	FullName string   `json:"full_name"`
+
+	// IsSelf True on the reading student's own row.
+	IsSelf bool `json:"is_self"`
+
+	// Rank Competition rank (1-based). Students whose accuracy and time taken both tie share a rank, and the next rank skips accordingly.
+	Rank      int                `json:"rank"`
+	StudentId openapi_types.UUID `json:"student_id"`
+}
+
 // LiveRosterResponse defines model for LiveRosterResponse.
 type LiveRosterResponse struct {
 	Quiz   Quiz            `json:"quiz"`

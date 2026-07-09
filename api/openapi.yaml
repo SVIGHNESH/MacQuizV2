@@ -1701,6 +1701,40 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/ResultsNotReleased"
+  /api/v1/attempts/{id}/leaderboard:
+    get:
+      operationId: getAttemptLeaderboard
+      summary: The quiz leaderboard as seen from one of your attempts (owner)
+      description: >-
+        The "dark island" leaderboard of docs/11-frontend-design-system.md
+        section 4: every student's best graded attempt on this attempt's quiz,
+        ranked by accuracy with ties broken by time taken. Gated exactly like
+        the attempt's own result - owner-only (anyone else reads 404), refused
+        with 409 RESULTS_NOT_RELEASED until the quiz's results are released
+        and this attempt is graded - so no score becomes visible a moment
+        before the release moment that governs it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The ranked leaderboard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leaderboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ResultsNotReleased"
   /api/v1/questions/{id}:
     parameters:
       - name: id
@@ -3083,3 +3117,48 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ResultQuestion"
+
+    LeaderboardEntry:
+      type: object
+      description: One student's standing on a quiz, from their best graded attempt.
+      required: [rank, student_id, full_name, accuracy, is_self]
+      properties:
+        rank:
+          type: integer
+          description: >-
+            Competition rank (1-based). Students whose accuracy and time taken
+            both tie share a rank, and the next rank skips accordingly.
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        accuracy:
+          type: number
+          nullable: true
+          description: >-
+            Share of the pinned snapshot's points earned, 0..1. Null when the
+            snapshot the student saw carries no points at all; such students
+            rank last.
+        is_self:
+          type: boolean
+          description: True on the reading student's own row.
+
+    Leaderboard:
+      type: object
+      description: >-
+        A quiz's ranked standings as seen by one student: the leading entries
+        plus, always, the reader's own row even when it falls outside them.
+      required: [quiz_title, total, entries]
+      properties:
+        quiz_title:
+          type: string
+        total:
+          type: integer
+          description: >-
+            How many students are ranked in all - the "of 48" beside a rank -
+            which may exceed the length of `entries`.
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardEntry"

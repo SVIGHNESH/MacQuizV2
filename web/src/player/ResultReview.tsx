@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import Leaderboard from './Leaderboard'
 import {
   formatElapsed,
   formatWhen,
   type AttemptResult,
+  type Leaderboard as LeaderboardData,
   type ResultQuestion,
 } from './model'
 
@@ -12,6 +14,10 @@ import {
  * hero card, then the answer key - exposed here and only here, after release
  * (docs/08). The server refuses this read until results are released, so a
  * 409 renders as the withheld card (St4b), never as an error.
+ *
+ * The leaderboard (St5) rides the same release gate, so it is fetched
+ * alongside the result and simply omitted when it fails - a missing
+ * scoreboard must never cost the student their answer key.
  */
 export default function ResultReview({
   attemptId,
@@ -21,6 +27,7 @@ export default function ResultReview({
   onBack: () => void
 }) {
   const [result, setResult] = useState<AttemptResult | null>(null)
+  const [board, setBoard] = useState<LeaderboardData | null>(null)
   const [notReleased, setNotReleased] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -35,6 +42,12 @@ export default function ResultReview({
       if (cancelled) return
       if (response?.data) {
         setResult(response.data)
+        const ranked = await api
+          .GET('/api/v1/attempts/{id}/leaderboard', {
+            params: { path: { id: attemptId } },
+          })
+          .catch(() => null)
+        if (!cancelled && ranked?.data) setBoard(ranked.data)
         return
       }
       if (response?.response.status === 409) {
@@ -115,6 +128,7 @@ export default function ResultReview({
     result.attempt.started_at,
     result.attempt.deadline_at,
   )
+  const myRank = board?.entries.find((entry) => entry.is_self) ?? null
 
   return (
     <div className="review">
@@ -158,15 +172,31 @@ export default function ResultReview({
             <span className="stat-card-label">Time taken · of {budget}</span>
           </div>
         )}
+        {myRank && board && (
+          <div className="stat-card">
+            <span className="stat-card-value tabular">
+              {formatOrdinal(myRank.rank)}
+            </span>
+            <span className="stat-card-label">Rank · of {board.total}</span>
+          </div>
+        )}
         {result.percentile !== null && (
           <div className="stat-card">
             <span className="stat-card-value tabular">
-              {formatPercentile(result.percentile)}
+              {formatOrdinal(result.percentile)}
             </span>
             <span className="stat-card-label">Percentile · in this quiz</span>
           </div>
         )}
       </div>
+
+      {board && board.entries.length > 1 && (
+        <Leaderboard
+          quizTitle={board.quiz_title}
+          entries={board.entries}
+          total={board.total}
+        />
+      )}
 
       <section className="answer-key">
         <span className="eyebrow answer-key-eyebrow">Answer key</span>
@@ -186,9 +216,9 @@ export default function ResultReview({
   )
 }
 
-/** Renders a percentile (0-100) as an ordinal, e.g. 92 -> "92nd". */
-function formatPercentile(percentile: number): string {
-  const rounded = Math.round(percentile)
+/** Renders a percentile or a rank as an ordinal, e.g. 92 -> "92nd". */
+function formatOrdinal(value: number): string {
+  const rounded = Math.round(value)
   const mod100 = rounded % 100
   const suffix =
     mod100 >= 11 && mod100 <= 13
