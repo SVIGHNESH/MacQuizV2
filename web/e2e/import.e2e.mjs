@@ -98,12 +98,28 @@ function questionCount(page) {
 
 // --- API-side setup: a ready-to-work teacher --------------------------------
 
+// Retries on 429: the e2e suites share one hardcoded admin account
+// (docs/08 section 4's 5/account/minute login limit), so running several
+// suites back to back easily exhausts it. The server's Retry-After header
+// says exactly how long the sliding window needs to drain.
+async function loginRetry(email, password) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (res.status === 429 && attempt < 5) {
+      const retryAfter = Number(res.headers.get('Retry-After')) || 5
+      await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+      continue
+    }
+    return res
+  }
+}
+
 async function provisionReadyTeacher() {
-  const adminLogin = await fetch(`${BASE}/api/v1/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-  })
+  const adminLogin = await loginRetry(ADMIN_EMAIL, ADMIN_PASSWORD)
   if (!adminLogin.ok) throw new Error(`admin login failed: ${adminLogin.status}`)
   const adminCookies = adminLogin.headers
     .getSetCookie()

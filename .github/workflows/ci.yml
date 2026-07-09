@@ -1,5 +1,6 @@
 # CI per docs/09-deployment.md section 5: on pull request run lint and tests
-# (Postgres/Redis as Actions services).
+# (Postgres/Redis as Actions services), plus the browser e2e job below, which
+# drives web/e2e/*.e2e.mjs against a real docker-compose stack.
 name: CI
 
 on:
@@ -84,3 +85,23 @@ jobs:
         run: npm run lint
       - name: typecheck and build
         run: npm run build
+
+  e2e:
+    needs: [server, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: browser e2e suites against a live docker-compose stack
+        run: ./scripts/e2e/run.sh
+      - name: upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: /tmp/macquiz-e2e/
+          if-no-files-found: ignore

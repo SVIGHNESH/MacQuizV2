@@ -136,14 +136,25 @@ function cookiesOf(response) {
     .join('; ')
 }
 
+// Retries on 429: the e2e suites share one hardcoded admin account
+// (docs/08 section 4's 5/account/minute login limit), so running several
+// suites back to back easily exhausts it. The server's Retry-After header
+// says exactly how long the sliding window needs to drain.
 async function login(email, password) {
-  const res = await fetch(`${BASE}/api/v1/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  if (!res.ok) throw new Error(`login ${email} failed: ${res.status}`)
-  return { cookies: cookiesOf(res), body: await res.json() }
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (res.status === 429 && attempt < 5) {
+      const retryAfter = Number(res.headers.get('Retry-After')) || 5
+      await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+      continue
+    }
+    if (!res.ok) throw new Error(`login ${email} failed: ${res.status}`)
+    return { cookies: cookiesOf(res), body: await res.json() }
+  }
 }
 
 async function completeReset(email, oneTime, newPassword) {
