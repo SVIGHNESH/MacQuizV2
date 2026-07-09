@@ -122,7 +122,7 @@
 .player {
   display: grid;
   gap: 16px;
-  max-width: 760px;
+  max-width: 1000px;
 }
 
 .player-topbar {
@@ -153,13 +153,122 @@
   background: var(--color-danger-tint);
 }
 
-.player-questions,
 .review-questions {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
   gap: 16px;
+}
+
+/* Two panes: the question-grid sidebar and the one visible question. */
+.player-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.player-palette {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.palette-title {
+  margin: 0;
+  font: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.palette-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 8px;
+}
+
+.palette-cell {
+  appearance: none;
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font: 600 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-strong);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-micro),
+    border-color var(--motion-micro),
+    box-shadow var(--motion-micro);
+}
+
+.palette-cell:hover {
+  background: var(--color-well);
+}
+
+.palette-cell:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.palette-cell-answered,
+.palette-cell-answered:hover {
+  background: var(--color-success-tint);
+  border-color: var(--color-success-dot);
+  color: var(--color-success-on-tint);
+}
+
+.palette-cell-current {
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.palette-hint {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-question {
+  display: grid;
+  gap: 16px;
+}
+
+.player-question-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.player-question-step {
+  flex: 1;
+  text-align: center;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 840px) {
+  .player-body {
+    grid-template-columns: 1fr;
+  }
+
+  .player-palette {
+    position: static;
+  }
 }
 
 .player-fieldset {

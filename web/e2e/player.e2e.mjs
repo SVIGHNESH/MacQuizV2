@@ -8,8 +8,9 @@
 //      4-question quiz (one of each type) and publishes it with a short
 //      live window (auto release policy)
 //   2. student signs in -> the assigned list shows the quiz Live
-//   3. Start quiz -> the player shows all four questions, a countdown, and
-//      autosaves each answer (3 correct, the multi deliberately wrong)
+//   3. Start quiz -> the player shows one question at a time with a
+//      four-cell sidebar grid and a countdown, and autosaves each answer
+//      (3 correct, the multi deliberately wrong)
 //   4. a cold reload mid-attempt -> Resume restores every saved answer
 //   5. submit -> the done panel, then the list shows the attempt with the
 //      score withheld pre-release
@@ -101,26 +102,42 @@ async function clickButtonWithText(page, text, scope = '') {
   if (!clicked) throw new Error(`no button with text "${text}" in "${scope}"`)
 }
 
+// Jump to the question at 1-based `position` via the sidebar grid, then
+// wait until the single visible question panel shows that position.
+async function goToQuestion(page, position) {
+  const clicked = await page.evaluate((pos) => {
+    const cell = document.querySelectorAll('.palette-cell')[pos - 1]
+    if (!cell) return false
+    cell.click()
+    return true
+  }, position)
+  if (!clicked) throw new Error(`no grid cell for question ${position}`)
+  await page.waitForFunction(
+    (pos) =>
+      document
+        .querySelector('.player-question .question-index')
+        ?.textContent.trim() === String(pos),
+    { timeout: 5000 },
+    position,
+  )
+}
+
 // Click the option row whose visible text equals `optionText`, inside the
 // player question at 1-based `position` - exact match, so option "2" never
-// hits "25".
+// hits "25". Navigates to the question first: only one is visible at a time.
 async function pickOption(page, position, optionText) {
-  const clicked = await page.evaluate(
-    (pos, want) => {
-      const panel = document.querySelectorAll('.player-question')[pos - 1]
-      if (!panel) return false
-      const row = [...panel.querySelectorAll('.option-row')].find(
-        (el) =>
-          (el.querySelector('.option-static')?.textContent ?? '').trim() ===
-          want,
-      )
-      if (!row) return false
-      row.querySelector('input').click()
-      return true
-    },
-    position,
-    optionText,
-  )
+  await goToQuestion(page, position)
+  const clicked = await page.evaluate((want) => {
+    const panel = document.querySelector('.player-question')
+    if (!panel) return false
+    const row = [...panel.querySelectorAll('.option-row')].find(
+      (el) =>
+        (el.querySelector('.option-static')?.textContent ?? '').trim() === want,
+    )
+    if (!row) return false
+    row.querySelector('input').click()
+    return true
+  }, optionText)
   if (!clicked) throw new Error(`no option "${optionText}" in question ${position}`)
 }
 
@@ -295,15 +312,20 @@ async function playerFlow(browser) {
   )
   await shot(page, '30-assigned-live.png')
 
-  // Start: the player with all four questions and a running countdown.
+  // Start: one visible question, the four-cell sidebar grid, and a running
+  // countdown.
   await clickButtonWithText(page, 'Start quiz')
   check(
     await waitForText(page, '.player-topbar .page-title', QUIZ_TITLE, 8000),
     'starting opens the player with the quiz title',
   )
   check(
-    (await page.$$('.player-question')).length === 4,
-    'the player shows all four snapshot questions',
+    (await page.$$('.palette-cell')).length === 4,
+    'the sidebar grid lists all four snapshot questions',
+  )
+  check(
+    (await page.$$('.player-question')).length === 1,
+    'the player shows a single question at a time',
   )
   check(
     await page.$eval('.countdown', (el) => /\d:\d\d/.test(el.textContent)),
@@ -321,10 +343,15 @@ async function playerFlow(browser) {
   await pickOption(page, 1, 'Mars')
   await pickOption(page, 2, '2')
   await pickOption(page, 3, 'True')
+  await goToQuestion(page, 4)
   await type(page, '.player-short-input', 'mitochondria')
   check(
     await waitForText(page, '.player-footer-note', 'Every question has an answer'),
     'the footer counts every question as answered',
+  )
+  check(
+    (await page.$$('.palette-cell-answered')).length === 4,
+    'the sidebar grid marks every question answered',
   )
   check(
     await waitForText(page, '.save-badge', 'All changes saved', 8000),
@@ -346,7 +373,7 @@ async function playerFlow(browser) {
   )
   check(
     await page.evaluate(() => {
-      const q1 = document.querySelectorAll('.player-question')[0]
+      const q1 = document.querySelector('.player-question')
       const picked = [...q1.querySelectorAll('.option-row')].find((row) =>
         row.querySelector('input').checked,
       )
@@ -356,6 +383,11 @@ async function playerFlow(browser) {
     }),
     'the single-choice answer survives the reload',
   )
+  check(
+    (await page.$$('.palette-cell-answered')).length === 4,
+    'the resumed sidebar grid remembers every answered question',
+  )
+  await goToQuestion(page, 4)
   check(
     (await page.$eval('.player-short-input', (el) => el.value)) ===
       'mitochondria',

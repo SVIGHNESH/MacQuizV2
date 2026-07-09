@@ -275,6 +275,11 @@ func (s *Service) OrgStats(ctx context.Context, actor authusers.User) (OrgStats,
 	}
 
 	var out OrgStats
+	out.QuizzesPerWeek = []struct {
+		Count     int       `json:"count"`
+		WeekStart time.Time `json:"week_start"`
+	}{}
+	out.CohortComparisons = []CohortStats{}
 	var platformParticipation sql.NullFloat64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT

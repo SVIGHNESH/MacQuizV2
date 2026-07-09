@@ -82,6 +82,7 @@ export default function AttemptPlayer({
   const [detail, setDetail] = useState<AttemptDetail | null>(null)
   const [answers, setAnswers] = useState<Record<string, ResponseValue>>({})
   const [remainingMs, setRemainingMs] = useState<number | null>(null)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [confirming, setConfirming] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Autosave bookkeeping lives in refs (timers must survive renders);
@@ -556,6 +557,12 @@ export default function AttemptPlayer({
   ).length
   const urgent = remainingMs !== null && remainingMs < 60_000
 
+  // One question shows at a time; the sidebar grid jumps anywhere. Publish
+  // requires at least one question (docs/04), so the snapshot is never empty.
+  const questionCount = detail.questions.length
+  const safeIndex = Math.min(currentIndex, questionCount - 1)
+  const currentQuestion = detail.questions[safeIndex]
+
   const fullscreenGuarded =
     phase.kind === 'playing' && detail.guardrails.fullscreen !== 'off' && !fullscreenOk
 
@@ -619,18 +626,63 @@ export default function AttemptPlayer({
         </div>
       )}
 
-      <ol className="player-questions">
-        {detail.questions.map((question) => (
-          <li key={question.id} className="panel player-question">
-            <PlayerQuestion
-              question={question}
-              value={answers[question.id]}
-              disabled={phase.kind === 'submitting'}
-              onChange={(value) => setAnswer(question.id, value)}
-            />
-          </li>
-        ))}
-      </ol>
+      <div className="player-body">
+        <nav className="panel player-palette" aria-label="Question navigator">
+          <p className="palette-title">Questions</p>
+          <ol className="palette-grid">
+            {detail.questions.map((question, index) => {
+              const answered = isAnswered(answers[question.id])
+              const current = index === safeIndex
+              return (
+                <li key={question.id}>
+                  <button
+                    type="button"
+                    className={`palette-cell${answered ? ' palette-cell-answered' : ''}${current ? ' palette-cell-current' : ''}`}
+                    aria-current={current ? 'true' : undefined}
+                    aria-label={`Question ${question.position}, ${answered ? 'answered' : 'unanswered'}`}
+                    onClick={() => setCurrentIndex(index)}
+                  >
+                    {question.position}
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+          <p className="palette-hint">
+            {questionCount - unansweredCount} of {questionCount} answered
+          </p>
+        </nav>
+
+        <section className="panel player-question">
+          <PlayerQuestion
+            question={currentQuestion}
+            value={answers[currentQuestion.id]}
+            disabled={phase.kind === 'submitting'}
+            onChange={(value) => setAnswer(currentQuestion.id, value)}
+          />
+          <div className="player-question-nav">
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={safeIndex === 0}
+              onClick={() => setCurrentIndex(safeIndex - 1)}
+            >
+              Previous
+            </button>
+            <span className="player-question-step">
+              Question {safeIndex + 1} of {questionCount}
+            </span>
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={safeIndex === questionCount - 1}
+              onClick={() => setCurrentIndex(safeIndex + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </section>
+      </div>
 
       <footer className="panel player-footer">
         {confirming ? (
