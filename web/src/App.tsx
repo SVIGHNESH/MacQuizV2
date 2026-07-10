@@ -1,7 +1,7 @@
 import { AuthProvider } from './auth/auth'
 import { useAuth } from './auth/context'
 import { ToastProvider } from './toast/Toast'
-import LoginScreen from './screens/LoginScreen'
+import LandingScreen from './screens/LandingScreen'
 import ChangePasswordScreen from './screens/ChangePasswordScreen'
 import AuthoringWorkspace from './authoring/AuthoringWorkspace'
 import StudentWorkspace from './player/StudentWorkspace'
@@ -22,7 +22,7 @@ function Screens() {
   }
 
   if (state.phase === 'signed-out') {
-    return <LoginScreen />
+    return <LandingScreen />
   }
 
   if (state.user.must_change_password) {

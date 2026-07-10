@@ -22,6 +22,7 @@ These docs are distilled from the three source HTML documents in the repo root a
 10. [10-operations.md](10-operations.md) - backups, monitoring, alerts, runbook.
 11. [11-frontend-design-system.md](11-frontend-design-system.md) - design tokens, component recipes, screen mapping.
 12. [12-implementation-plan.md](12-implementation-plan.md) - milestone build order with exit criteria and the design scorecard.
+13. [13-landing-design-system.md](13-landing-design-system.md) - the "question paper" design language of the signed-out landing page and other marketing-style surfaces.
 
 ## Non-negotiable invariants (the short list every contributor must know)
 

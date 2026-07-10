@@ -86,7 +86,13 @@ function RateLimitNotice({
   )
 }
 
-export default function LoginScreen() {
+/**
+ * The sign-in card itself, extracted so the landing screen can seat it in a
+ * hero layout while a bare /login-style render keeps working. The e2e
+ * suites type into #login-email on first paint, so whatever hosts this card
+ * must render it immediately, never behind a click.
+ */
+export function LoginCard({ autoFocus = true }: { autoFocus?: boolean }) {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -137,13 +143,14 @@ export default function LoginScreen() {
   }
 
   return (
-    <main className="shell">
-      <section className="card auth-card">
-        <span className="brand-mark brand-mark-auth" aria-hidden="true">
-          M
-        </span>
+    <section className="card auth-card">
+      <span className="brand-mark brand-mark-auth" aria-hidden="true">
+        M
+      </span>
         <header className="auth-heading">
-          <h1 className="page-title">Sign in to MacQuiz</h1>
+          {/* h2: the landing hero owns the page's h1; the class carries the
+              size either way. */}
+          <h2 className="page-title">Sign in to MacQuiz</h2>
           <p className="auth-subtitle">
             Use the credentials your administrator issued. Accounts aren't
             self-created.
@@ -162,7 +169,7 @@ export default function LoginScreen() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoFocus
+              autoFocus={autoFocus}
               required
             />
           </div>
@@ -211,7 +218,14 @@ export default function LoginScreen() {
             out? Ask your administrator.
           </p>
         </form>
-      </section>
+    </section>
+  )
+}
+
+export default function LoginScreen() {
+  return (
+    <main className="shell">
+      <LoginCard />
     </main>
   )
 }
