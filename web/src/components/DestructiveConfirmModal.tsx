@@ -6,6 +6,10 @@ import { useState, type FormEvent } from 'react'
  * restates the consequence in a danger-tint card and only shows the red
  * button once the reason is committed. Shared by every reason-gated
  * destructive action (kick, readmit, score override).
+ *
+ * A quiz-wide destructive action the server records no reason for (force-close)
+ * omits reasonLabel: the flow then opens straight on the consequence step, so
+ * the two-step confirm is preserved without collecting a reason nothing stores.
  */
 export default function DestructiveConfirmModal({
   title,
@@ -21,14 +25,16 @@ export default function DestructiveConfirmModal({
   title: string
   subtitle?: string
   consequence: string
-  reasonLabel: string
+  reasonLabel?: string
   confirmLabel: string
   busy?: boolean
   error?: string | null
   onCancel: () => void
   onConfirm: (reason: string) => void
 }) {
-  const [step, setStep] = useState<'reason' | 'confirm'>('reason')
+  const [step, setStep] = useState<'reason' | 'confirm'>(
+    reasonLabel === undefined ? 'confirm' : 'reason',
+  )
   const [reason, setReason] = useState('')
 
   const submitReason = (e: FormEvent) => {
@@ -83,9 +89,11 @@ export default function DestructiveConfirmModal({
                 type="button"
                 className="button button-quiet"
                 disabled={busy}
-                onClick={() => setStep('reason')}
+                onClick={() =>
+                  reasonLabel === undefined ? onCancel() : setStep('reason')
+                }
               >
-                Back
+                {reasonLabel === undefined ? 'Cancel' : 'Back'}
               </button>
               <button
                 type="button"

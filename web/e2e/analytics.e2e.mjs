@@ -374,6 +374,17 @@ async function dashboardFlow(browser) {
     await waitForText(page, '.stats-item-question', 'Red Planet'),
     'the item-analysis row labels the question by its text, not its id',
   )
+  // docs/07 section 3's option-pick rates surfaced as the "Top distractor"
+  // column: Bob answered "The Sun is a star" as False (wrong), so that row's
+  // most-picked wrong option is False, at 1 of 2 responses.
+  check(
+    await waitForText(page, '.stats-item-distractor', 'False'),
+    'the item-analysis top-distractor cell names the most-picked wrong option',
+  )
+  check(
+    await waitForText(page, '.stats-distractor-rate', '50% picked'),
+    'the top-distractor cell shows the pick rate (1 of 2 chose False)',
+  )
   const kicked = await page.$eval(
     '.stats-integrity .stat-tile-value',
     (el) => el.textContent.trim(),

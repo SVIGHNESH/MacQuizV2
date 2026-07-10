@@ -378,6 +378,41 @@ async function studentIsLockedOut(studentPage) {
   await shot(studentPage, '95-student-lockout.png')
 }
 
+// The two quiz-wide live controls (docs/06; extendQuiz/forceCloseQuiz) that
+// had server endpoints but no teacher UI until now. The quiz is still live
+// after the kick, so both run on the same roster panel.
+async function teacherExtendsThenForceCloses(teacherPage) {
+  // Extend +5 min: a successful extend re-enables the button and leaves no
+  // error; a stale-window 409/422 would surface .form-error in the panel.
+  await teacherPage.click('#extend-quiz-button')
+  await teacherPage.waitForFunction(
+    () => {
+      const b = document.querySelector('#extend-quiz-button')
+      return b && !b.disabled && (b.textContent ?? '').includes('Extend +5 min')
+    },
+    { timeout: 8000 },
+  )
+  const extendError = await teacherPage.$('.live-monitor-panel .form-error')
+  check(extendError === null, 'extending the live quiz succeeds with no error')
+  await shot(teacherPage, '96-live-monitor-extended.png')
+
+  // Force-close: a reason-less two-step confirm, then the quiz flips to Closed
+  // and the live roster panel unmounts in favor of the results view.
+  await teacherPage.click('#force-close-button')
+  check(
+    await waitForText(teacherPage, '.modal-title', 'Force-close this quiz?', 5000),
+    'force-close opens the two-step confirm modal',
+  )
+  await clickButtonWithText(teacherPage, 'Force-close quiz')
+  check(
+    await waitForText(teacherPage, '.chip-status', 'Closed', 10000),
+    'force-close flips the quiz to Closed',
+  )
+  const panelGone = (await teacherPage.$('.live-monitor-panel')) === null
+  check(panelGone, 'the live roster panel unmounts once the quiz is closed')
+  await shot(teacherPage, '97-live-monitor-force-closed.png')
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
 const { quizId } = await provision()
 void quizId
@@ -393,6 +428,7 @@ try {
   const student = await studentStartsAndAnswers(browser)
   await teacherSeesProgressThenKicks(teacher.page)
   await studentIsLockedOut(student.page)
+  await teacherExtendsThenForceCloses(teacher.page)
   await teacher.context.close()
   await student.context.close()
 } finally {

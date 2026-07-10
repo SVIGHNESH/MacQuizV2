@@ -17,11 +17,67 @@ const PCT = (fraction: number | null | undefined): string =>
     ? '—'
     : `${Math.round(fraction * 100)}%`
 
+type ItemStat = QuizStats['item_analysis'][number]
+
+/**
+ * The most-picked WRONG option for one question, surfacing docs/07 section 3's
+ * "option-pick rates" metric as the design doc's "Top distractor" column.
+ * option_pick_rates keys on the raw stored response (rollup.go): the option
+ * key for `single`, "true"/"false" for `truefalse` - so a distractor is only
+ * well-defined for those two types. `multi` (keyed by the whole selected set)
+ * and `short` (free text) have no single-option distractor and return null,
+ * matching the rollup's own "known first-brick limitation" note.
+ */
+function topDistractor(
+  item: ItemStat,
+  question: TeacherQuestion | undefined,
+): { label: string; rate: number } | null {
+  if (!question || item.responses === 0) return null
+  const rates = item.option_pick_rates ?? {}
+
+  if (question.type === 'single') {
+    const correctKey =
+      typeof question.correct === 'string' ? question.correct : null
+    let bestKey: string | null = null
+    let bestCount = 0
+    for (const [key, count] of Object.entries(rates)) {
+      if (key === correctKey) continue
+      if (count > bestCount) {
+        bestCount = count
+        bestKey = key
+      }
+    }
+    if (bestKey === null || bestCount === 0) return null
+    const label = question.options?.find((o) => o.key === bestKey)?.text ?? bestKey
+    return { label, rate: bestCount / item.responses }
+  }
+
+  if (question.type === 'truefalse') {
+    const correctBool =
+      typeof question.correct === 'boolean' ? question.correct : null
+    let bestKey: string | null = null
+    let bestCount = 0
+    for (const [key, count] of Object.entries(rates)) {
+      if (correctBool !== null && (key === 'true') === correctBool) continue
+      if (count > bestCount) {
+        bestCount = count
+        bestKey = key
+      }
+    }
+    if (bestKey === null || bestCount === 0) return null
+    return { label: bestKey === 'true' ? 'True' : 'False', rate: bestCount / item.responses }
+  }
+
+  return null
+}
+
 /**
  * Milestone 8's teacher dashboard (docs/04 "GET /analytics/quizzes/:id"):
  * the score distribution, mean/median/participation, per-question item
- * analysis, and integrity summary RollupDue froze at close. One read of the
- * already-computed rollup, never a live recompute.
+ * analysis (difficulty, discrimination, avg time, and the top distractor
+ * derived from option-pick rates - docs/07 section 3), and integrity summary
+ * RollupDue froze at close. One read of the already-computed rollup, never a
+ * live recompute.
  */
 export default function QuizStatsPanel({
   quizId,
@@ -200,24 +256,44 @@ export default function QuizStatsPanel({
             <span role="columnheader" className="qt-num">
               Avg time
             </span>
+            <span role="columnheader">Top distractor</span>
           </div>
-          {stats.item_analysis.map((item) => (
-            <div key={item.question_id} className="stats-item-row" role="row">
-              <span className="stats-item-question">
-                {questionText(item.question_id)}
-              </span>
-              <span className="qt-num tabular">{item.responses}</span>
-              <span className="qt-num tabular">{PCT(item.p_value)}</span>
-              <span className="qt-num tabular">
-                {item.point_biserial === null
-                  ? '—'
-                  : item.point_biserial.toFixed(2)}
-              </span>
-              <span className="qt-num tabular">
-                {(item.avg_time_ms / 1000).toFixed(1)}s
-              </span>
-            </div>
-          ))}
+          {stats.item_analysis.map((item) => {
+            const distractor = topDistractor(
+              item,
+              questions.find((q) => q.id === item.question_id),
+            )
+            return (
+              <div key={item.question_id} className="stats-item-row" role="row">
+                <span className="stats-item-question">
+                  {questionText(item.question_id)}
+                </span>
+                <span className="qt-num tabular">{item.responses}</span>
+                <span className="qt-num tabular">{PCT(item.p_value)}</span>
+                <span className="qt-num tabular">
+                  {item.point_biserial === null
+                    ? '—'
+                    : item.point_biserial.toFixed(2)}
+                </span>
+                <span className="qt-num tabular">
+                  {(item.avg_time_ms / 1000).toFixed(1)}s
+                </span>
+                <span className="stats-item-distractor">
+                  {distractor === null ? (
+                    '—'
+                  ) : (
+                    <>
+                      {distractor.label}
+                      <span className="stats-distractor-rate tabular">
+                        {' · '}
+                        {PCT(distractor.rate)} picked
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
 

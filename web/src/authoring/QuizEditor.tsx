@@ -376,7 +376,11 @@ function LoadedEditor({
       )}
 
       {quiz.status === 'live' && (
-        <LiveMonitorPanel quizId={quiz.id} quizTitle={quiz.title} />
+        <LiveMonitorPanel
+          quizId={quiz.id}
+          quizTitle={quiz.title}
+          onQuizUpdate={setQuiz}
+        />
       )}
 
       {(quiz.status === 'closed' || quiz.status === 'archived') && (

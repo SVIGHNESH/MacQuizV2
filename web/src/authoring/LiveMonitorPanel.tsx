@@ -6,6 +6,11 @@ import AudienceEditor from './AudienceEditor'
 import type { components } from '../api/schema'
 
 type LiveRosterRow = components['schemas']['LiveRosterRow']
+type Quiz = components['schemas']['Quiz']
+
+// docs/06: the teacher's "extend a live quiz" control moves ends_at later. The
+// design doc draws it as a fixed "+5 min" step, the smallest useful nudge.
+const EXTEND_STEP_MS = 5 * 60_000
 
 const STATE_LABEL: Record<LiveRosterRow['state'], string> = {
   not_started: 'Not started',
@@ -41,9 +46,12 @@ interface RealtimeEvent {
 export default function LiveMonitorPanel({
   quizId,
   quizTitle,
+  onQuizUpdate,
 }: {
   quizId: string
   quizTitle: string
+  /** Lets the parent editor react to a force-close/extend (status/ends_at). */
+  onQuizUpdate?: (quiz: Quiz) => void
 }) {
   const [roster, setRoster] = useState<LiveRosterRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -51,6 +59,10 @@ export default function LiveMonitorPanel({
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
   const [showAudienceEditor, setShowAudienceEditor] = useState(false)
+  const [quizEndsAt, setQuizEndsAt] = useState<string | null>(null)
+  const [extending, setExtending] = useState(false)
+  const [pendingForceClose, setPendingForceClose] = useState(false)
+  const [forceClosing, setForceClosing] = useState(false)
   const [pendingEscalation, setPendingEscalation] = useState<{
     attemptId: string
     studentName: string
@@ -72,6 +84,7 @@ export default function LiveMonitorPanel({
     setLoadError(null)
     clockOffset.current = Date.parse(result.data.server_time) - Date.now()
     setRoster(result.data.roster)
+    setQuizEndsAt(result.data.quiz.ends_at)
   }, [quizId])
 
   useEffect(() => {
@@ -222,6 +235,50 @@ export default function LiveMonitorPanel({
     }
   }, [quizId, loadSnapshot, applyEvent])
 
+  // docs/06 + api/openapi extendQuiz: push ends_at EXTEND_STEP_MS later. The
+  // server clamps each in-progress attempt's deadline to the new window, so no
+  // student loses time; a stale ends_at answers 409/422, surfaced as an error.
+  const extend = async () => {
+    if (!quizEndsAt) return
+    setExtending(true)
+    setActionError(null)
+    const newEndsAt = new Date(Date.parse(quizEndsAt) + EXTEND_STEP_MS).toISOString()
+    const result = await api
+      .POST('/api/v1/quizzes/{id}/extend', {
+        params: { path: { id: quizId } },
+        body: { ends_at: newEndsAt },
+      })
+      .catch(() => null)
+    setExtending(false)
+    if (!result?.data) {
+      setActionError(result?.error?.message ?? 'Could not extend the quiz.')
+      return
+    }
+    setQuizEndsAt(result.data.quiz.ends_at)
+    onQuizUpdate?.(result.data.quiz)
+    void loadSnapshot()
+  }
+
+  // api/openapi forceCloseQuiz: end the live quiz now. Irreversible - every
+  // open attempt is force-submitted and graded - so it goes through the
+  // two-step confirm, without a reason (the endpoint records none).
+  const forceClose = async () => {
+    setForceClosing(true)
+    setActionError(null)
+    const result = await api
+      .POST('/api/v1/quizzes/{id}/close', { params: { path: { id: quizId } } })
+      .catch(() => null)
+    setForceClosing(false)
+    if (!result?.data) {
+      setActionError(result?.error?.message ?? 'Could not force-close the quiz.')
+      return
+    }
+    setPendingForceClose(false)
+    // Flips the parent to Closed, which unmounts this panel in favor of the
+    // results/analytics view - so this is the last state we touch here.
+    onQuizUpdate?.(result.data.quiz)
+  }
+
   const escalate = async (reason: string) => {
     if (!pendingEscalation) return
     const { attemptId, action } = pendingEscalation
@@ -269,6 +326,23 @@ export default function LiveMonitorPanel({
           onClick={() => setShowAudienceEditor((v) => !v)}
         >
           {showAudienceEditor ? 'Hide audience' : 'Manage audience'}
+        </button>
+        <button
+          className="button button-quiet button-small"
+          type="button"
+          id="extend-quiz-button"
+          disabled={extending || !quizEndsAt}
+          onClick={() => void extend()}
+        >
+          {extending ? 'Extending…' : 'Extend +5 min'}
+        </button>
+        <button
+          className="button button-quiet-danger button-small"
+          type="button"
+          id="force-close-button"
+          onClick={() => setPendingForceClose(true)}
+        >
+          Force-close
         </button>
       </div>
       {showAudienceEditor && <AudienceEditor quizId={quizId} live />}
@@ -344,6 +418,19 @@ export default function LiveMonitorPanel({
           })}
         </div>
       </div>
+
+      {pendingForceClose && (
+        <DestructiveConfirmModal
+          title="Force-close this quiz?"
+          subtitle={quizTitle}
+          consequence="This ends the quiz for everyone now. Every in-progress attempt is submitted as-is and graded immediately. It cannot be reopened."
+          confirmLabel="Force-close quiz"
+          busy={forceClosing}
+          error={actionError}
+          onCancel={() => setPendingForceClose(false)}
+          onConfirm={() => void forceClose()}
+        />
+      )}
 
       {pendingEscalation && (
         <DestructiveConfirmModal

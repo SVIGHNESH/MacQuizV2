@@ -924,7 +924,7 @@
 .stats-item-head,
 .stats-item-row {
   display: grid;
-  grid-template-columns: 1fr 100px 100px 120px 90px;
+  grid-template-columns: 1.6fr 84px 90px 110px 78px 1.4fr;
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
@@ -952,10 +952,25 @@
   color: var(--color-text-strong);
 }
 
+/* Top-distractor cell (docs/07 section 3's option-pick rates): the wrong
+   option's text can be long, so it clips rather than pushing the row wider. */
+.stats-item-distractor {
+  font: var(--text-body);
+  color: var(--color-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-distractor-rate {
+  color: var(--color-text-secondary);
+}
+
 /* Kicked-attempts table (docs/06 line 80's score-override control) reuses the
    item-analysis table's visual style but has its own 3-column layout - the
-   5-column grid-template-columns above is specific to Question/Responses/
-   Difficulty/Discrimination/Avg time and would misalign this table's rows. */
+   6-column grid-template-columns above is specific to Question/Responses/
+   Difficulty/Discrimination/Avg time/Top distractor and would misalign this
+   table's rows. */
 .kicked-attempts-table .stats-item-head,
 .kicked-attempts-table .stats-item-row {
   grid-template-columns: 1fr 80px 180px;
