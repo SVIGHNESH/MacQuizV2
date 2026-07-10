@@ -3,6 +3,7 @@ package quiz
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,7 +25,11 @@ import (
 // attempt (docs/05 section 6 - a student is in exactly one roster state, so
 // the snapshot collapses to max(attempt_no) rather than fanning out one row
 // per attempt the way the results table does). Students who never started
-// keep the attempt fields null and read as "not_started". It is a direct
+// keep the attempt fields null and read as "not_started". Violations is the
+// per-type evidence behind the badge's "types on hover" (docs/06 section 3),
+// materialized from attempt_events the same way the disconnected state is;
+// its counts include warn-policy and clipboard reports, which are logged but
+// never advance ViolationCount, so the two deliberately disagree. It is a direct
 // alias to the generated apischema.LiveRosterRow type (api/openapi.yaml,
 // oapi-codegen - see internal/apischema), so this response can never
 // silently drift from the spec.
@@ -80,7 +85,8 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		        jsonb_array_length(v.questions),
 		        (SELECT sum((qq->>'points')::float8)
 		         FROM jsonb_array_elements(v.questions) qq),
-		        ce.type
+		        ce.type,
+		        vt.tallies
 		 FROM quiz_assignments s
 		 JOIN users u ON u.id = s.student_id
 		 LEFT JOIN LATERAL (
@@ -96,6 +102,21 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		     ORDER BY id DESC
 		     LIMIT 1
 		 ) ce ON true
+		 LEFT JOIN LATERAL (
+		     SELECT jsonb_agg(jsonb_build_object(
+		                'type', g.vtype,
+		                'count', g.n,
+		                'total_duration_ms', g.duration_ms)
+		            ORDER BY g.vtype) AS tallies
+		     FROM (
+		         SELECT payload->>'type' AS vtype,
+		                count(*) AS n,
+		                sum((payload->>'duration_ms')::bigint) AS duration_ms
+		         FROM attempt_events
+		         WHERE attempt_id = a.id AND type = 'attempt.violation'
+		         GROUP BY 1
+		     ) g
+		 ) vt ON true
 		 WHERE s.quiz_id = $1
 		 ORDER BY u.full_name, u.id`, quizID)
 	if err != nil {
@@ -111,10 +132,16 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		var startedAt, deadlineAt sql.NullTime
 		var score, maxScore sql.NullFloat64
 		var lastConnEvent *string
+		// jsonb_agg over an empty group is SQL NULL, and so is the whole
+		// column for a student who never started, so this must scan as raw
+		// bytes rather than json.RawMessage (a nil *json.RawMessage is not a
+		// valid Scan destination for a NULL jsonb).
+		var tallies []byte
 		if err := rows.Scan(&studentID, &fullName, &email,
 			&attemptID, &attemptNo, &status, &submitKind, &startedAt,
 			&deadlineAt, &violationCount, &score, &answeredCount,
-			&currentQuestion, &questionCount, &maxScore, &lastConnEvent); err != nil {
+			&currentQuestion, &questionCount, &maxScore, &lastConnEvent,
+			&tallies); err != nil {
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("scan live row: %w", err)
 		}
 		studentUUID, err := uuid.Parse(studentID)
@@ -122,11 +149,17 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 			return Quiz{}, nil, time.Time{}, fmt.Errorf("parse student id: %w", err)
 		}
 		r := LiveRow{
-			StudentId: studentUUID,
-			FullName:  fullName,
-			Email:     openapi_types.Email(email),
-			Score:     liveFloat32(score),
-			MaxScore:  liveFloat32(maxScore),
+			StudentId:  studentUUID,
+			FullName:   fullName,
+			Email:      openapi_types.Email(email),
+			Score:      liveFloat32(score),
+			MaxScore:   liveFloat32(maxScore),
+			Violations: []apischema.ViolationTally{},
+		}
+		if len(tallies) > 0 {
+			if err := json.Unmarshal(tallies, &r.Violations); err != nil {
+				return Quiz{}, nil, time.Time{}, fmt.Errorf("decode violation tallies: %w", err)
+			}
 		}
 		if attemptID.Valid {
 			id, err := uuid.Parse(attemptID.String)

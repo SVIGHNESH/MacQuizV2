@@ -353,6 +353,20 @@
   background: var(--color-warning-tint);
 }
 
+/* docs/05 section 2 / docs/06 section 3: "an amber badge with count and types
+   on hover". The cursor is a help cursor because the count alone understates
+   what the row knows - the types are in the title. */
+.violation-badge {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--color-warning-on-tint);
+  background: var(--color-warning-tint);
+  text-align: center;
+  cursor: help;
+}
+
 .editor-title-row {
   display: flex;
   align-items: flex-start;

@@ -7,6 +7,49 @@ import type { components } from '../api/schema'
 
 type LiveRosterRow = components['schemas']['LiveRosterRow']
 type Quiz = components['schemas']['Quiz']
+type ViolationTally = components['schemas']['ViolationTally']
+
+// docs/06 section 3's three guardrails, named the way a teacher reading the
+// hover would describe what the student did, not the way the wire names it.
+const VIOLATION_LABEL: Record<ViolationTally['type'], string> = {
+  fullscreen: 'Left fullscreen',
+  focus: 'Left the tab',
+  clipboard: 'Copy, paste, or right-click',
+}
+
+/**
+ * The roster badge's "types on hover" text (docs/05 section 2, docs/06
+ * section 3: "an amber badge with count and types on hover").
+ *
+ * The tallies count every logged attempt.violation; violation_count is the
+ * narrower ladder tally, which a warn-policy or clipboard report never
+ * advances. When they differ, the difference is the point - the teacher is
+ * looking at evidence that exists but does not push the student up the
+ * ladder - so the summary says so rather than showing two numbers that look
+ * like they contradict each other.
+ */
+function violationSummary(tallies: ViolationTally[], counted: number): string {
+  const parts = tallies.map((t) => {
+    const times = `${VIOLATION_LABEL[t.type] ?? t.type} ×${t.count}`
+    // Focus loss is the only guardrail that measures a span (docs/06: the
+    // teacher sees "left the tab for 40 s"); the rest report an instant.
+    return t.total_duration_ms === null
+      ? times
+      : `${times} (${Math.round(t.total_duration_ms / 1000)}s)`
+  })
+  const total = tallies.reduce((n, t) => n + t.count, 0)
+  const summary = `Logged: ${parts.join(', ')}.`
+  return total === counted
+    ? summary
+    : `${summary} ${counted} of ${total} count toward the limit.`
+}
+
+// The per-type breakdown is never accumulated from deltas, only re-read from
+// the snapshot (see the attempt.violation case below). This coalesces that
+// re-read on its trailing edge, so a burst of violations costs one GET and
+// that GET is issued strictly after the last of them committed. 2 s mirrors
+// docs/05 section 5's coalescing window for attempt.progress.
+const VIOLATION_REFETCH_MS = 2_000
 
 // docs/06: the teacher's "extend a live quiz" control moves ends_at later. The
 // design doc draws it as a fixed "+5 min" step, the smallest useful nudge.
@@ -72,11 +115,19 @@ export default function LiveMonitorPanel({
   // AttemptPlayer uses, so a skewed local clock never misreports time left.
   const clockOffset = useRef(0)
   const [, forceTick] = useState(0)
+  // Snapshots are requested from several places (mount, the polling fallback,
+  // attempt.started, a violation burst), so responses can land out of order.
+  // Only the newest request issued may write the roster; an older one that
+  // overtakes it would rewind rows past state the dashboard already applied.
+  const snapshotSeq = useRef(0)
+  const violationRefetch = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadSnapshot = useCallback(async () => {
+    const seq = ++snapshotSeq.current
     const result = await api
       .GET('/api/v1/quizzes/{id}/live', { params: { path: { id: quizId } } })
       .catch(() => null)
+    if (seq !== snapshotSeq.current) return
     if (!result?.data) {
       setLoadError(result?.error?.message ?? 'Could not load the live roster.')
       return
@@ -91,6 +142,13 @@ export default function LiveMonitorPanel({
     void loadSnapshot()
   }, [loadSnapshot])
 
+  useEffect(
+    () => () => {
+      if (violationRefetch.current) clearTimeout(violationRefetch.current)
+    },
+    [],
+  )
+
   // A once-per-second re-render to keep the "time left" cells ticking without
   // depending on any per-row timer or event.
   useEffect(() => {
@@ -99,6 +157,15 @@ export default function LiveMonitorPanel({
   }, [])
 
   const applyEvent = useCallback((msg: RealtimeEvent) => {
+    // Scheduled outside the updater below, which must stay pure: React invokes
+    // it twice under StrictMode.
+    if (msg.type === 'attempt.violation') {
+      if (violationRefetch.current) clearTimeout(violationRefetch.current)
+      violationRefetch.current = setTimeout(
+        () => void loadSnapshot(),
+        VIOLATION_REFETCH_MS,
+      )
+    }
     setRoster((prev) => {
       if (!prev) return prev
       switch (msg.type) {
@@ -111,6 +178,16 @@ export default function LiveMonitorPanel({
           )
         }
         case 'attempt.violation': {
+          // violation_count is absolute, so the badge moves the instant the
+          // delta lands. The per-type breakdown behind it is deliberately NOT
+          // folded in here: the delta carries one violation, not the tally,
+          // and a client that adds them up cannot be made exactly-once. A
+          // delta for an attempt this roster has not learned of yet (the row
+          // stays not_started until attempt.started's re-fetch returns) matches
+          // no row and is dropped, and a re-fetch landing mid-burst would
+          // overwrite whatever had accumulated. Both are silent, permanent
+          // losses in a counter nothing later corrects. So SQL stays the only
+          // place a breakdown is computed; the re-read is scheduled above.
           const p = msg.payload as { violation_count: number }
           return prev.map((row) =>
             row.attempt_id === msg.attempt_id
@@ -166,7 +243,7 @@ export default function LiveMonitorPanel({
           return prev
       }
     })
-  }, [])
+  }, [loadSnapshot])
 
   // WebSocket deltas with a polling fallback (docs/05 section 5). Connection
   // state and the reconnect loop live entirely in refs/timers, not React
@@ -375,7 +452,27 @@ export default function LiveMonitorPanel({
                     ? `${row.current_question !== null ? `Q${row.current_question} · ` : ''}${row.answered_count} / ${row.question_count}`
                     : '—'}
                 </span>
-                <span className="tabular">{row.violation_count ?? 0}</span>
+                <span className="tabular">
+                  {row.violations.length === 0 ? (
+                    (row.violation_count ?? 0)
+                  ) : (
+                    <>
+                      <span
+                        className="violation-badge"
+                        data-testid="violation-badge"
+                        title={violationSummary(row.violations, row.violation_count ?? 0)}
+                      >
+                        {row.violation_count ?? 0}
+                      </span>
+                      {/* title= is hover-only and this cell is not focusable,
+                          so the same sentence is spoken from the row itself. */}
+                      <span className="visually-hidden" data-testid="violation-spoken">
+                        {' '}
+                        {violationSummary(row.violations, row.violation_count ?? 0)}
+                      </span>
+                    </>
+                  )}
+                </span>
                 <span className="tabular">
                   {remaining === null ? '—' : formatRemaining(remaining)}
                 </span>
@@ -444,7 +541,9 @@ export default function LiveMonitorPanel({
           consequence={
             pendingEscalation.action === 'kick'
               ? 'This ends their attempt immediately. Work already saved is kept for grading.'
-              : 'This lets the student resume their attempt from where they left off.'
+              : // docs/06 section 4: re-admission is a new attempt, not a
+                // resurrection - the kicked attempt stays in the record.
+                'This grants one fresh attempt with whatever time remains. Their removed attempt is kept in the record.'
           }
           confirmLabel={pendingEscalation.action === 'kick' ? 'Remove student' : 'Readmit student'}
           busy={busyAttemptId === pendingEscalation.attemptId}

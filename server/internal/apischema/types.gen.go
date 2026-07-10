@@ -214,11 +214,18 @@ const (
 	UserStatusDisabled UserStatus = "disabled"
 )
 
+// Defines values for ViolationTallyType.
+const (
+	ViolationTallyTypeClipboard  ViolationTallyType = "clipboard"
+	ViolationTallyTypeFocus      ViolationTallyType = "focus"
+	ViolationTallyTypeFullscreen ViolationTallyType = "fullscreen"
+)
+
 // Defines values for ReportAttemptViolationJSONBodyType.
 const (
-	Clipboard  ReportAttemptViolationJSONBodyType = "clipboard"
-	Focus      ReportAttemptViolationJSONBodyType = "focus"
-	Fullscreen ReportAttemptViolationJSONBodyType = "fullscreen"
+	ReportAttemptViolationJSONBodyTypeClipboard  ReportAttemptViolationJSONBodyType = "clipboard"
+	ReportAttemptViolationJSONBodyTypeFocus      ReportAttemptViolationJSONBodyType = "focus"
+	ReportAttemptViolationJSONBodyTypeFullscreen ReportAttemptViolationJSONBodyType = "fullscreen"
 )
 
 // Defines values for ListUsersParamsRole.
@@ -608,6 +615,9 @@ type LiveRosterRow struct {
 	StudentId      openapi_types.UUID       `json:"student_id"`
 	SubmitKind     *LiveRosterRowSubmitKind `json:"submit_kind"`
 	ViolationCount *int                     `json:"violation_count"`
+
+	// Violations Per-type tally of every attempt.violation logged for this attempt - the evidence behind the roster badge's "types on hover" (docs/05 section 2, docs/06 section 3). Empty for a student who never started. Its counts sum to at least violation_count and often to more: violation_count is the ladder tally, which advances only for a guardrail whose snapshotted policy is "count", while warn-policy and clipboard reports are logged here without counting.
+	Violations []ViolationTally `json:"violations"`
 }
 
 // LiveRosterRowState defines model for LiveRosterRow.State.
@@ -972,6 +982,19 @@ type ViolationResponse struct {
 	// Counted Whether this report incremented violation_count (true only for a guardrail whose snapshotted policy is `count`).
 	Counted bool `json:"counted"`
 }
+
+// ViolationTally One guardrail's logged violations for a single attempt.
+type ViolationTally struct {
+	// Count How many attempt.violation rows of this type were logged.
+	Count int `json:"count"`
+
+	// TotalDurationMs Summed duration of the reports that carried one - focus loss is the only guardrail that measures a span ("left the tab for 40 s"). Null for guardrails that report an instant.
+	TotalDurationMs *int               `json:"total_duration_ms"`
+	Type            ViolationTallyType `json:"type"`
+}
+
+// ViolationTallyType defines model for ViolationTally.Type.
+type ViolationTallyType string
 
 // AssignmentConflict defines model for AssignmentConflict.
 type AssignmentConflict = Error

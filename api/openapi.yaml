@@ -2985,7 +2985,8 @@ components:
       required:
         [student_id, full_name, email, state, attempt_id, attempt_no, status,
          submit_kind, started_at, deadline_at, answered_count,
-         current_question, question_count, violation_count, score, max_score]
+         current_question, question_count, violation_count, violations,
+         score, max_score]
       properties:
         student_id:
           type: string
@@ -3039,6 +3040,18 @@ components:
         violation_count:
           type: integer
           nullable: true
+        violations:
+          type: array
+          description: >-
+            Per-type tally of every attempt.violation logged for this attempt -
+            the evidence behind the roster badge's "types on hover" (docs/05
+            section 2, docs/06 section 3). Empty for a student who never
+            started. Its counts sum to at least violation_count and often to
+            more: violation_count is the ladder tally, which advances only for
+            a guardrail whose snapshotted policy is "count", while warn-policy
+            and clipboard reports are logged here without counting.
+          items:
+            $ref: "#/components/schemas/ViolationTally"
         score:
           type: number
           nullable: true
@@ -3046,6 +3059,24 @@ components:
           type: number
           nullable: true
           description: Total points of the snapshot version this attempt pinned.
+    ViolationTally:
+      type: object
+      description: One guardrail's logged violations for a single attempt.
+      required: [type, count, total_duration_ms]
+      properties:
+        type:
+          type: string
+          enum: [fullscreen, focus, clipboard]
+        count:
+          type: integer
+          description: How many attempt.violation rows of this type were logged.
+        total_duration_ms:
+          type: integer
+          nullable: true
+          description: >-
+            Summed duration of the reports that carried one - focus loss is the
+            only guardrail that measures a span ("left the tab for 40 s").
+            Null for guardrails that report an instant.
     LiveRosterResponse:
       type: object
       required: [quiz, roster, server_time]

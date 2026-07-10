@@ -37,6 +37,13 @@ const teacherPassword = 'live-monitor-teacher'
 const studentEmail = `livemon.student.${run}@macquiz.local`
 const studentPassword = 'live-monitor-student'
 const QUIZ_TITLE = 'Live roster check'
+// A second quiz, guardrails on, driven entirely over REST. It cannot be the
+// same quiz the browser player drives: with fullscreen != off the player
+// overlays its "return to fullscreen" blocker (headless Chromium refuses the
+// request), and with focus_tracking != off puppeteer's own page activation
+// blurs the student tab and logs violations nobody asked for. Reporting over
+// the documented REST fallback keeps the counts exactly what the test states.
+const GUARDRAIL_QUIZ_TITLE = 'Guardrail evidence check'
 
 // Live 3 s from publish, open for 5 minutes - long enough for the scripted
 // student and the kick to run well within the window.
@@ -243,8 +250,37 @@ async function provision() {
     duration_sec: DURATION_SEC,
   }, 200)
 
+  // The guardrail quiz: fullscreen counts toward the ladder, focus tracking
+  // and the clipboard block only log. max_violations sits well above what the
+  // test reports so the auto_submit ladder never fires under us.
+  const guardQuiz = await request(t.cookies, 'POST', '/api/v1/quizzes', {
+    title: GUARDRAIL_QUIZ_TITLE,
+  }, 201)
+  const guardQuizId = guardQuiz.quiz.id
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${guardQuizId}/questions`, {
+    type: 'truefalse',
+    body: { text: 'Evidence is not a verdict.' },
+    correct: true,
+    points: 1,
+  }, 201)
+  await request(t.cookies, 'PUT', `/api/v1/quizzes/${guardQuizId}/assignments`, {
+    student_ids: [student.user.id],
+  }, 200)
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${guardQuizId}/publish`, {
+    starts_at: startsAt.toISOString(),
+    ends_at: endsAt.toISOString(),
+    duration_sec: DURATION_SEC,
+    guardrails: {
+      fullscreen: 'count',
+      focus_tracking: 'warn',
+      block_clipboard: true,
+      max_violations: 5,
+      violation_action: 'flag',
+    },
+  }, 200)
+
   await new Promise((resolve) => setTimeout(resolve, LIVE_DELAY_MS + 1_000))
-  return { quizId }
+  return { quizId, guardQuizId, teacherCookies: t.cookies }
 }
 
 async function teacherOpensLiveMonitor(browser) {
@@ -292,7 +328,20 @@ async function studentStartsAndAnswers(browser) {
   await type(page, '#login-password', studentPassword)
   await page.click('button[type=submit]')
   await waitForText(page, '.assigned-card', QUIZ_TITLE, 8000)
-  await clickButtonWithText(page, 'Start attempt')
+  // Two quizzes are assigned to this student (the guardrail quiz below is the
+  // other), so the Start control has to be picked out of the right card.
+  const started = await page.evaluate((title) => {
+    const card = [...document.querySelectorAll('.assigned-card')].find((el) =>
+      (el.textContent ?? '').includes(title),
+    )
+    const button = [...(card?.querySelectorAll('button') ?? [])].find((el) =>
+      (el.textContent ?? '').trim().includes('Start attempt'),
+    )
+    if (!button) return false
+    button.click()
+    return true
+  }, QUIZ_TITLE)
+  if (!started) throw new Error(`no "Start attempt" button on the "${QUIZ_TITLE}" card`)
   await waitForText(page, '.player-quiz-title', QUIZ_TITLE, 8000)
   await pickOption(page, 1, 'Mars')
   await waitForText(page, '.save-state', 'All changes saved', 8000)
@@ -340,6 +389,33 @@ async function teacherSeesProgressThenKicks(teacherPage) {
     .catch(() => false)
   check(readmitVisible, 'a Readmit control appears for the kicked row')
   await shot(teacherPage, '94-live-monitor-kicked.png')
+
+  // docs/06 section 4: "Re-admission is a new attempt, not a resurrection ...
+  // the student starts fresh with whatever time remains; the kicked attempt
+  // stays in the record." The confirm step must not promise a resume. Opening
+  // the modal and stepping to the consequence makes no server call, so this
+  // cancels out and leaves the roster exactly as the kick left it.
+  await clickButtonWithText(teacherPage, 'Readmit')
+  await type(teacherPage, '#destructive-reason', 'Cleared it up with them')
+  await clickButtonWithText(teacherPage, 'Continue')
+  const consequence = await teacherPage.$eval(
+    '.modal-consequence',
+    (el) => el.textContent ?? '',
+  )
+  check(
+    consequence.includes('grants one fresh attempt'),
+    'the readmit confirm calls it a fresh attempt, not a resume (docs/06 section 4)',
+  )
+  check(
+    consequence.includes('kept in the record'),
+    'the readmit confirm says the removed attempt survives',
+  )
+  await clickButtonWithText(teacherPage, 'Back')
+  await clickButtonWithText(teacherPage, 'Cancel')
+  await teacherPage.waitForFunction(
+    () => document.querySelector('.modal-panel') === null,
+    { timeout: 5000 },
+  )
 }
 
 async function studentIsLockedOut(studentPage) {
@@ -413,8 +489,139 @@ async function teacherExtendsThenForceCloses(teacherPage) {
   await shot(teacherPage, '97-live-monitor-force-closed.png')
 }
 
+// docs/05 section 2 / docs/06 section 3: "the teacher's roster row gains an
+// amber badge with count and types on hover". Both halves are exercised: the
+// badge that grows from streamed attempt.violation deltas on an already-open
+// dashboard, and the identical breakdown a late joiner reads out of the
+// GET /quizzes/:id/live snapshot.
+//
+// The reported set is deliberately mixed. Two fullscreen reports are counted
+// (policy "count"); one focus report and one clipboard report are logged but
+// never advance violation_count (policy "warn" and "on (logged)"). So the
+// badge must read 2 while the hover accounts for all 4.
+const EXPECTED_HOVER =
+  'Logged: Copy, paste, or right-click ×1, Left the tab ×1 (40s), Left fullscreen ×2.' +
+  ' 2 of 4 count toward the limit.'
+
+async function teacherOpensGuardrailQuiz(teacherPage) {
+  await clickButtonWithText(teacherPage, 'All quizzes')
+  await waitForText(teacherPage, '.qt-title', GUARDRAIL_QUIZ_TITLE, 8000)
+  await clickButtonWithText(teacherPage, GUARDRAIL_QUIZ_TITLE)
+  await teacherPage.waitForSelector('.live-monitor-panel', { timeout: 8000 })
+  check(
+    await waitForText(teacherPage, '.save-badge', 'Live', 8000),
+    'the monitor socket reconnects on the guardrail quiz',
+  )
+  check(
+    (await teacherPage.$('[data-testid="violation-badge"]')) === null,
+    'a student with no violations gets a plain count, not a badge',
+  )
+}
+
+// Driven from inside the student's own already-authenticated page rather than
+// through a fresh API login: every login this suite makes is charged to the
+// per-IP budget the whole e2e run shares (docs/08 section 4), and the student
+// page is sitting idle on its lockout screen with a perfectly good session.
+async function studentTripsGuardrails(studentPage, guardQuizId) {
+  const call = (method, path, body) =>
+    studentPage.evaluate(
+      async (m, p, b) => {
+        const res = await fetch(p, {
+          method: m,
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: b === null ? undefined : JSON.stringify(b),
+        })
+        if (!res.ok) throw new Error(`${m} ${p} -> ${res.status}`)
+        return res.json()
+      },
+      method,
+      path,
+      body ?? null,
+    )
+
+  const detail = await call('POST', `/api/v1/quizzes/${guardQuizId}/attempts`)
+  const attemptId = detail.attempt.id
+  const report = async (type, durationMs) => {
+    const res = await call('POST', `/api/v1/attempts/${attemptId}/events`, {
+      type,
+      duration_ms: durationMs ?? null,
+    })
+    return res.counted
+  }
+  check(await report('fullscreen'), 'a count-policy fullscreen report counts toward the ladder')
+  await report('fullscreen')
+  check(
+    (await report('focus', 40_000)) === false,
+    'a warn-policy focus report is logged as evidence but never counted',
+  )
+  check(
+    (await report('clipboard')) === false,
+    'a clipboard block is logged as evidence but never counted',
+  )
+  return attemptId
+}
+
+async function teacherSeesViolationEvidence(teacherPage) {
+  // The live path: this dashboard has never been reloaded. The badge count
+  // rides the attempt.violation deltas and the breakdown behind it arrives on
+  // the coalesced re-read those deltas schedule (2 s trailing edge), so allow
+  // for both. Reporting four violations back to back is exactly the burst that
+  // used to race attempt.started's re-fetch and lose events.
+  const badgeArrived = await teacherPage
+    .waitForFunction(
+      () =>
+        document.querySelector('[data-testid="violation-badge"]')?.textContent.trim() === '2',
+      { timeout: 15_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+  check(badgeArrived, 'the amber badge reaches the counted tally (2) without a reload')
+  const hover = badgeArrived
+    ? await teacherPage.$eval('[data-testid="violation-badge"]', (el) => el.title)
+    : ''
+  check(
+    hover === EXPECTED_HOVER,
+    `the hover names every type, its count, and the focus duration (got: ${hover})`,
+  )
+  const spoken = await teacherPage.$eval(
+    '[data-testid="violation-spoken"]',
+    (el) => el.textContent.trim(),
+  )
+  check(
+    spoken === EXPECTED_HOVER,
+    'the same sentence is spoken from the row, since title= is hover-only',
+  )
+  await shot(teacherPage, '98-live-monitor-violation-badge.png')
+}
+
+async function snapshotCarriesTheSameEvidence(teacherCookies, guardQuizId) {
+  // The snapshot path: a late-joining dashboard must read the same breakdown
+  // straight out of SQL, not just accumulate it from deltas it never saw.
+  const live = await request(
+    teacherCookies, 'GET', `/api/v1/quizzes/${guardQuizId}/live`, undefined, 200,
+  )
+  const row = live.roster.find((r) => r.email === studentEmail)
+  check(row?.violation_count === 2, 'the snapshot violation_count is the counted tally alone')
+  // Compared field by field: the response's key order is whatever the Go
+  // struct serializes to, so a whole-object JSON.stringify would compare the
+  // wire format's incidental ordering rather than the values under test.
+  const canonical = (v = []) =>
+    v.map((t) => `${t.type}:${t.count}:${t.total_duration_ms}`).join('|')
+  check(
+    canonical(row?.violations) ===
+      'clipboard:1:null|focus:1:40000|fullscreen:2:null',
+    `the snapshot carries the per-type tally, summing focus duration and nulling the rest (got: ${canonical(row?.violations)})`,
+  )
+  const notStarted = live.roster.find((r) => r.email !== studentEmail)
+  check(
+    notStarted === undefined,
+    'the guardrail quiz has exactly the one assigned student (fixture sanity)',
+  )
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
-const { quizId } = await provision()
+const { quizId, guardQuizId, teacherCookies } = await provision()
 void quizId
 
 const browser = await puppeteer.launch({
@@ -429,6 +636,12 @@ try {
   await teacherSeesProgressThenKicks(teacher.page)
   await studentIsLockedOut(student.page)
   await teacherExtendsThenForceCloses(teacher.page)
+  // The guardrail-evidence leg runs last, on its own quiz: it needs guardrails
+  // enabled, which the browser player would react to on the quiz above.
+  await teacherOpensGuardrailQuiz(teacher.page)
+  await studentTripsGuardrails(student.page, guardQuizId)
+  await teacherSeesViolationEvidence(teacher.page)
+  await snapshotCarriesTheSameEvidence(teacherCookies, guardQuizId)
   await teacher.context.close()
   await student.context.close()
 } finally {

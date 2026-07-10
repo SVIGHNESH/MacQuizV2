@@ -1503,9 +1503,20 @@ export interface components {
             /** @description Question count of the snapshot version this attempt pinned. */
             question_count: number | null;
             violation_count: number | null;
+            /** @description Per-type tally of every attempt.violation logged for this attempt - the evidence behind the roster badge's "types on hover" (docs/05 section 2, docs/06 section 3). Empty for a student who never started. Its counts sum to at least violation_count and often to more: violation_count is the ladder tally, which advances only for a guardrail whose snapshotted policy is "count", while warn-policy and clipboard reports are logged here without counting. */
+            violations: components["schemas"]["ViolationTally"][];
             score: number | null;
             /** @description Total points of the snapshot version this attempt pinned. */
             max_score: number | null;
+        };
+        /** @description One guardrail's logged violations for a single attempt. */
+        ViolationTally: {
+            /** @enum {string} */
+            type: "fullscreen" | "focus" | "clipboard";
+            /** @description How many attempt.violation rows of this type were logged. */
+            count: number;
+            /** @description Summed duration of the reports that carried one - focus loss is the only guardrail that measures a span ("left the tab for 40 s"). Null for guardrails that report an instant. */
+            total_duration_ms: number | null;
         };
         LiveRosterResponse: {
             quiz: components["schemas"]["Quiz"];
