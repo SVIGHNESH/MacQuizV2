@@ -28,6 +28,53 @@
   color: var(--color-text-secondary);
 }
 
+/*
+ * The All/To do/Done pills. Selection is carried by aria-pressed rather than
+ * a class, so the only source of truth for "which pill is on" is the one a
+ * screen reader reads too.
+ */
+.assigned-filter {
+  display: flex;
+  gap: 6px;
+}
+
+.assigned-filter-pill {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: 550 12px/1 var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-micro),
+    color var(--motion-micro),
+    box-shadow var(--motion-micro);
+}
+
+.assigned-filter-pill:hover {
+  background: var(--color-well);
+  color: var(--color-text-strong);
+}
+
+.assigned-filter-pill[aria-pressed='true'] {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-on-tint);
+  font-weight: 600;
+}
+
+/*
+ * The pill carries no border, so the house 12%-alpha halo cannot make focus
+ * visible on its own - it needs the crisp 1px edge .input gets from its
+ * border-color flip.
+ */
+.assigned-filter-pill:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--color-primary),
+    var(--focus-ring);
+}
+
 .assigned-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

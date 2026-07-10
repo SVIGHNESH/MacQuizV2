@@ -66,7 +66,11 @@ fi
 
 echo "== installing web deps and starting the vite dev server =="
 (cd web && npm ci)
-(cd web && npm run dev -- --host 127.0.0.1 --port 5173) &
+# --strictPort: without it vite silently moves to 5174 when 5173 is occupied
+# (say, by a leftover dev server), the health check below still passes against
+# whatever squats on 5173, and the suites then fail with ERR_CONNECTION_REFUSED
+# the moment that process dies. Fail loudly at startup instead.
+(cd web && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort) &
 DEV_PID=$!
 
 for _ in $(seq 1 60); do

@@ -14,6 +14,9 @@ import {
  * lifecycle chip, its window, and the single action its state allows - start,
  * resume, or review. Scores come release-gated from the server; a null score
  * on a finished attempt reads as withheld, never as zero.
+ *
+ * The All/To do/Done pills filter the same list client-side - the assigned
+ * endpoint returns every quiz in one page, so there is nothing to re-fetch.
  */
 export default function AssignedList({
   onStart,
@@ -26,6 +29,7 @@ export default function AssignedList({
 }) {
   const [quizzes, setQuizzes] = useState<AssignedQuiz[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
 
   useEffect(() => {
     let cancelled = false
@@ -62,6 +66,10 @@ export default function AssignedList({
     return kind === 'start' || kind === 'resume'
   }).length
 
+  const shown = quizzes.filter(
+    (quiz) => filter === 'all' || bucket(cardState(quiz)) === filter,
+  )
+
   return (
     <div className="assigned">
       <div className="page-head">
@@ -74,7 +82,34 @@ export default function AssignedList({
             · times shown in your local time
           </p>
         </div>
+        {quizzes.length > 0 && (
+          <div
+            className="assigned-filter"
+            role="group"
+            aria-label="Filter quizzes"
+          >
+            {FILTERS.map(({ value, label }) => (
+              <button
+                key={value}
+                className="assigned-filter-pill"
+                type="button"
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {quizzes.length > 0 && (
+        <p className="visually-hidden" role="status">
+          {`Showing ${shown.length} of ${quizzes.length} ${
+            quizzes.length === 1 ? 'quiz' : 'quizzes'
+          }`}
+        </p>
+      )}
 
       {quizzes.length === 0 ? (
         <section className="empty-state">
@@ -84,9 +119,20 @@ export default function AssignedList({
             window and time limit.
           </p>
         </section>
+      ) : shown.length === 0 ? (
+        <section className="empty-state">
+          <h2 className="card-title">
+            {filter === 'todo' ? 'Nothing left to do' : 'Nothing finished yet'}
+          </h2>
+          <p className="hint">
+            {filter === 'todo'
+              ? 'Every quiz assigned to you has been taken or has closed.'
+              : 'Quizzes you have taken, or that have closed, collect here.'}
+          </p>
+        </section>
       ) : (
         <div className="assigned-grid">
-          {quizzes.map((quiz) => (
+          {shown.map((quiz) => (
             <AssignedCard
               key={quiz.id}
               quiz={quiz}
@@ -99,6 +145,37 @@ export default function AssignedList({
       )}
     </div>
   )
+}
+
+type Filter = 'all' | 'todo' | 'done'
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'todo', label: 'To do' },
+  { value: 'done', label: 'Done' },
+]
+
+/**
+ * Which pill a card answers to, read off the same CardState the chip and the
+ * action button use, so a card can never sit under "To do" while offering no
+ * action. "To do" is work the student still owes: one they can start or
+ * resume now, and one that has not opened yet. Everything else - taken,
+ * awaiting release, out of attempts, closed, or terminated - is "Done", in
+ * the sense that nothing more is being asked of them.
+ */
+function bucket(state: CardState): Exclude<Filter, 'all'> {
+  switch (state.kind) {
+    case 'start':
+    case 'resume':
+    case 'scheduled':
+      return 'todo'
+    case 'removed':
+    case 'awaiting-release':
+    case 'released':
+    case 'exhausted':
+    case 'closed':
+      return 'done'
+  }
 }
 
 /** The attempt whose state the card speaks for: the student's most recent. */

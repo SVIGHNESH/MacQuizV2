@@ -44,6 +44,8 @@ const studentPassword = 'mira-takes-the-quiz'
 const rivalEmail = `arjun.e2e.${run}@macquiz.local`
 const rivalPassword = 'arjun-answers-everything'
 const QUIZ_TITLE = 'Space and cells check'
+// Never opens during the run; it is the "To do" side of the St1 filter check.
+const SCHEDULED_TITLE = 'Next term diagnostic'
 
 // The window: live 3 s from publish, open for 100 s, 85 s per attempt.
 // The browser flow (start, answer, reload, resume, submit) fits well
@@ -295,6 +297,32 @@ async function provision() {
     duration_sec: DURATION_SEC,
   }, 200)
 
+  // A second quiz, published into a window that opens an hour from now and so
+  // stays Scheduled for this suite's whole life. It exists to give the St1
+  // All/To do/Done pills two distinct buckets to separate: once the browser
+  // student submits the quiz above, that one is Done and this one is still
+  // To do, which is the only arrangement in which the filter can be proven
+  // to do anything at all.
+  const later = await request(t.cookies, 'POST', '/api/v1/quizzes', {
+    title: SCHEDULED_TITLE,
+  }, 201)
+  const laterId = later.quiz.id
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${laterId}/questions`, {
+    type: 'truefalse',
+    body: { text: 'Water is wet.' },
+    correct: true,
+    points: 1,
+  }, 201)
+  await request(t.cookies, 'PUT', `/api/v1/quizzes/${laterId}/assignments`, {
+    student_ids: [student.user.id],
+  }, 200)
+  const laterStart = new Date(Date.now() + 3_600_000)
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${laterId}/publish`, {
+    starts_at: laterStart.toISOString(),
+    ends_at: new Date(laterStart.getTime() + 3_600_000).toISOString(),
+    duration_sec: 600,
+  }, 200)
+
   // Into the live window before the student arrives.
   await new Promise((resolve) => setTimeout(resolve, LIVE_DELAY_MS + 1_000))
 
@@ -343,6 +371,16 @@ async function playerFlow(browser) {
     'the card shows the snapshot question count',
   )
   await shot(page, '30-assigned-live.png')
+
+  // Nothing has been taken yet, so both quizzes are To do and Done is empty.
+  // An empty bucket has to say why rather than render a bare grid.
+  await clickButtonWithText(page, 'Done', '.assigned-filter')
+  check(
+    (await shownTitles(page)).length === 0 &&
+      (await waitForText(page, '.empty-state', 'Nothing finished yet')),
+    'an empty Done bucket explains itself instead of showing a blank grid',
+  )
+  await clickButtonWithText(page, 'All', '.assigned-filter')
 
   // Start: one visible question, the four-cell sidebar grid, and a running
   // countdown.
@@ -457,7 +495,69 @@ async function playerFlow(browser) {
     'the score stays withheld before release',
   )
   await shot(page, '34-score-withheld.png')
+  await filterFlow(page)
   return page
+}
+
+/** Titles of the cards the list is currently rendering, in DOM order. */
+async function shownTitles(page) {
+  return page.$$eval('.assigned-card .card-title', (els) =>
+    els.map((el) => (el.textContent ?? '').trim()),
+  )
+}
+
+async function pressedPill(page) {
+  return page.$eval(
+    '.assigned-filter-pill[aria-pressed="true"]',
+    (el) => (el.textContent ?? '').trim(),
+  )
+}
+
+/**
+ * The St1 All/To do/Done pills. Run at the one moment the student's two
+ * quizzes sit in different buckets: the taken one awaits release (Done) while
+ * the far-future one has not opened (To do). Filtering to a single bucket must
+ * therefore leave exactly one named card standing, which is a claim "the list
+ * still has cards in it" cannot make.
+ */
+async function filterFlow(page) {
+  await page.waitForSelector('.assigned-filter', { timeout: 5000 })
+  check(
+    (await pressedPill(page)) === 'All',
+    'the list opens on the All pill',
+  )
+  const all = await shownTitles(page)
+  check(
+    all.length === 2 &&
+      all.includes(QUIZ_TITLE) &&
+      all.includes(SCHEDULED_TITLE),
+    `All shows both assigned quizzes (got ${all.length})`,
+  )
+
+  await clickButtonWithText(page, 'To do', '.assigned-filter')
+  const todo = await shownTitles(page)
+  check(
+    todo.length === 1 && todo[0] === SCHEDULED_TITLE,
+    `To do keeps only the not-yet-open quiz (got ${JSON.stringify(todo)})`,
+  )
+  check(
+    (await pressedPill(page)) === 'To do',
+    'the To do pill reads pressed to a screen reader',
+  )
+
+  await clickButtonWithText(page, 'Done', '.assigned-filter')
+  const done = await shownTitles(page)
+  check(
+    done.length === 1 && done[0] === QUIZ_TITLE,
+    `Done keeps only the submitted quiz (got ${JSON.stringify(done)})`,
+  )
+  await shot(page, '34b-filter-done.png')
+
+  await clickButtonWithText(page, 'All', '.assigned-filter')
+  check(
+    (await shownTitles(page)).length === 2,
+    'All restores the full list',
+  )
 }
 
 // The worker closes the quiz at ends_at, grades are already in, and the
