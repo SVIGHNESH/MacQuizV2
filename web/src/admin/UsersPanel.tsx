@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { components } from '../api/schema'
 import CredentialModal from './CredentialModal'
 import TeacherStatsModal from './TeacherStatsModal'
+import UserImportModal from './UserImportModal'
 
 type User = components['schemas']['User']
 
@@ -56,6 +57,7 @@ export default function UsersPanel() {
   const [submitting, setSubmitting] = useState(false)
   const [createFields, setCreateFields] = useState<Record<string, string>>({})
 
+  const [importing, setImporting] = useState(false)
   const [revealed, setRevealed] = useState<{ user: User; password: string } | null>(null)
   const [statsFor, setStatsFor] = useState<User | null>(null)
   const [busyUserID, setBusyUserID] = useState<string | null>(null)
@@ -176,9 +178,14 @@ export default function UsersPanel() {
           <h1 className="page-title">Users</h1>
         </div>
         {!creating && (
-          <button className="button button-primary" type="button" onClick={() => setCreating(true)}>
-            Provision user
-          </button>
+          <div className="page-head-actions">
+            <button className="button button-quiet" type="button" onClick={() => setImporting(true)}>
+              Import CSV/XLSX
+            </button>
+            <button className="button button-primary" type="button" onClick={() => setCreating(true)}>
+              Provision user
+            </button>
+          </div>
         )}
       </div>
 
@@ -232,6 +239,15 @@ export default function UsersPanel() {
             </button>
           </div>
         </form>
+      )}
+
+      {importing && (
+        <UserImportModal
+          onCreated={(created) =>
+            setUsers((prev) => [...created.map((c) => c.user), ...(prev ?? [])])
+          }
+          onDismiss={() => setImporting(false)}
+        />
       )}
 
       {revealed && (

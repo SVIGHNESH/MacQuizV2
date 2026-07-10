@@ -20,6 +20,7 @@ func (h *Handler) UserRoutes() http.Handler {
 	r.Use(h.svc.RequireAuth, RequirePasswordChanged, requireCan(ActionUsersManage))
 	r.Get("/", h.handleListUsers)
 	r.Post("/", h.handleCreateUser)
+	r.Post("/import", h.handleImportUsers)
 	r.Patch("/{id}", h.handleUpdateUser)
 	return r
 }
@@ -100,6 +101,73 @@ func (h *Handler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, provisionedUserResponse{User: u, InitialPassword: password})
+}
+
+// userImportErrorBody is the Error envelope plus the roster import's per-row
+// report (openapi UserImportError) - the synchronous sibling of the question
+// import's error_report.
+type userImportErrorBody struct {
+	Code      string               `json:"code"`
+	Message   string               `json:"message"`
+	RowErrors []UserImportRowError `json:"row_errors"`
+}
+
+func writeUserImportRowErrors(w http.ResponseWriter, errs []UserImportRowError) {
+	httpapi.WriteJSON(w, http.StatusUnprocessableEntity, userImportErrorBody{
+		Code:      httpapi.CodeValidationFailed,
+		Message:   "validation failed",
+		RowErrors: errs,
+	})
+}
+
+// handleImportUsers serves POST /users/import: the raw CSV/XLSX roster in
+// the request body becomes accounts in one all-or-nothing transaction, and
+// the generated one-time credentials appear exactly once, in this response.
+func (h *Handler) handleImportUsers(w http.ResponseWriter, r *http.Request) {
+	actor, _ := ActorFrom(r.Context())
+
+	body := http.MaxBytesReader(w, r.Body, MaxUserImportBytes)
+	rows, rowErrs, err := ParseUserImportFile(body)
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		httpapi.WriteFieldErrors(w, map[string]string{"file": "must be 1 MB or smaller"})
+		return
+	}
+	if err != nil {
+		httpapi.WriteFieldErrors(w, map[string]string{"file": err.Error()})
+		return
+	}
+	if len(rowErrs) > 0 {
+		writeUserImportRowErrors(w, rowErrs)
+		return
+	}
+	if len(rows) == 0 {
+		httpapi.WriteFieldErrors(w, map[string]string{"file": "the file has no account rows"})
+		return
+	}
+
+	created, rowErrs, err := h.svc.ImportUsers(r.Context(), actor, rows)
+	if errors.Is(err, ErrEmailTaken) {
+		// The in-transaction email check lost a race with a concurrent
+		// create; nothing was written, so a re-upload gets the row report.
+		httpapi.WriteFieldErrors(w, map[string]string{
+			"file": "an email in the file was just taken; upload again to see which"})
+		return
+	}
+	if err != nil {
+		h.internalError(w, "import users", err)
+		return
+	}
+	if len(rowErrs) > 0 {
+		writeUserImportRowErrors(w, rowErrs)
+		return
+	}
+
+	users := make([]provisionedUserResponse, len(created))
+	for i, c := range created {
+		users[i] = provisionedUserResponse{User: c.User, InitialPassword: c.InitialPassword}
+	}
+	httpapi.WriteJSON(w, http.StatusCreated, map[string]any{"users": users})
 }
 
 type updateUserRequest struct {

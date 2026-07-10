@@ -17,7 +17,7 @@
 //       E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD (default compose bootstrap creds)
 // Screenshots land in /tmp/macquiz-e2e/.
 
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import puppeteer from 'puppeteer-core'
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
@@ -31,6 +31,8 @@ const SHOT_DIR = '/tmp/macquiz-e2e'
 
 const teacherEmail = `admin-e2e-teacher.${process.pid}@macquiz.local`
 const studentEmail = `admin-e2e-student.${process.pid}@macquiz.local`
+const importedStudentEmail = `admin-e2e-import-a.${process.pid}@macquiz.local`
+const importedTeacherEmail = `admin-e2e-import-b.${process.pid}@macquiz.local`
 const groupName = `Admin E2E Cohort ${process.pid}`
 
 let failures = 0
@@ -79,6 +81,18 @@ async function clickButtonWithText(page, text, scope = '') {
     scope,
   )
   if (!clicked) throw new Error(`no button with text "${text}" in "${scope}"`)
+}
+
+async function waitForFile(path, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    try {
+      return await readFile(path, 'utf8')
+    } catch {
+      if (Date.now() > deadline) return null
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  }
 }
 
 async function type(page, selector, value) {
@@ -265,6 +279,105 @@ async function adminConsoleFlow(browser) {
         ),
   )
   check(!studentRowActivity, 'only teacher rows expose the Activity drill-down')
+
+  // --- Bulk import accounts from a CSV roster -------------------------------
+  await clickButtonWithText(page, 'Import CSV/XLSX')
+  check(
+    await waitForText(page, '.admin-import-modal', 'Import users from a file'),
+    'the Import CSV/XLSX button opens the roster modal',
+  )
+  check(
+    (await page.$('.admin-import-dropzone')) !== null,
+    'the modal offers a drag-and-drop zone',
+  )
+  const offersTemplate = await page.evaluate(() =>
+    [...document.querySelectorAll('.admin-import-modal button')].some((b) =>
+      (b.textContent ?? '').includes('Download example CSV'),
+    ),
+  )
+  check(offersTemplate, 'the modal offers the example CSV download')
+  await shot(page, 'admin-06-roster-modal.png')
+
+  // Route downloads to a per-run directory so the auto-saved credentials
+  // CSV can be read back and asserted on.
+  const downloadDir = `${SHOT_DIR}/downloads-${process.pid}`
+  await mkdir(downloadDir, { recursive: true })
+  const cdp = await page.createCDPSession()
+  await cdp.send('Browser.setDownloadBehavior', {
+    behavior: 'allow',
+    downloadPath: downloadDir,
+  })
+
+  const rosterPath = `${SHOT_DIR}/roster.${process.pid}.csv`
+  await writeFile(
+    rosterPath,
+    'role,email,full_name\n' +
+      `student,${importedStudentEmail},Ida Imported\n` +
+      `teacher,${importedTeacherEmail},"Imported, Ted"\n`,
+  )
+  const rosterInput = await page.$('.admin-import-dropzone input[type=file]')
+  await rosterInput.uploadFile(rosterPath)
+  check(
+    await waitForText(page, '.admin-import-dropzone', `roster.${process.pid}.csv`),
+    'picking a roster shows its file name in the dropzone',
+  )
+  await clickButtonWithText(page, 'Create accounts', '.admin-import-modal')
+  check(
+    await waitForText(page, '.admin-import-modal', '2 accounts created'),
+    'uploading the roster creates every row',
+  )
+  check(
+    await waitForText(page, '.admin-import-credentials', importedStudentEmail),
+    'the batch credential table lists the imported accounts',
+  )
+  const credentialCount = await page.$$eval(
+    '.admin-import-credential-row code',
+    (els) => els.filter((el) => (el.textContent ?? '').trim().length > 0).length,
+  )
+  check(credentialCount === 2, 'every imported account shows a non-empty one-time credential')
+
+  // The credentials CSV must save itself the moment the import succeeds -
+  // the passwords exist only in that one response.
+  const credentialsCsv = await waitForFile(`${downloadDir}/account-credentials.csv`)
+  check(
+    credentialsCsv !== null &&
+      credentialsCsv.startsWith('role,email,full_name,one_time_password') &&
+      credentialsCsv.includes(importedStudentEmail) &&
+      credentialsCsv.includes(importedTeacherEmail),
+    'the credentials CSV downloads automatically and lists every account',
+  )
+  check(
+    (credentialsCsv ?? '')
+      .trim()
+      .split('\r\n')
+      .slice(1)
+      .every((line) => line.split(',').at(-1).trim().length >= 16),
+    'every credentials CSV row carries a one-time password',
+  )
+  await shot(page, 'admin-07-roster-credentials.png')
+  await clickButtonWithText(page, "I've saved them", '.admin-import-modal')
+  check(
+    (await waitForText(page, '.admin-user-table', importedStudentEmail)) &&
+      (await waitForText(page, '.admin-user-table', importedTeacherEmail)),
+    'the imported accounts appear in the accounts table',
+  )
+
+  // Re-uploading the same roster must create nothing and report each taken
+  // email against its row (the all-or-nothing contract).
+  await clickButtonWithText(page, 'Import CSV/XLSX')
+  const rosterInputAgain = await page.$('.admin-import-dropzone input[type=file]')
+  await rosterInputAgain.uploadFile(rosterPath)
+  await clickButtonWithText(page, 'Create accounts', '.admin-import-modal')
+  check(
+    await waitForText(page, '.import-error-table', 'already in use'),
+    're-uploading the same roster reports per-row "already in use" errors',
+  )
+  check(
+    await waitForText(page, '.admin-import-modal', 'no accounts were created'),
+    'the error state says nothing was created',
+  )
+  await shot(page, 'admin-08-roster-errors.png')
+  await clickButtonWithText(page, 'Cancel', '.admin-import-modal')
 
   // --- Groups: create a cohort, provision a student, set membership --------
   await clickButtonWithText(page, 'Groups', '.rail-nav')

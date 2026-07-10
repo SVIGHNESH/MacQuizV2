@@ -37,6 +37,7 @@ Unassigned resources return 404, not 403, so existence is never leaked.
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /users` | Provision a teacher or student; generates a first-login credential |
+| `POST /users/import` | Bulk-provision from a CSV/XLSX roster (`role,email,full_name`); all-or-nothing, credentials returned once |
 | `PATCH /users/:id` | Deactivate, reset password, edit profile, group membership |
 | `POST /groups` / `PUT /groups/:id/members` | Manage cohorts |
 

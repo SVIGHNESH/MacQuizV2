@@ -168,6 +168,119 @@
   margin-top: 18px;
 }
 
+/* --- Roster import modal ------------------------------------------------ */
+
+.page-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Wider than the single-credential reveal it shares .modal-panel with:
+   this one carries a whole roster's worth of credentials or errors. */
+.admin-import-modal {
+  width: min(560px, 100%);
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  max-height: min(640px, 85vh);
+  overflow-y: auto;
+}
+
+.admin-import-modal code {
+  font:
+    600 12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--color-text-strong);
+}
+
+.admin-import-dropzone {
+  justify-self: stretch;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 26px 16px;
+  border: 1.5px dashed var(--color-border-input);
+  border-radius: var(--radius-option-row);
+  background: var(--color-well);
+  text-align: center;
+}
+
+.admin-import-dropzone-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-tint);
+}
+
+.admin-import-dropzone-hint {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.admin-import-dropzone-hint strong {
+  font-weight: 650;
+  color: var(--color-text-strong);
+}
+
+.admin-import-report {
+  justify-self: stretch;
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.admin-import-report .import-error-table {
+  justify-self: stretch;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.admin-import-actions {
+  justify-self: stretch;
+  display: flex;
+  gap: 10px;
+}
+
+.admin-import-actions .button {
+  flex: 1;
+}
+
+/* The batch sibling of .credential-well: one row per created account. */
+.admin-import-credentials {
+  justify-self: stretch;
+  display: grid;
+  gap: 1px;
+  background: var(--color-border-hairline);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.admin-import-credential-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 14px;
+  background: var(--color-table-header);
+  font: 650 10.5px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.admin-import-credential-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 14px;
+  background: var(--color-surface);
+}
+
 /* --- Users -------------------------------------------------------------- */
 
 .admin-filter-row {

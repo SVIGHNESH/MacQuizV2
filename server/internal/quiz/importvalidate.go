@@ -1,12 +1,13 @@
 package quiz
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+
+	"macquiz/server/internal/tabular"
 )
 
 // MaxImportRows bounds a single bulk-upload file (docs/07-authoring-imports-
@@ -49,26 +50,11 @@ type ImportRow struct {
 // report means the import cannot commit and the teacher must fix and
 // re-upload.
 func ParseImportCSV(r io.Reader) ([]ImportRow, []ImportRowError, error) {
-	reader := csv.NewReader(r)
-	reader.TrimLeadingSpace = true
-	reader.FieldsPerRecord = -1 // trailing option columns may be short
-
-	header, err := reader.Read()
+	records, err := tabular.CSV(r)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read header: %w", err)
+		return nil, nil, err
 	}
-	var records [][]string
-	for {
-		rec, rerr := reader.Read()
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			return nil, nil, fmt.Errorf("row %d: %w", len(records)+1, rerr)
-		}
-		records = append(records, rec)
-	}
-	return parseImportRecords(header, records)
+	return parseImportRecords(records[0], records[1:])
 }
 
 // parseImportRecords holds every per-row/column validation rule from docs/07

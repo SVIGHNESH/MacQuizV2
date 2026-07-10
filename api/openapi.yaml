@@ -236,6 +236,45 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/users/import:
+    post:
+      operationId: importUsers
+      summary: Bulk-provision teachers and students from a roster file (admin)
+      description: >-
+        The request body is the raw roster file - CSV or XLSX, told apart by
+        the file's own bytes - with the header "role,email,full_name". Every
+        row is validated and the whole file commits in one transaction - one
+        bad row and nothing is created, matching the bulk question import's
+        all-or-nothing contract. Each created account gets a generated
+        one-time credential, returned exactly once in this response and
+        never retrievable again. Limits: 1 MB, 500 rows.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: >-
+            Every row created; each initial_password appears only here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserImportResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: >-
+            The file was rejected and nothing was created; fields carries
+            file-level problems, row_errors carries per-row/column ones.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserImportError"
   /api/v1/users/{id}:
     patch:
       operationId: updateUser
@@ -1255,6 +1294,96 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/teachers/{id}/students:
+    get:
+      operationId: listTeacherStudentPerformance
+      summary: Per-student performance on one teacher's quizzes (admin or self)
+      description: >-
+        Every student assigned to any quiz owned by this teacher, with their
+        performance on those quizzes only - one row per student carrying a
+        per-quiz score breakdown (best graded attempt as a percentage of the
+        pinned snapshot's points, the same convention as quiz_stats). The
+        teacher analytics tab reads this; visible to that teacher themselves
+        or an admin, and any other caller reads 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Students assigned to the teacher's quizzes, with scores.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [students]
+                properties:
+                  students:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeacherStudentPerformance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/analytics/teachers:
+    get:
+      operationId: listTeacherAnalytics
+      summary: Every teacher's activity-and-outcomes summary (admin)
+      description: >-
+        One row per teacher account - the same aggregates as GET
+        /analytics/teachers/{id}, computed live in a single query - so the
+        admin analytics tab can rank and filter teachers without one request
+        per row. Admin-only.
+      responses:
+        "200":
+          description: All teachers, name-ordered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [teachers]
+                properties:
+                  teachers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeacherOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/analytics/students:
+    get:
+      operationId: listStudentAnalytics
+      summary: Every student's cross-quiz profile summary (admin)
+      description: >-
+        One row per student account, summarizing the student_stats rollup
+        (quizzes taken, average accuracy, completion rate, average time per
+        question) plus the student's cohort memberships so the admin
+        analytics tab can filter by group client-side. Students with no
+        rollup yet report zero quizzes and null averages. Admin-only.
+      responses:
+        "200":
+          description: All students, name-ordered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [students]
+                properties:
+                  students:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StudentOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/analytics/org:
     get:
       operationId: getOrgStats
@@ -2064,6 +2193,44 @@ components:
           description: >-
             The generated one-time credential. Returned exactly once, never
             stored in the clear, never retrievable again.
+    UserImportResult:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          description: The created accounts, in the file's row order.
+          items:
+            $ref: "#/components/schemas/ProvisionedUser"
+    UserImportError:
+      type: object
+      description: >-
+        The Error envelope plus the roster import's per-row report, the
+        synchronous sibling of Import.error_report.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: File-level problems (e.g. size, missing columns).
+        row_errors:
+          type: array
+          items:
+            type: object
+            required: [row, column, message]
+            properties:
+              row:
+                type: integer
+                description: 1-based data row number, header excluded.
+              column:
+                type: string
+              message:
+                type: string
     Quiz:
       type: object
       required:
@@ -2509,6 +2676,136 @@ components:
           description: Mean of each quiz's raw-point mean; not a percentage.
         avg_publish_to_results_sec:
           type: number
+          nullable: true
+    TeacherOverview:
+      type: object
+      description: >-
+        One admin-analytics row per teacher - identity plus the TeacherStats
+        aggregates, computed live in one query across all teachers.
+      required:
+        [teacher_id, full_name, email, status, quizzes_created, quizzes_conducted, total_attempts]
+      properties:
+        teacher_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        quizzes_created:
+          type: integer
+        quizzes_conducted:
+          type: integer
+        total_attempts:
+          type: integer
+        avg_participation:
+          type: number
+          nullable: true
+        avg_class_score:
+          type: number
+          nullable: true
+          description: Mean of each rolled-up quiz's mean, in raw points (see TeacherStats).
+    StudentOverview:
+      type: object
+      description: >-
+        One admin-analytics row per student - identity, cohort memberships,
+        and a summary of the student_stats rollup. Averages are null until
+        the student's first terminal quiz rolls up.
+      required: [student_id, full_name, email, status, group_ids, quizzes_taken]
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        group_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        quizzes_taken:
+          type: integer
+          description: Terminal quizzes in the student's accuracy trend.
+        avg_accuracy:
+          type: number
+          nullable: true
+          description: Mean best-attempt accuracy across terminal quizzes, 0-1.
+        completion_rate:
+          type: number
+          nullable: true
+        avg_time_per_question:
+          type: number
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    TeacherStudentPerformance:
+      type: object
+      description: >-
+        One student's performance on a single teacher's quizzes - the
+        teacher-scoped view of docs/07 section 3, one row per assigned
+        student with a per-quiz breakdown.
+      required:
+        [student_id, full_name, email, assigned_quizzes, completed_quizzes, total_violations, quizzes]
+      properties:
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+        assigned_quizzes:
+          type: integer
+        completed_quizzes:
+          type: integer
+          description: Assigned quizzes with at least one graded attempt.
+        avg_score_percent:
+          type: number
+          nullable: true
+          description: >-
+            Mean over completed quizzes of the best graded attempt's score as
+            a percentage of the pinned snapshot's points.
+        total_violations:
+          type: integer
+          description: Guardrail violations across every attempt on this teacher's quizzes.
+        last_submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        quizzes:
+          type: array
+          description: Per-quiz breakdown, title-ordered.
+          items:
+            $ref: "#/components/schemas/TeacherStudentQuizScore"
+    TeacherStudentQuizScore:
+      type: object
+      description: One assigned quiz's outcome inside TeacherStudentPerformance.
+      required: [quiz_id, title, status]
+      properties:
+        quiz_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [draft, scheduled, live, closed, archived]
+        score_percent:
+          type: number
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
           nullable: true
     OrgStats:
       type: object

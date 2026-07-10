@@ -181,6 +181,18 @@ const (
 	ResultRowSubmitKindManual ResultRowSubmitKind = "manual"
 )
 
+// Defines values for StudentOverviewStatus.
+const (
+	StudentOverviewStatusActive   StudentOverviewStatus = "active"
+	StudentOverviewStatusDisabled StudentOverviewStatus = "disabled"
+)
+
+// Defines values for TeacherOverviewStatus.
+const (
+	TeacherOverviewStatusActive   TeacherOverviewStatus = "active"
+	TeacherOverviewStatusDisabled TeacherOverviewStatus = "disabled"
+)
+
 // Defines values for TeacherQuestionSource.
 const (
 	TeacherQuestionSourceImport TeacherQuestionSource = "import"
@@ -193,6 +205,15 @@ const (
 	Short     TeacherQuestionType = "short"
 	Single    TeacherQuestionType = "single"
 	Truefalse TeacherQuestionType = "truefalse"
+)
+
+// Defines values for TeacherStudentPerformanceQuizzesStatus.
+const (
+	Archived  TeacherStudentPerformanceQuizzesStatus = "archived"
+	Closed    TeacherStudentPerformanceQuizzesStatus = "closed"
+	Draft     TeacherStudentPerformanceQuizzesStatus = "draft"
+	Live      TeacherStudentPerformanceQuizzesStatus = "live"
+	Scheduled TeacherStudentPerformanceQuizzesStatus = "scheduled"
 )
 
 // Defines values for UpdateUserRequestStatus.
@@ -886,6 +907,26 @@ type SetAssignmentsRequest struct {
 	StudentIds *[]openapi_types.UUID `json:"student_ids,omitempty"`
 }
 
+// StudentOverview One admin-analytics row per student - identity, cohort memberships, and a summary of the student_stats rollup. Averages are null until the student's first terminal quiz rolls up.
+type StudentOverview struct {
+	// AvgAccuracy Mean best-attempt accuracy across terminal quizzes, 0-1.
+	AvgAccuracy        *float32             `json:"avg_accuracy"`
+	AvgTimePerQuestion *float32             `json:"avg_time_per_question"`
+	CompletionRate     *float32             `json:"completion_rate"`
+	Email              string               `json:"email"`
+	FullName           string               `json:"full_name"`
+	GroupIds           []openapi_types.UUID `json:"group_ids"`
+
+	// QuizzesTaken Terminal quizzes in the student's accuracy trend.
+	QuizzesTaken int                   `json:"quizzes_taken"`
+	Status       StudentOverviewStatus `json:"status"`
+	StudentId    openapi_types.UUID    `json:"student_id"`
+	UpdatedAt    *time.Time            `json:"updated_at"`
+}
+
+// StudentOverviewStatus defines model for StudentOverview.Status.
+type StudentOverviewStatus string
+
 // StudentStats The student_stats row for the wire (docs/03-data-model.md).
 type StudentStats struct {
 	// AccuracyTrend The student's best-attempt accuracy per terminal quiz, submission-ordered.
@@ -902,6 +943,23 @@ type StudentStats struct {
 	TopicStrengths map[string]float32 `json:"topic_strengths"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 }
+
+// TeacherOverview One admin-analytics row per teacher - identity plus the TeacherStats aggregates, computed live in one query across all teachers.
+type TeacherOverview struct {
+	// AvgClassScore Mean of each rolled-up quiz's mean, in raw points (see TeacherStats).
+	AvgClassScore    *float32              `json:"avg_class_score"`
+	AvgParticipation *float32              `json:"avg_participation"`
+	Email            string                `json:"email"`
+	FullName         string                `json:"full_name"`
+	QuizzesConducted int                   `json:"quizzes_conducted"`
+	QuizzesCreated   int                   `json:"quizzes_created"`
+	Status           TeacherOverviewStatus `json:"status"`
+	TeacherId        openapi_types.UUID    `json:"teacher_id"`
+	TotalAttempts    int                   `json:"total_attempts"`
+}
+
+// TeacherOverviewStatus defines model for TeacherOverview.Status.
+type TeacherOverviewStatus string
 
 // TeacherQuestion defines model for TeacherQuestion.
 type TeacherQuestion struct {
@@ -938,6 +996,36 @@ type TeacherStats struct {
 	TeacherId              openapi_types.UUID `json:"teacher_id"`
 	TotalAttempts          int                `json:"total_attempts"`
 }
+
+// TeacherStudentPerformance One student's performance on a single teacher's quizzes - the teacher-scoped view of docs/07 section 3, one row per assigned student with a per-quiz breakdown.
+type TeacherStudentPerformance struct {
+	AssignedQuizzes int `json:"assigned_quizzes"`
+
+	// AvgScorePercent Mean over completed quizzes of the best graded attempt's score as a percentage of the pinned snapshot's points.
+	AvgScorePercent *float32 `json:"avg_score_percent"`
+
+	// CompletedQuizzes Assigned quizzes with at least one graded attempt.
+	CompletedQuizzes int        `json:"completed_quizzes"`
+	Email            string     `json:"email"`
+	FullName         string     `json:"full_name"`
+	LastSubmittedAt  *time.Time `json:"last_submitted_at"`
+
+	// Quizzes Per-quiz breakdown, title-ordered.
+	Quizzes []struct {
+		QuizId       openapi_types.UUID                     `json:"quiz_id"`
+		ScorePercent *float32                               `json:"score_percent"`
+		Status       TeacherStudentPerformanceQuizzesStatus `json:"status"`
+		SubmittedAt  *time.Time                             `json:"submitted_at"`
+		Title        string                                 `json:"title"`
+	} `json:"quizzes"`
+	StudentId openapi_types.UUID `json:"student_id"`
+
+	// TotalViolations Guardrail violations across every attempt on this teacher's quizzes.
+	TotalViolations int `json:"total_violations"`
+}
+
+// TeacherStudentPerformanceQuizzesStatus defines model for TeacherStudentPerformance.Quizzes.Status.
+type TeacherStudentPerformanceQuizzesStatus string
 
 // UpdateQuizRequest defines model for UpdateQuizRequest.
 type UpdateQuizRequest struct {
@@ -976,6 +1064,28 @@ type UserRole string
 
 // UserStatus defines model for User.Status.
 type UserStatus string
+
+// UserImportError The Error envelope plus the roster import's per-row report, the synchronous sibling of Import.error_report.
+type UserImportError struct {
+	Code string `json:"code"`
+
+	// Fields File-level problems (e.g. size, missing columns).
+	Fields    *map[string]string `json:"fields,omitempty"`
+	Message   string             `json:"message"`
+	RowErrors *[]struct {
+		Column  string `json:"column"`
+		Message string `json:"message"`
+
+		// Row 1-based data row number, header excluded.
+		Row int `json:"row"`
+	} `json:"row_errors,omitempty"`
+}
+
+// UserImportResult defines model for UserImportResult.
+type UserImportResult struct {
+	// Users The created accounts, in the file's row order.
+	Users []ProvisionedUser `json:"users"`
+}
 
 // ViolationResponse defines model for ViolationResponse.
 type ViolationResponse struct {

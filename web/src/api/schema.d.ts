@@ -179,6 +179,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk-provision teachers and students from a roster file (admin)
+         * @description The request body is the raw roster file - CSV or XLSX, told apart by the file's own bytes - with the header "role,email,full_name". Every row is validated and the whole file commits in one transaction - one bad row and nothing is created, matching the bulk question import's all-or-nothing contract. Each created account gets a generated one-time credential, returned exactly once in this response and never retrievable again. Limits: 1 MB, 500 rows.
+         */
+        post: operations["importUsers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}": {
         parameters: {
             query?: never;
@@ -675,6 +695,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/teachers/{id}/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-student performance on one teacher's quizzes (admin or self)
+         * @description Every student assigned to any quiz owned by this teacher, with their performance on those quizzes only - one row per student carrying a per-quiz score breakdown (best graded attempt as a percentage of the pinned snapshot's points, the same convention as quiz_stats). The teacher analytics tab reads this; visible to that teacher themselves or an admin, and any other caller reads 404.
+         */
+        get: operations["listTeacherStudentPerformance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/teachers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every teacher's activity-and-outcomes summary (admin)
+         * @description One row per teacher account - the same aggregates as GET /analytics/teachers/{id}, computed live in a single query - so the admin analytics tab can rank and filter teachers without one request per row. Admin-only.
+         */
+        get: operations["listTeacherAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every student's cross-quiz profile summary (admin)
+         * @description One row per student account, summarizing the student_stats rollup (quizzes taken, average accuracy, completion rate, average time per question) plus the student's cohort memberships so the admin analytics tab can filter by group client-side. Students with no rollup yet report zero quizzes and null averages. Admin-only.
+         */
+        get: operations["listStudentAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/org": {
         parameters: {
             query?: never;
@@ -1053,6 +1133,25 @@ export interface components {
             /** @description The generated one-time credential. Returned exactly once, never stored in the clear, never retrievable again. */
             initial_password?: string;
         };
+        UserImportResult: {
+            /** @description The created accounts, in the file's row order. */
+            users: components["schemas"]["ProvisionedUser"][];
+        };
+        /** @description The Error envelope plus the roster import's per-row report, the synchronous sibling of Import.error_report. */
+        UserImportError: {
+            code: string;
+            message: string;
+            /** @description File-level problems (e.g. size, missing columns). */
+            fields?: {
+                [key: string]: string;
+            };
+            row_errors?: {
+                /** @description 1-based data row number, header excluded. */
+                row: number;
+                column: string;
+                message: string;
+            }[];
+        };
         Quiz: {
             /** Format: uuid */
             id: string;
@@ -1244,6 +1343,66 @@ export interface components {
             /** @description Mean of each quiz's raw-point mean; not a percentage. */
             avg_class_score: number | null;
             avg_publish_to_results_sec: number | null;
+        };
+        /** @description One admin-analytics row per teacher - identity plus the TeacherStats aggregates, computed live in one query across all teachers. */
+        TeacherOverview: {
+            /** Format: uuid */
+            teacher_id: string;
+            full_name: string;
+            email: string;
+            /** @enum {string} */
+            status: "active" | "disabled";
+            quizzes_created: number;
+            quizzes_conducted: number;
+            total_attempts: number;
+            avg_participation?: number | null;
+            /** @description Mean of each rolled-up quiz's mean, in raw points (see TeacherStats). */
+            avg_class_score?: number | null;
+        };
+        /** @description One admin-analytics row per student - identity, cohort memberships, and a summary of the student_stats rollup. Averages are null until the student's first terminal quiz rolls up. */
+        StudentOverview: {
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            email: string;
+            /** @enum {string} */
+            status: "active" | "disabled";
+            group_ids: string[];
+            /** @description Terminal quizzes in the student's accuracy trend. */
+            quizzes_taken: number;
+            /** @description Mean best-attempt accuracy across terminal quizzes, 0-1. */
+            avg_accuracy?: number | null;
+            completion_rate?: number | null;
+            avg_time_per_question?: number | null;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        /** @description One student's performance on a single teacher's quizzes - the teacher-scoped view of docs/07 section 3, one row per assigned student with a per-quiz breakdown. */
+        TeacherStudentPerformance: {
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            email: string;
+            assigned_quizzes: number;
+            /** @description Assigned quizzes with at least one graded attempt. */
+            completed_quizzes: number;
+            /** @description Mean over completed quizzes of the best graded attempt's score as a percentage of the pinned snapshot's points. */
+            avg_score_percent?: number | null;
+            /** @description Guardrail violations across every attempt on this teacher's quizzes. */
+            total_violations: number;
+            /** Format: date-time */
+            last_submitted_at?: string | null;
+            /** @description Per-quiz breakdown, title-ordered. */
+            quizzes: {
+                /** Format: uuid */
+                quiz_id: string;
+                title: string;
+                /** @enum {string} */
+                status: "draft" | "scheduled" | "live" | "closed" | "archived";
+                score_percent?: number | null;
+                /** Format: date-time */
+                submitted_at?: string | null;
+            }[];
         };
         /** @description The admin org-wide dashboard (docs/07 section 4, FR-9). Every field is computed live: there is no org_stats rollup table. */
         OrgStats: {
@@ -1950,6 +2109,41 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    importUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description Every row created; each initial_password appears only here. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserImportResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The file was rejected and nothing was created; fields carries file-level problems, row_errors carries per-row/column ones. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserImportError"];
+                };
+            };
         };
     };
     updateUser: {
@@ -2818,6 +3012,81 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listTeacherStudentPerformance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Students assigned to the teacher's quizzes, with scores. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        students: components["schemas"]["TeacherStudentPerformance"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTeacherAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All teachers, name-ordered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        teachers: components["schemas"]["TeacherOverview"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listStudentAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All students, name-ordered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        students: components["schemas"]["StudentOverview"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getOrgStats: {

@@ -12,7 +12,7 @@ import (
 
 // MaxImportFileBytes bounds a single bulk-upload request body (docs/07
 // section 2: "Limits: 10 MB, 500 rows"); the row-count half of that limit is
-// MaxImportRows, enforced later by ParseImportCSV.
+// MaxImportRows, enforced later by ParseImportFile.
 const MaxImportFileBytes = 10 << 20
 
 // ImportStorage retrieves an uploaded bulk-import file by the opaque

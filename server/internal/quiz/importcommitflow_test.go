@@ -185,4 +185,28 @@ func TestCommitImportFlow(t *testing.T) {
 			t.Fatalf("imports.committed audit rows = %d, want 1", got)
 		}
 	})
+
+	// Regression: CommitImport used to re-parse the stored file with the
+	// CSV parser only, so an .xlsx upload validated to 'ready' and then
+	// always failed at commit with "import file changed".
+	t.Run("an xlsx import commits too", func(t *testing.T) {
+		status, body, _ := postFile(t, server, "/api/v1/quizzes/"+quizID+"/imports",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			string(buildXLSXFixture(t)), owner)
+		if status != 201 {
+			t.Fatalf("register xlsx import = %d %v, want 201", status, body)
+		}
+		xlsxImportID := body["import"].(map[string]any)["id"].(string)
+		if err := quiz.ValidateImport(ctx, sqlDB, storage, xlsxImportID); err != nil {
+			t.Fatalf("ValidateImport: %v", err)
+		}
+
+		status, body, _ = itest.Call(t, server, "POST", "/api/v1/imports/"+xlsxImportID+"/commit", nil, owner)
+		if status != 200 {
+			t.Fatalf("commit xlsx import = %d %v, want 200", status, body)
+		}
+		if questions, ok := body["questions"].([]any); !ok || len(questions) != 1 {
+			t.Fatalf("committed xlsx questions = %v, want 1", body["questions"])
+		}
+	})
 }

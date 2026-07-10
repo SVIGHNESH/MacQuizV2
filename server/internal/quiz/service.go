@@ -526,7 +526,7 @@ func (s *Service) CommitImport(ctx context.Context, actor authusers.User, import
 		return Import{}, nil, fmt.Errorf("reopen import file: %w", err)
 	}
 	defer f.Close()
-	rows, rowErrors, err := ParseImportCSV(f)
+	rows, rowErrors, err := ParseImportFile(f)
 	if err != nil || len(rowErrors) > 0 {
 		return Import{}, nil, fmt.Errorf("import file changed since it was validated ready")
 	}
