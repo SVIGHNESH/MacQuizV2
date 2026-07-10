@@ -743,9 +743,12 @@ type QuestionResponse struct {
 
 // Quiz defines model for Quiz.
 type Quiz struct {
-	CreatedAt     time.Time          `json:"created_at"`
-	DurationSec   *int               `json:"duration_sec"`
-	EndsAt        *time.Time         `json:"ends_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	DurationSec *int       `json:"duration_sec"`
+	EndsAt      *time.Time `json:"ends_at"`
+
+	// Guardrails The anti-cheat ladder frozen at publish. Null while the quiz is a draft (never published); populated from the publish request once scheduled, so reopening a scheduled quiz reseeds its real settings.
+	Guardrails    *Guardrails        `json:"guardrails"`
 	Id            openapi_types.UUID `json:"id"`
 	MaxAttempts   int                `json:"max_attempts"`
 	OwnerId       openapi_types.UUID `json:"owner_id"`

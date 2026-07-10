@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
 import {
   STATUS_LABEL,
@@ -8,16 +8,56 @@ import {
   type QuestionType,
   type TeacherQuestion,
 } from './model'
+import AudienceEditor, { type AudienceHandle } from './AudienceEditor'
 import ImportPanel from './ImportPanel'
 import LiveMonitorPanel from './LiveMonitorPanel'
 import PreviewModal from './PreviewModal'
-import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import QuizStatsPanel from './QuizStatsPanel'
 import ResultsReleasePanel from './ResultsReleasePanel'
+import ScheduleSection from './ScheduleSection'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
 
 const QUESTION_TYPES: QuestionType[] = ['single', 'multi', 'truefalse', 'short']
+
+type WizardStep = 1 | 2 | 3
+const WIZARD_STEPS: { n: WizardStep; label: string }[] = [
+  { n: 1, label: 'Questions' },
+  { n: 2, label: 'Audience' },
+  { n: 3, label: 'Schedule' },
+]
+
+/**
+ * The authoring wizard's step header: a linear process, so each step is a
+ * plain button marked aria-current="step" when active - not a tablist, which
+ * would imply interchangeable panels and bring roving-focus expectations that
+ * fight the Back/Next buttons. Every step is already persisted, so the header
+ * is a free jump, not a gated stepper.
+ */
+function WizardSteps({
+  step,
+  onStep,
+}: {
+  step: WizardStep
+  onStep: (n: WizardStep) => void
+}) {
+  return (
+    <nav className="wizard-steps" aria-label="Quiz setup steps">
+      {WIZARD_STEPS.map(({ n, label }) => (
+        <button
+          key={n}
+          type="button"
+          className="wizard-step-button"
+          aria-current={step === n ? 'step' : undefined}
+          onClick={() => onStep(n)}
+        >
+          <span className="wizard-step-index tabular">{n}</span>
+          {label}
+        </button>
+      ))}
+    </nav>
+  )
+}
 
 export default function QuizEditor({
   quizId,
@@ -108,6 +148,14 @@ function LoadedEditor({
   const [questionStates, setQuestionStates] = useState<
     Record<string, SaveState>
   >({})
+  const [step, setStep] = useState<WizardStep>(1)
+  // Lifted out of the schedule step so the audience count survives that panel
+  // being hidden, and feeds its "freezes N questions for M students" hint.
+  const [audienceCount, setAudienceCount] = useState(0)
+  const [audienceGateError, setAudienceGateError] = useState<string | null>(
+    null,
+  )
+  const audienceRef = useRef<AudienceHandle>(null)
 
   const saveSettings = useCallback(
     async (value: QuizSettingsDraft): Promise<SaveResult> => {
@@ -233,118 +281,93 @@ function LoadedEditor({
   }
 
   const editable = quiz.status === 'draft'
+  const wizard = quiz.status === 'draft' || quiz.status === 'scheduled'
   const settingsFields =
     settingsState.phase === 'error' ? (settingsState.fields ?? {}) : {}
 
-  return (
-    <div className="editor">
-      <div className="editor-topline">
-        <button className="button button-quiet back-button" onClick={onBack}>
-          ← All quizzes
-        </button>
-        <div className="editor-topline-actions">
-          <button
-            className="button button-quiet"
-            type="button"
-            disabled={questions.length === 0}
-            onClick={() => setPreviewing(true)}
-          >
-            Preview
-          </button>
-          <span
-            className={`save-badge save-badge-${aggregate.tone} save-indicator`}
-            role="status"
-          >
-            {aggregate.text}
-          </span>
-        </div>
-      </div>
+  // Leaving the audience step forward saves any pending picks and refuses to
+  // advance with nobody assigned; the header still allows a free jump, where
+  // the schedule step's own publish precondition is the backstop.
+  const goNext = async () => {
+    setAudienceGateError(null)
+    if (step === 2) {
+      const count = await audienceRef.current?.commit()
+      if (count == null) return // save failed; the panel shows why
+      if (count === 0) {
+        setAudienceGateError('Assign at least one student before scheduling.')
+        return
+      }
+    }
+    setStep((s) => Math.min(3, s + 1) as WizardStep)
+  }
 
-      {previewing && (
-        <PreviewModal
-          quizTitle={settings.title}
-          shuffled={settings.shuffleQuestions}
-          questions={questions}
-          onDismiss={() => setPreviewing(false)}
+  const titleField = (
+    <label className="field editor-title-field">
+      <span className="field-label">Quiz title</span>
+      <input
+        id="quiz-title"
+        className="input editor-title-input"
+        type="text"
+        value={settings.title}
+        disabled={!editable}
+        onChange={(e) => setSettings({ ...settings, title: e.target.value })}
+      />
+      {settingsFields.title && (
+        <p className="field-error">{settingsFields.title}</p>
+      )}
+    </label>
+  )
+
+  const attemptsAndShuffle = (
+    <div className="editor-settings">
+      <label className="field">
+        <span className="field-label">Attempts allowed</span>
+        <input
+          id="quiz-max-attempts"
+          className="input input-points tabular"
+          type="number"
+          min={1}
+          max={10}
+          step={1}
+          value={
+            Number.isFinite(settings.maxAttempts) ? settings.maxAttempts : ''
+          }
+          disabled={!editable}
+          onChange={(e) =>
+            setSettings({ ...settings, maxAttempts: e.target.valueAsNumber })
+          }
         />
-      )}
+        {settingsFields.max_attempts && (
+          <p className="field-error">{settingsFields.max_attempts}</p>
+        )}
+      </label>
+      <label className="field checkbox-field">
+        <span className="field-label">Question order</span>
+        <span className="checkbox-row">
+          <input
+            id="quiz-shuffle"
+            type="checkbox"
+            checked={settings.shuffleQuestions}
+            disabled={!editable}
+            onChange={(e) =>
+              setSettings({ ...settings, shuffleQuestions: e.target.checked })
+            }
+          />
+          Shuffle questions per student
+        </span>
+      </label>
+    </div>
+  )
 
-      <section className="panel">
-        <div className="editor-title-row">
-          <label className="field editor-title-field">
-            <span className="field-label">Quiz title</span>
-            <input
-              id="quiz-title"
-              className="input editor-title-input"
-              type="text"
-              value={settings.title}
-              disabled={!editable}
-              onChange={(e) =>
-                setSettings({ ...settings, title: e.target.value })
-              }
-            />
-            {settingsFields.title && (
-              <p className="field-error">{settingsFields.title}</p>
-            )}
-          </label>
-          <span className={`chip chip-status chip-status-${quiz.status}`}>
-            {STATUS_LABEL[quiz.status]}
-          </span>
-        </div>
+  const frozenHint = !editable && (
+    <p className="hint">
+      This quiz is {STATUS_LABEL[quiz.status].toLowerCase()}, so its content is
+      frozen.
+    </p>
+  )
 
-        <div className="editor-settings">
-          <label className="field">
-            <span className="field-label">Attempts allowed</span>
-            <input
-              id="quiz-max-attempts"
-              className="input input-points tabular"
-              type="number"
-              min={1}
-              max={10}
-              step={1}
-              value={
-                Number.isFinite(settings.maxAttempts) ? settings.maxAttempts : ''
-              }
-              disabled={!editable}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  maxAttempts: e.target.valueAsNumber,
-                })
-              }
-            />
-            {settingsFields.max_attempts && (
-              <p className="field-error">{settingsFields.max_attempts}</p>
-            )}
-          </label>
-          <label className="field checkbox-field">
-            <span className="field-label">Question order</span>
-            <span className="checkbox-row">
-              <input
-                id="quiz-shuffle"
-                type="checkbox"
-                checked={settings.shuffleQuestions}
-                disabled={!editable}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    shuffleQuestions: e.target.checked,
-                  })
-                }
-              />
-              Shuffle questions per student
-            </span>
-          </label>
-        </div>
-      </section>
-
-      {!editable && (
-        <p className="hint">
-          This quiz is {STATUS_LABEL[quiz.status].toLowerCase()}, so its
-          content is frozen.
-        </p>
-      )}
-
+  const questionsBlock = (
+    <>
       {actionError && <p className="form-error">{actionError}</p>}
 
       <div className="question-list">
@@ -389,34 +412,139 @@ function LoadedEditor({
       {editable && (
         <ImportPanel
           quizId={quiz.id}
-          onCommitted={(added) =>
-            setQuestions((prev) => [...prev, ...added])
-          }
+          onCommitted={(added) => setQuestions((prev) => [...prev, ...added])}
+        />
+      )}
+    </>
+  )
+
+  return (
+    <div className="editor">
+      <div className="editor-topline">
+        <button className="button button-quiet back-button" onClick={onBack}>
+          ← All quizzes
+        </button>
+        <div className="editor-topline-actions">
+          <span className={`chip chip-status chip-status-${quiz.status}`}>
+            {STATUS_LABEL[quiz.status]}
+          </span>
+          <button
+            className="button button-quiet"
+            type="button"
+            disabled={questions.length === 0}
+            onClick={() => setPreviewing(true)}
+          >
+            Preview
+          </button>
+          <span
+            className={`save-badge save-badge-${aggregate.tone} save-indicator`}
+            role="status"
+          >
+            {aggregate.text}
+          </span>
+        </div>
+      </div>
+
+      {previewing && (
+        <PreviewModal
+          quizTitle={settings.title}
+          shuffled={settings.shuffleQuestions}
+          questions={questions}
+          onDismiss={() => setPreviewing(false)}
         />
       )}
 
-      {(quiz.status === 'draft' || quiz.status === 'scheduled') && (
-        <PublishPanel
-          quiz={quiz}
-          questionCount={questions.length}
-          onPublished={setQuiz}
-        />
-      )}
+      {wizard ? (
+        <>
+          <WizardSteps step={step} onStep={setStep} />
+          <p className="visually-hidden" role="status">
+            Step {step} of 3:{' '}
+            {WIZARD_STEPS.find((s) => s.n === step)?.label}
+          </p>
 
-      {quiz.status === 'live' && (
-        <LiveMonitorPanel
-          quizId={quiz.id}
-          quizTitle={quiz.title}
-          onQuizUpdate={setQuiz}
-        />
-      )}
+          <div className="wizard-step" hidden={step !== 1}>
+            <section className="panel">
+              <div className="editor-title-row">{titleField}</div>
+            </section>
+            {frozenHint}
+            {questionsBlock}
+          </div>
 
-      {(quiz.status === 'closed' || quiz.status === 'archived') && (
-        <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
-      )}
+          <div className="wizard-step" hidden={step !== 2}>
+            <AudienceEditor
+              ref={audienceRef}
+              quizId={quiz.id}
+              wizardMode
+              onAudienceChange={setAudienceCount}
+            />
+            {audienceGateError && (
+              <p className="form-error wizard-step-error">
+                {audienceGateError}
+              </p>
+            )}
+          </div>
 
-      {(quiz.status === 'closed' || quiz.status === 'archived') && (
-        <QuizStatsPanel quizId={quiz.id} quizTitle={quiz.title} questions={questions} />
+          <div className="wizard-step" hidden={step !== 3}>
+            <section className="panel">{attemptsAndShuffle}</section>
+            <ScheduleSection
+              quiz={quiz}
+              questionCount={questions.length}
+              audienceCount={audienceCount}
+              onPublished={setQuiz}
+            />
+          </div>
+
+          <div className="wizard-nav-actions">
+            {step > 1 && (
+              <button
+                className="button button-quiet"
+                type="button"
+                onClick={() => setStep((s) => Math.max(1, s - 1) as WizardStep)}
+              >
+                Back
+              </button>
+            )}
+            {step < 3 && (
+              <button
+                className="button button-primary wizard-next"
+                type="button"
+                onClick={() => void goNext()}
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <section className="panel">
+            <div className="editor-title-row">{titleField}</div>
+            {attemptsAndShuffle}
+          </section>
+
+          {frozenHint}
+          {questionsBlock}
+
+          {quiz.status === 'live' && (
+            <LiveMonitorPanel
+              quizId={quiz.id}
+              quizTitle={quiz.title}
+              onQuizUpdate={setQuiz}
+            />
+          )}
+
+          {(quiz.status === 'closed' || quiz.status === 'archived') && (
+            <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
+          )}
+
+          {(quiz.status === 'closed' || quiz.status === 'archived') && (
+            <QuizStatsPanel
+              quizId={quiz.id}
+              quizTitle={quiz.title}
+              questions={questions}
+            />
+          )}
+        </>
       )}
     </div>
   )

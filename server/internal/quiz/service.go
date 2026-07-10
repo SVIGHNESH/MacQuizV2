@@ -148,14 +148,34 @@ func (s *Service) SetEmailSender(e EmailSender) {
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,
 	max_attempts, shuffle_questions, published_at, version, created_at,
-	release_policy, results_released_at`
+	release_policy, results_released_at, guardrails`
+
+// decodeGuardrails fills q.Guardrails from the raw jsonb the guardrails column
+// holds. It is NULL (nil bytes) until publish, which must leave the pointer nil
+// rather than error - hence a []byte, not *json.RawMessage, per the repo's
+// nullable-jsonb convention. Every read site that selects quizColumns must run
+// its guardrails value through this.
+func decodeGuardrails(raw []byte, q *Quiz) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, &q.Guardrails); err != nil {
+		return fmt.Errorf("decode guardrails: %w", err)
+	}
+	return nil
+}
 
 func scanQuiz(scan func(dest ...any) error) (Quiz, error) {
 	var q Quiz
+	var guardrailsJSON []byte
 	err := scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 		&q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions, &q.PublishedAt,
-		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt)
-	return q, err
+		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt,
+		&guardrailsJSON)
+	if err != nil {
+		return q, err
+	}
+	return q, decodeGuardrails(guardrailsJSON, &q)
 }
 
 // CreateQuiz opens a new draft owned by the acting teacher
@@ -200,11 +220,18 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 	quizzes := []Quiz{}
 	for rows.Next() {
 		var q Quiz
+		var guardrailsJSON []byte
+		// quizColumns now carries guardrails, so this list scan - which appends
+		// count(q.id) and therefore can't reuse scanQuiz - must read it too, or
+		// the trailing count lands in the wrong column and the query 500s.
 		if err := rows.Scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt,
 			&q.EndsAt, &q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions,
 			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.ReleasePolicy,
-			&q.ResultsReleasedAt, &q.QuestionCount); err != nil {
+			&q.ResultsReleasedAt, &guardrailsJSON, &q.QuestionCount); err != nil {
 			return nil, fmt.Errorf("scan quiz: %w", err)
+		}
+		if err := decodeGuardrails(guardrailsJSON, &q); err != nil {
+			return nil, err
 		}
 		q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, now)
 		quizzes = append(quizzes, q)

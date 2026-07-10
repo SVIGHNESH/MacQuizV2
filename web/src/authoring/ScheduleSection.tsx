@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
 import type { Quiz } from './model'
-import AudienceEditor from './AudienceEditor'
 
 type Guardrails = components['schemas']['Guardrails']
 
@@ -31,37 +30,6 @@ const DEFAULT_GUARDRAILS: Guardrails = {
   violation_action: 'flag',
 }
 
-/**
- * Audience and scheduling for one quiz: pick students (directly or by
- * cohort), then publish with a window, a per-attempt duration, and the
- * guardrail ladder. Shown while the quiz is draft or scheduled; a scheduled
- * quiz can be republished, which reschedules and bumps the version.
- */
-export default function PublishPanel({
-  quiz,
-  questionCount,
-  onPublished,
-}: {
-  quiz: Quiz
-  questionCount: number
-  onPublished: (quiz: Quiz) => void
-}) {
-  const [audienceCount, setAudienceCount] = useState(0)
-
-  return (
-    <>
-      <AudienceEditor quizId={quiz.id} onAudienceChange={setAudienceCount} />
-
-      <ScheduleSection
-        quiz={quiz}
-        questionCount={questionCount}
-        audienceCount={audienceCount}
-        onPublished={onPublished}
-      />
-    </>
-  )
-}
-
 interface ScheduleDraft {
   startsAt: string // datetime-local value
   endsAt: string
@@ -70,7 +38,15 @@ interface ScheduleDraft {
   releasePolicy: Quiz['release_policy']
 }
 
-function ScheduleSection({
+/**
+ * The authoring wizard's final step: schedule a window and a per-attempt
+ * duration, set the guardrail ladder, and publish (docs/04: POST
+ * /quizzes/:id/publish). Shown while the quiz is draft or scheduled; a
+ * scheduled quiz can be republished, which reschedules and bumps the version.
+ * The audience is set on the previous step; audienceCount is threaded in from
+ * the wizard only to phrase the "freezes N questions for M students" hint.
+ */
+export default function ScheduleSection({
   quiz,
   questionCount,
   audienceCount,
@@ -85,7 +61,13 @@ function ScheduleSection({
     startsAt: quiz.starts_at ? toLocalInput(quiz.starts_at) : '',
     endsAt: quiz.ends_at ? toLocalInput(quiz.ends_at) : '',
     durationMin: quiz.duration_sec ? Math.round(quiz.duration_sec / 60) : 20,
-    guardrails: { ...DEFAULT_GUARDRAILS },
+    // Reseed the ladder the scheduled snapshot was published with, so a
+    // republish preserves the teacher's real guardrails instead of silently
+    // resetting them to the defaults. Null (a never-published draft) means
+    // start from the documented default.
+    guardrails: quiz.guardrails
+      ? { ...quiz.guardrails }
+      : { ...DEFAULT_GUARDRAILS },
     // A republish keeps the policy the scheduled snapshot was published with,
     // so rescheduling a manual-release quiz can't silently turn it automatic.
     releasePolicy: quiz.release_policy,

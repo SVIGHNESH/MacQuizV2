@@ -1084,6 +1084,8 @@ export interface components {
              * @description Null means scores and the answer key are withheld.
              */
             results_released_at: string | null;
+            /** @description The anti-cheat ladder frozen at publish. Null while the quiz is a draft (never published); populated from the publish request once scheduled, so reopening a scheduled quiz reseeds its real settings. */
+            guardrails: components["schemas"]["Guardrails"] | null;
         };
         QuestionBody: {
             text: string;

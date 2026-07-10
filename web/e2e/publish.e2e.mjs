@@ -6,16 +6,17 @@
 // criterion - assign an audience and publish a scheduled quiz:
 //   1. API-side setup: a ready teacher, two students (one reset and ready),
 //      and a cohort containing the second student
-//   2. teacher signs in -> creates a draft with one question
-//   3. the publish panel lists both students; publishing is refused first
-//      by client-side window validation, then by the server's
-//      at-least-one-student precondition
+//   2. teacher signs in -> creates a draft with one question (wizard step 1)
+//   3. audience step lists both students; the Next gate refuses to advance
+//      with nobody assigned
 //   4. audience = one student checked directly + one whole cohort chip;
-//      saving reports the group-expanded result
-//   5. a past open time is caught client-side; a valid future window
-//      publishes -> Scheduled chip, version 1, frozen content
-//   6. reload proves the scheduled state persists; republish reschedules
-//      as version 2; the quiz list shows the Scheduled chip
+//      Next auto-saves and reports the group-expanded result
+//   5. schedule step: an empty and a past window are caught client-side; a
+//      valid future window with non-default guardrails publishes -> Scheduled
+//      chip, version 1, frozen content
+//   6. reload proves the scheduled state - window, release policy, guardrail
+//      ladder, and audience - all persist; republish reschedules as version 2;
+//      the quiz list shows the Scheduled chip
 //   7. API-side: the cohort student's GET /quizzes/assigned carries the quiz
 //
 // Run:  node e2e/publish.e2e.mjs
@@ -126,6 +127,52 @@ function toLocalInput(date) {
 }
 
 const minutesFromNow = (min) => new Date(Date.now() + min * 60_000)
+
+// Click a wizard step in the header. The step button's text is the index
+// glued to the label ("2Audience"), so a substring match on the label lands it.
+// Waits for the header first: reopening a quiz loads the editor asynchronously,
+// so the steps may not be mounted the instant we navigate.
+async function goToStep(page, label) {
+  await page.waitForFunction(
+    (want) => {
+      const root = document.querySelector('.wizard-steps')
+      return Boolean(
+        root &&
+          [...root.querySelectorAll('button')].some((b) =>
+            (b.textContent ?? '').includes(want),
+          ),
+      )
+    },
+    { timeout: 8000 },
+    label,
+  )
+  await clickButtonWithText(page, label, '.wizard-steps')
+}
+
+/** The label of the wizard step currently marked aria-current="step". */
+async function activeStep(page) {
+  return page.$eval('.wizard-steps button[aria-current="step"]', (el) =>
+    (el.textContent ?? '').trim(),
+  )
+}
+
+// Next's audience gate awaits a PUT before advancing, so the active step
+// changes asynchronously - wait for it rather than reading it a tick later.
+async function waitForActiveStep(page, label, timeout = 5000) {
+  return page
+    .waitForFunction(
+      (want) => {
+        const el = document.querySelector(
+          '.wizard-steps button[aria-current="step"]',
+        )
+        return Boolean(el && (el.textContent ?? '').includes(want))
+      },
+      { timeout },
+      label,
+    )
+    .then(() => true)
+    .catch(() => false)
+}
 
 // --- API helpers -------------------------------------------------------------
 
@@ -258,7 +305,8 @@ async function publishFlow(browser) {
     'the draft with one question autosaves',
   )
 
-  // The audience picker loads the teacher-readable directory.
+  // --- Step 2: the audience picker loads the teacher-readable directory. ---
+  await goToStep(page, 'Audience')
   check(
     await waitForText(page, '.audience-row', 'Asha Rao', 8000),
     'the audience picker lists the directly assignable student',
@@ -271,45 +319,39 @@ async function publishFlow(browser) {
     await waitForText(page, '.audience-count', 'No students assigned yet'),
     'a fresh draft reports an empty audience',
   )
-  await shot(page, '20-publish-panel.png')
+  await shot(page, '20-audience-step.png')
 
-  // Publish with an empty schedule: the client catches it before any request.
-  await clickButtonWithText(page, 'Publish quiz')
-  check(
-    await waitForText(page, '.field-error', 'required'),
-    'an empty window is refused client-side',
-  )
-
-  // A valid future window, but still nobody assigned: the server's
-  // precondition comes back as a sentence.
-  await setInputValue(
-    page,
-    '#publish-starts-at',
-    toLocalInput(minutesFromNow(30)),
-  )
-  await setInputValue(
-    page,
-    '#publish-ends-at',
-    toLocalInput(minutesFromNow(90)),
-  )
-  await clickButtonWithText(page, 'Publish quiz')
+  // The wizard's Next is the friendly gate that replaces reaching the server's
+  // empty-audience precondition: with nobody assigned it refuses to advance.
+  await clickButtonWithText(page, 'Next', '.wizard-nav-actions')
   check(
     await waitForText(
       page,
-      '.publish-preconditions .form-error',
-      'assign at least one student',
+      '.wizard-step-error',
+      'Assign at least one student',
     ),
-    'publishing without an audience is refused by the server precondition',
+    'advancing past the audience step with nobody assigned is blocked inline',
   )
-  await shot(page, '21-publish-no-audience.png')
+  check(
+    (await activeStep(page)).includes('Audience'),
+    'the audience step stays active when Next is blocked',
+  )
+  await shot(page, '21-audience-gate.png')
 
-  // Audience: Asha directly, Zane via the whole cohort.
+  // Audience: Asha directly, Zane via the whole cohort. Next auto-saves.
   await page.click('.audience-row input[type=checkbox]')
   await clickButtonWithText(page, GROUP_NAME, '.group-chip-row')
-  await clickButtonWithText(page, 'Save audience')
+  await clickButtonWithText(page, 'Next', '.wizard-nav-actions')
+  check(
+    await waitForActiveStep(page, 'Schedule'),
+    'a non-empty audience lets Next advance to the schedule step',
+  )
+  // Return to the audience step to prove the Next auto-save landed and the
+  // server-expanded audience came back.
+  await goToStep(page, 'Audience')
   check(
     await waitForText(page, '.audience-count', '2 students assigned'),
-    'saving the audience reports the group-expanded count',
+    'the Next auto-save reports the group-expanded count',
   )
   check(
     (await page.$$eval(
@@ -324,11 +366,26 @@ async function publishFlow(browser) {
   )
   await shot(page, '22-audience-saved.png')
 
+  // --- Step 3: schedule + guardrails. ---
+  await goToStep(page, 'Schedule')
+
+  // Publish with an empty schedule: the client catches it before any request.
+  await clickButtonWithText(page, 'Publish quiz')
+  check(
+    await waitForText(page, '.field-error', 'required'),
+    'an empty window is refused client-side',
+  )
+
   // A past open time is caught client-side with the server vocabulary.
   await setInputValue(
     page,
     '#publish-starts-at',
     toLocalInput(minutesFromNow(-10)),
+  )
+  await setInputValue(
+    page,
+    '#publish-ends-at',
+    toLocalInput(minutesFromNow(90)),
   )
   await clickButtonWithText(page, 'Publish quiz')
   check(
@@ -336,7 +393,8 @@ async function publishFlow(browser) {
     'a past open time is refused client-side',
   )
 
-  // The real publish.
+  // The real publish, with non-default guardrails so the reload below can
+  // prove the ladder round-trips instead of resetting to the defaults.
   await setInputValue(
     page,
     '#publish-starts-at',
@@ -350,6 +408,8 @@ async function publishFlow(browser) {
   // Withhold the scores until this teacher releases them, rather than the
   // auto default the worker applies at close.
   await page.select('#publish-release-policy', 'manual')
+  await page.select('#guardrail-fullscreen', 'count')
+  await setInputValue(page, '#guardrail-max-violations', '7')
   await clickButtonWithText(page, 'Publish quiz')
   check(
     await waitForText(page, '.chip-status', 'Scheduled', 8000),
@@ -376,6 +436,8 @@ async function publishFlow(browser) {
   // Cold reload: the scheduled state is server truth, not local state.
   await page.reload({ waitUntil: 'networkidle0' })
   await clickButtonWithText(page, QUIZ_TITLE)
+  // Reopen lands on step 1; the scheduled facts live on the schedule step.
+  await goToStep(page, 'Schedule')
   check(
     await waitForText(page, '.window-summary', 'Version 1', 8000),
     'the scheduled state survives a cold reload',
@@ -385,14 +447,27 @@ async function publishFlow(browser) {
       'manual',
     'the chosen manual release policy came back from the server',
   )
+  // The guardrail ladder must reseed from the server; before the read-path
+  // fix it silently fell back to the defaults (off / 3), so a blind republish
+  // would have reset it.
   check(
-    await waitForText(page, '.audience-count', '2 students assigned', 8000),
-    'the saved audience survives a cold reload',
+    (await page.$eval('#guardrail-fullscreen', (el) => el.value)) === 'count',
+    'the published fullscreen guardrail round-trips after a cold reload',
+  )
+  check(
+    (await page.$eval('#guardrail-max-violations', (el) => el.value)) === '7',
+    'the published violation threshold round-trips after a cold reload',
   )
   check(
     await waitForText(page, '#publish-button', 'Reschedule & republish'),
     'a scheduled quiz offers republish instead of publish',
   )
+  await goToStep(page, 'Audience')
+  check(
+    await waitForText(page, '.audience-count', '2 students assigned', 8000),
+    'the saved audience survives a cold reload',
+  )
+  await goToStep(page, 'Schedule')
   // Past the debounce window: merely opening a frozen quiz must not fire a
   // ghost autosave (which would 409 against the published snapshot).
   await new Promise((resolve) => setTimeout(resolve, 1500))

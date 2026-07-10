@@ -13,7 +13,7 @@ const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
 
 /**
  * Admin cohort management (Milestone 1, FR-1): create groups and edit their
- * membership. Groups are what a teacher's audience picker (PublishPanel)
+ * membership. Groups are what a teacher's audience picker (AudienceEditor)
  * assigns quizzes to, so this is the only place a cohort's roster is set.
  */
 export default function GroupsPanel() {

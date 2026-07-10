@@ -2083,6 +2083,7 @@ components:
           question_count,
           release_policy,
           results_released_at,
+          guardrails,
         ]
       properties:
         id:
@@ -2134,6 +2135,14 @@ components:
           format: date-time
           nullable: true
           description: Null means scores and the answer key are withheld.
+        guardrails:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Guardrails"
+          description: >-
+            The anti-cheat ladder frozen at publish. Null while the quiz is a
+            draft (never published); populated from the publish request once
+            scheduled, so reopening a scheduled quiz reseeds its real settings.
     QuestionBody:
       type: object
       required: [text]
