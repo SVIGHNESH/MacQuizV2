@@ -141,6 +141,24 @@ async function activeStep(page) {
   )
 }
 
+// Next's audience gate awaits a PUT before advancing, so the active step
+// changes asynchronously - wait for it rather than reading it a tick later.
+async function waitForActiveStep(page, label, timeout = 5000) {
+  return page
+    .waitForFunction(
+      (want) => {
+        const el = document.querySelector(
+          '.wizard-steps button[aria-current="step"]',
+        )
+        return Boolean(el && (el.textContent ?? '').includes(want))
+      },
+      { timeout },
+      label,
+    )
+    .then(() => true)
+    .catch(() => false)
+}
+
 // --- API helpers -------------------------------------------------------------
 
 function cookiesOf(response) {
@@ -310,7 +328,7 @@ async function publishFlow(browser) {
   await clickButtonWithText(page, GROUP_NAME, '.group-chip-row')
   await clickButtonWithText(page, 'Next', '.wizard-nav-actions')
   check(
-    (await activeStep(page)).includes('Schedule'),
+    await waitForActiveStep(page, 'Schedule'),
     'a non-empty audience lets Next advance to the schedule step',
   )
   // Return to the audience step to prove the Next auto-save landed and the
