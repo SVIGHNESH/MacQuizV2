@@ -207,13 +207,13 @@ const (
 	Truefalse TeacherQuestionType = "truefalse"
 )
 
-// Defines values for TeacherStudentPerformanceQuizzesStatus.
+// Defines values for TeacherStudentQuizScoreStatus.
 const (
-	Archived  TeacherStudentPerformanceQuizzesStatus = "archived"
-	Closed    TeacherStudentPerformanceQuizzesStatus = "closed"
-	Draft     TeacherStudentPerformanceQuizzesStatus = "draft"
-	Live      TeacherStudentPerformanceQuizzesStatus = "live"
-	Scheduled TeacherStudentPerformanceQuizzesStatus = "scheduled"
+	Archived  TeacherStudentQuizScoreStatus = "archived"
+	Closed    TeacherStudentQuizScoreStatus = "closed"
+	Draft     TeacherStudentQuizScoreStatus = "draft"
+	Live      TeacherStudentQuizScoreStatus = "live"
+	Scheduled TeacherStudentQuizScoreStatus = "scheduled"
 )
 
 // Defines values for UpdateUserRequestStatus.
@@ -1011,21 +1011,24 @@ type TeacherStudentPerformance struct {
 	LastSubmittedAt  *time.Time `json:"last_submitted_at"`
 
 	// Quizzes Per-quiz breakdown, title-ordered.
-	Quizzes []struct {
-		QuizId       openapi_types.UUID                     `json:"quiz_id"`
-		ScorePercent *float32                               `json:"score_percent"`
-		Status       TeacherStudentPerformanceQuizzesStatus `json:"status"`
-		SubmittedAt  *time.Time                             `json:"submitted_at"`
-		Title        string                                 `json:"title"`
-	} `json:"quizzes"`
-	StudentId openapi_types.UUID `json:"student_id"`
+	Quizzes   []TeacherStudentQuizScore `json:"quizzes"`
+	StudentId openapi_types.UUID        `json:"student_id"`
 
 	// TotalViolations Guardrail violations across every attempt on this teacher's quizzes.
 	TotalViolations int `json:"total_violations"`
 }
 
-// TeacherStudentPerformanceQuizzesStatus defines model for TeacherStudentPerformance.Quizzes.Status.
-type TeacherStudentPerformanceQuizzesStatus string
+// TeacherStudentQuizScore One assigned quiz's outcome inside TeacherStudentPerformance.
+type TeacherStudentQuizScore struct {
+	QuizId       openapi_types.UUID            `json:"quiz_id"`
+	ScorePercent *float32                      `json:"score_percent"`
+	Status       TeacherStudentQuizScoreStatus `json:"status"`
+	SubmittedAt  *time.Time                    `json:"submitted_at"`
+	Title        string                        `json:"title"`
+}
+
+// TeacherStudentQuizScoreStatus defines model for TeacherStudentQuizScore.Status.
+type TeacherStudentQuizScoreStatus string
 
 // UpdateQuizRequest defines model for UpdateQuizRequest.
 type UpdateQuizRequest struct {

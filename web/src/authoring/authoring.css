@@ -751,6 +751,97 @@
   font-style: italic;
 }
 
+/* Published-quiz view tabs: settings vs live scores vs results. */
+
+.editor-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  justify-self: start;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-button);
+  background: var(--color-well);
+}
+
+.editor-tab {
+  border: 0;
+  padding: 8px 16px;
+  border-radius: calc(var(--radius-button) - 3px);
+  background: transparent;
+  font: 550 12.5px/1 var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.editor-tab-active {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.editor-tab-view {
+  display: grid;
+  gap: 16px;
+}
+
+/* display:grid would beat the UA's [hidden] rule - same trap as the wizard
+   steps, so the inactive views must opt back out explicitly. */
+.editor-tab-view[hidden] {
+  display: none;
+}
+
+/* Teacher analytics tab: the per-student performance roster. */
+
+.teacher-analytics-table .qt-head,
+.teacher-analytics-table .qt-row {
+  grid-template-columns: minmax(0, 2fr) 84px 96px 88px 92px 120px 110px;
+}
+
+.teacher-analytics-table .qt-head > *,
+.teacher-analytics-table .qt-row > * {
+  min-width: 0;
+}
+
+.teacher-analytics-activity {
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Violations are integrity evidence, not fault - the count reads amber. */
+.teacher-analytics-violations {
+  color: var(--color-warning-on-tint);
+  font-weight: 650;
+}
+
+/* The expanded per-quiz breakdown sits inside the student's row group,
+   inset and on the well tone so it reads as detail, not more rows. */
+.teacher-analytics-breakdown {
+  display: grid;
+  gap: 1px;
+  margin: 0 10px 10px 34px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--color-border-hairline);
+}
+
+.teacher-analytics-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 110px 72px 130px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-well);
+  font: 500 12.5px/1.4 var(--font-sans);
+}
+
+.teacher-analytics-breakdown-row .qt-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Publish panel: audience picker + schedule form */
 
 .publish-panel {

@@ -3,11 +3,12 @@ import { useAuth, type SessionUser } from '../auth/context'
 import UsersPanel from './UsersPanel'
 import GroupsPanel from './GroupsPanel'
 import OrgStatsPanel from './OrgStatsPanel'
+import AnalyticsPanel from './AnalyticsPanel'
 import AuditPanel from './AuditPanel'
 import '../authoring/authoring.css'
 import './admin.css'
 
-type View = 'overview' | 'users' | 'groups' | 'audit'
+type View = 'overview' | 'users' | 'groups' | 'analytics' | 'audit'
 
 function initials(fullName: string): string {
   return fullName
@@ -65,6 +66,14 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
             Groups
           </button>
           <button
+            className={`rail-item${view === 'analytics' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView('analytics')}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            Analytics
+          </button>
+          <button
             className={`rail-item${view === 'audit' ? ' rail-item-active' : ''}`}
             type="button"
             onClick={() => setView('audit')}
@@ -105,6 +114,8 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
           <UsersPanel />
         ) : view === 'groups' ? (
           <GroupsPanel />
+        ) : view === 'analytics' ? (
+          <AnalyticsPanel />
         ) : (
           <AuditPanel />
         )}

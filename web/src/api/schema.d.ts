@@ -1393,16 +1393,18 @@ export interface components {
             /** Format: date-time */
             last_submitted_at?: string | null;
             /** @description Per-quiz breakdown, title-ordered. */
-            quizzes: {
-                /** Format: uuid */
-                quiz_id: string;
-                title: string;
-                /** @enum {string} */
-                status: "draft" | "scheduled" | "live" | "closed" | "archived";
-                score_percent?: number | null;
-                /** Format: date-time */
-                submitted_at?: string | null;
-            }[];
+            quizzes: components["schemas"]["TeacherStudentQuizScore"][];
+        };
+        /** @description One assigned quiz's outcome inside TeacherStudentPerformance. */
+        TeacherStudentQuizScore: {
+            /** Format: uuid */
+            quiz_id: string;
+            title: string;
+            /** @enum {string} */
+            status: "draft" | "scheduled" | "live" | "closed" | "archived";
+            score_percent?: number | null;
+            /** Format: date-time */
+            submitted_at?: string | null;
         };
         /** @description The admin org-wide dashboard (docs/07 section 4, FR-9). Every field is computed live: there is no org_stats rollup table. */
         OrgStats: {

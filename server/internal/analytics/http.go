@@ -37,8 +37,11 @@ func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(h.auth.RequireAuth, authusers.RequirePasswordChanged)
 	r.With(requireStaff).Get("/quizzes/{id}", h.handleQuizStats)
+	r.With(requireAdmin).Get("/students", h.handleListStudentAnalytics)
 	r.Get("/students/{id}", h.handleStudentStats)
+	r.With(requireAdmin).Get("/teachers", h.handleListTeacherAnalytics)
 	r.With(requireStaff).Get("/teachers/{id}", h.handleTeacherStats)
+	r.With(requireStaff).Get("/teachers/{id}/students", h.handleTeacherStudents)
 	r.With(requireAdmin).Get("/org", h.handleOrgStats)
 	return r
 }
@@ -165,6 +168,69 @@ func (h *Handler) handleOrgStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, stats)
+}
+
+// handleListTeacherAnalytics serves GET /analytics/teachers: every teacher's
+// activity-and-outcomes row for the admin analytics tab. Like /org it takes
+// no path parameter, so "not an admin" reads as 403 straight from the gate.
+func (h *Handler) handleListTeacherAnalytics(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	teachers, err := h.svc.ListTeacherAnalytics(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"teacher analytics is admin-only")
+			return
+		}
+		h.svc.log.Error("list teacher analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"teachers": teachers})
+}
+
+// handleListStudentAnalytics serves GET /analytics/students: every student's
+// cross-quiz profile row for the admin analytics tab.
+func (h *Handler) handleListStudentAnalytics(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	students, err := h.svc.ListStudentAnalytics(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusForbidden, httpapi.CodeForbidden,
+				"student analytics is admin-only")
+			return
+		}
+		h.svc.log.Error("list student analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"students": students})
+}
+
+// handleTeacherStudents serves GET /analytics/teachers/{id}/students: the
+// per-student performance on this teacher's quizzes, for an admin or that
+// teacher themselves. Authorization mirrors handleTeacherStats - a teacher
+// aiming at another teacher's roster reads 404, never 403, so one teacher's
+// existence never leaks.
+func (h *Handler) handleTeacherStudents(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id := chi.URLParam(r, "id")
+	if !uuidShape.MatchString(id) {
+		httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound, "no such teacher")
+		return
+	}
+	students, err := h.svc.TeacherStudents(r.Context(), actor, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			httpapi.WriteError(w, http.StatusNotFound, httpapi.CodeNotFound,
+				"no analytics for this teacher")
+			return
+		}
+		h.svc.log.Error("teacher student analytics", "err", err)
+		httpapi.WriteError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"students": students})
 }
 
 // uuidShape pre-screens the {id} path segment so garbage never reaches a

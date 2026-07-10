@@ -87,6 +87,9 @@ Publish preconditions: at least one question, `starts_at < ends_at` and in the f
 | `GET /analytics/quizzes/:id` | Quiz stats + item analysis (from quiz_stats) |
 | `GET /analytics/students/:id` | Student performance profile (teacher: assigned students only) |
 | `GET /analytics/teachers/:id` | Teacher activity and outcomes (admin) |
+| `GET /analytics/teachers/:id/students` | Per-student performance on that teacher's quizzes (admin or self) |
+| `GET /analytics/teachers` | Every teacher's activity summary, one row each (admin) |
+| `GET /analytics/students` | Every student's profile summary with cohort ids, one row each (admin) |
 | `GET /audit` | Filterable audit log (admin) |
 
 ## 3. Error vocabulary (non-exhaustive, the load-bearing ones)

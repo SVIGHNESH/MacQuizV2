@@ -27,6 +27,10 @@ const WIZARD_STEPS: { n: WizardStep; label: string }[] = [
   { n: 3, label: 'Schedule' },
 ]
 
+// A published quiz's page splits into views: the frozen settings/questions,
+// the live scoreboard (while live), and results + analytics (once closed).
+type EditorTab = 'settings' | 'monitor' | 'results'
+
 /**
  * The authoring wizard's step header: a linear process, so each step is a
  * plain button marked aria-current="step" when active - not a tablist, which
@@ -149,6 +153,10 @@ function LoadedEditor({
     Record<string, SaveState>
   >({})
   const [step, setStep] = useState<WizardStep>(1)
+  // null = "no explicit pick": the page opens on what the status makes
+  // interesting (live scores while live, results once closed) and follows a
+  // live->closed transition on its own until the teacher picks a tab.
+  const [tab, setTab] = useState<EditorTab | null>(null)
   // Lifted out of the schedule step so the audience count survives that panel
   // being hidden, and feeds its "freezes N questions for M students" hint.
   const [audienceCount, setAudienceCount] = useState(0)
@@ -282,6 +290,13 @@ function LoadedEditor({
 
   const editable = quiz.status === 'draft'
   const wizard = quiz.status === 'draft' || quiz.status === 'scheduled'
+  const terminal = quiz.status === 'closed' || quiz.status === 'archived'
+  // An explicit pick can go stale (the monitor tab dies when the quiz
+  // closes), so it only holds while its tab still exists.
+  const defaultTab: EditorTab =
+    quiz.status === 'live' ? 'monitor' : terminal ? 'results' : 'settings'
+  const activeTab: EditorTab =
+    tab === 'monitor' && quiz.status !== 'live' ? defaultTab : (tab ?? defaultTab)
   const settingsFields =
     settingsState.phase === 'error' ? (settingsState.fields ?? {}) : {}
 
@@ -517,32 +532,69 @@ function LoadedEditor({
         </>
       ) : (
         <>
-          <section className="panel">
-            <div className="editor-title-row">{titleField}</div>
-            {attemptsAndShuffle}
-          </section>
+          <nav className="editor-tabs" role="tablist" aria-label="Quiz views">
+            <button
+              className={`editor-tab${activeTab === 'settings' ? ' editor-tab-active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'settings'}
+              onClick={() => setTab('settings')}
+            >
+              Settings & questions
+            </button>
+            {quiz.status === 'live' && (
+              <button
+                className={`editor-tab${activeTab === 'monitor' ? ' editor-tab-active' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'monitor'}
+                onClick={() => setTab('monitor')}
+              >
+                Live scores
+              </button>
+            )}
+            {terminal && (
+              <button
+                className={`editor-tab${activeTab === 'results' ? ' editor-tab-active' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'results'}
+                onClick={() => setTab('results')}
+              >
+                Results & analytics
+              </button>
+            )}
+          </nav>
 
-          {frozenHint}
-          {questionsBlock}
+          <div className="editor-tab-view" hidden={activeTab !== 'settings'}>
+            <section className="panel">
+              <div className="editor-title-row">{titleField}</div>
+              {attemptsAndShuffle}
+            </section>
+
+            {frozenHint}
+            {questionsBlock}
+          </div>
 
           {quiz.status === 'live' && (
-            <LiveMonitorPanel
-              quizId={quiz.id}
-              quizTitle={quiz.title}
-              onQuizUpdate={setQuiz}
-            />
+            <div className="editor-tab-view" hidden={activeTab !== 'monitor'}>
+              <LiveMonitorPanel
+                quizId={quiz.id}
+                quizTitle={quiz.title}
+                onQuizUpdate={setQuiz}
+              />
+            </div>
           )}
 
-          {(quiz.status === 'closed' || quiz.status === 'archived') && (
-            <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
-          )}
-
-          {(quiz.status === 'closed' || quiz.status === 'archived') && (
-            <QuizStatsPanel
-              quizId={quiz.id}
-              quizTitle={quiz.title}
-              questions={questions}
-            />
+          {terminal && (
+            <div className="editor-tab-view" hidden={activeTab !== 'results'}>
+              <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
+              <QuizStatsPanel
+                quizId={quiz.id}
+                quizTitle={quiz.title}
+                questions={questions}
+              />
+            </div>
           )}
         </>
       )}

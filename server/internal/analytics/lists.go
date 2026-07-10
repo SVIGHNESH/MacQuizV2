@@ -225,14 +225,14 @@ func (s *Service) TeacherStudents(ctx context.Context, actor authusers.User, tea
 				FullName:        fullName,
 				Email:           email,
 				TotalViolations: violations,
-				Quizzes:         []apischema.TeacherStudentQuiz{},
+				Quizzes:         []apischema.TeacherStudentQuizScore{},
 			}
 		}
 
-		entry := apischema.TeacherStudentQuiz{
+		entry := apischema.TeacherStudentQuizScore{
 			QuizId: quizID,
 			Title:  quizTitle,
-			Status: apischema.TeacherStudentPerformanceQuizzesStatus(quizStatus),
+			Status: apischema.TeacherStudentQuizScoreStatus(quizStatus),
 		}
 		current.AssignedQuizzes++
 		if score.Valid {
@@ -255,11 +255,5 @@ func (s *Service) TeacherStudents(ctx context.Context, actor authusers.User, tea
 		current.Quizzes = append(current.Quizzes, entry)
 	}
 	flush()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	// Guard against a submitted_at in the future never reordering: the wire
-	// contract promises title-ordered quizzes, which the SQL already did.
-	_ = time.Now
-	return out, nil
+	return out, rows.Err()
 }

@@ -392,6 +392,22 @@ async function dashboardFlow(browser) {
   check(kicked === '0', `kicked attempts reads 0 for a clean run (got ${kicked})`)
   await shot(page, '91-stats-dashboard.png')
 
+  // The closed quiz separates its views: results/analytics is the default
+  // tab, and the frozen settings live on their own tab.
+  await clickButtonWithText(page, 'Settings & questions', '.editor-tabs')
+  const statsHidden = await page.$eval(
+    '.stats-panel',
+    (el) => el.offsetParent === null,
+  )
+  check(statsHidden, 'the Settings tab hides the results view')
+  check(
+    await page.$eval('.editor-title-input', (el) => el.offsetParent !== null),
+    'the Settings tab shows the frozen quiz settings',
+  )
+  await clickButtonWithText(page, 'Results & analytics', '.editor-tabs')
+  const statsBack = await page.$eval('.stats-panel', (el) => el.offsetParent !== null)
+  check(statsBack, 'the Results tab brings the analytics back')
+
   await releaseAndArchiveFlow(page)
 }
 
@@ -430,6 +446,149 @@ async function releaseAndArchiveFlow(page) {
   await shot(page, '93-quiz-archived.png')
 }
 
+// The teacher Analytics tab: the signed-in teacher's own summary plus the
+// per-student roster scoped to their quizzes. Runs on the session the
+// dashboard flow left behind, straight off the workspace rail.
+async function teacherAnalyticsTabFlow(browser) {
+  // Each flow runs in its own context (the student flows need parallel
+  // sessions), so this page starts signed out and logs the teacher in.
+  const page = await browser.newPage()
+  await page.setViewport({ width: 1280, height: 900 })
+  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  await page.waitForSelector('#login-email', { timeout: 8000 })
+  await type(page, '#login-email', teacherEmail)
+  await type(page, '#login-password', teacherPassword)
+  await page.click('button[type=submit]')
+  check(
+    await waitForText(page, '.page-title', 'Quizzes', 8000),
+    'the teacher signs back in for the Analytics tab',
+  )
+
+  await clickButtonWithText(page, 'Analytics', '.rail-nav')
+  check(
+    await waitForText(page, '.page-title', 'Analytics'),
+    'the teacher rail has an Analytics tab',
+  )
+  check(
+    await waitForText(page, '.stat-cards', 'Quizzes conducted', 8000),
+    "the tab leads with the teacher's own stat cards",
+  )
+  check(
+    await waitForText(page, '.teacher-analytics-table', aliceEmail, 8000),
+    'the roster lists every student assigned to a quiz this teacher owns',
+  )
+
+  // Alice aced (2/2), Bob missed the truefalse (1/2).
+  const rowScores = await page.$$eval(
+    '.teacher-analytics-table .qt-row',
+    (rows) =>
+      rows.map((row) => ({
+        email: row.querySelector('.admin-user-email')?.textContent ?? '',
+        cells: [...row.querySelectorAll('.qt-num')].map((c) => c.textContent.trim()),
+      })),
+  )
+  const alice = rowScores.find((r) => r.email.includes('alice'))
+  const bob = rowScores.find((r) => r.email.includes('bob'))
+  check(alice?.cells[2] === '100%', `Alice's avg score reads 100% (got ${alice?.cells[2]})`)
+  check(bob?.cells[2] === '50%', `Bob's avg score reads 50% (got ${bob?.cells[2]})`)
+
+  await clickButtonWithText(page, 'Quizzes', '.teacher-analytics-table')
+  check(
+    await waitForText(page, '.teacher-analytics-breakdown', QUIZ_TITLE),
+    'expanding a student shows the per-quiz breakdown',
+  )
+  await shot(page, '94-teacher-analytics-tab.png')
+
+  await type(page, '.admin-search', 'alice')
+  const visibleRows = await page.$$eval(
+    '.teacher-analytics-table .qt-row',
+    (rows) => rows.length,
+  )
+  check(visibleRows === 1, `searching narrows the roster to one row (got ${visibleRows})`)
+
+  await page.close()
+}
+
+// The admin Analytics tab: every teacher and every student, filterable, with
+// drill-in modals. Signs the shared browser session over to the admin, so it
+// must run after every teacher-session check is done.
+async function adminAnalyticsTabFlow(browser) {
+  // A fresh incognito context: the teacher flow's session must stay intact,
+  // and the admin signs in on its own cookie jar.
+  const context = await browser.createBrowserContext()
+  const page = await context.newPage()
+  await page.setViewport({ width: 1280, height: 900 })
+  await page.goto(BASE, { waitUntil: 'networkidle0' })
+
+  // The shared admin account's login budget is 5/min across suites; retry
+  // through a rate-limit window rather than failing the run.
+  for (let attempt = 0; ; attempt++) {
+    await page.waitForSelector('#login-email', { timeout: 8000 })
+    await type(page, '#login-email', ADMIN_EMAIL)
+    await type(page, '#login-password', ADMIN_PASSWORD)
+    await page.click('button[type=submit]')
+    const landed = await waitForText(page, '.page-title', 'Overview', 8000)
+    if (landed) break
+    if (attempt >= 4) {
+      check(false, 'admin could not sign in for the analytics tab')
+      await context.close()
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15_000))
+  }
+
+  await clickButtonWithText(page, 'Analytics', '.rail-nav')
+  check(
+    await waitForText(page, '.page-title', 'Analytics'),
+    'the admin rail has an Analytics tab',
+  )
+  check(
+    await waitForText(page, '.admin-analytics-teacher-table', teacherEmail, 8000),
+    'the Teachers view lists the seeded teacher',
+  )
+
+  await type(page, '.admin-search', teacherEmail)
+  const teacherRows = await page.$$eval(
+    '.admin-analytics-teacher-table .qt-row',
+    (rows) => rows.map((r) => [...r.querySelectorAll('.qt-num')].map((c) => c.textContent.trim())),
+  )
+  check(
+    teacherRows.length === 1 && teacherRows[0][2] === '2' && teacherRows[0][3] === '100%',
+    `the teacher row reads 2 attempts at 100% participation (got ${JSON.stringify(teacherRows)})`,
+  )
+  await clickButtonWithText(page, 'Details', '.admin-analytics-teacher-table')
+  check(
+    await waitForText(page, '.admin-teacher-stats', 'Quizzes created'),
+    'a teacher row drills into the activity modal',
+  )
+  await shot(page, '95-admin-analytics-teachers.png')
+  await page.keyboard.press('Escape')
+
+  await clickButtonWithText(page, 'Students', '.admin-analytics-toggle')
+  check(
+    await waitForText(page, '.admin-analytics-student-table', aliceEmail, 8000),
+    'the Students view lists the seeded students',
+  )
+  await type(page, '.admin-search', aliceEmail)
+  const studentRows = await page.$$eval(
+    '.admin-analytics-student-table .qt-row',
+    (rows) => rows.map((r) => [...r.querySelectorAll('.qt-num')].map((c) => c.textContent.trim())),
+  )
+  check(
+    studentRows.length === 1 && studentRows[0][1] === '100%',
+    `Alice's row reads 100% accuracy (got ${JSON.stringify(studentRows)})`,
+  )
+  await clickButtonWithText(page, 'Details', '.admin-analytics-student-table')
+  check(
+    await waitForText(page, '.admin-teacher-stats', 'Accuracy trend', 8000),
+    'a student row drills into the analytics modal with the accuracy trend',
+  )
+  await shot(page, '96-admin-analytics-students.png')
+  await page.keyboard.press('Escape')
+
+  await context.close()
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
 const { endsAt } = await provision()
 
@@ -443,6 +602,8 @@ try {
   await studentsFlow(browser)
   await waitForClose(endsAt)
   await dashboardFlow(browser)
+  await teacherAnalyticsTabFlow(browser)
+  await adminAnalyticsTabFlow(browser)
 } finally {
   await browser.close()
 }

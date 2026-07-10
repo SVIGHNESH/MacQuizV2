@@ -355,6 +355,74 @@
   width: 100%;
 }
 
+/* --- Analytics tab ------------------------------------------------------ */
+
+/* A two-item segmented control: which subject the table below describes. */
+.admin-analytics-toggle {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-button);
+  background: var(--color-well);
+  justify-self: start;
+}
+
+.admin-toggle-item {
+  border: 0;
+  padding: 7px 14px;
+  border-radius: calc(var(--radius-button) - 3px);
+  background: transparent;
+  font: 550 12.5px/1 var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.admin-toggle-item-active {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.admin-analytics-teacher-table .qt-head,
+.admin-analytics-teacher-table .qt-row {
+  grid-template-columns: minmax(0, 2fr) 76px 92px 84px 110px 96px 88px;
+}
+
+.admin-analytics-student-table .qt-head,
+.admin-analytics-student-table .qt-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 76px 88px 100px 72px 88px;
+}
+
+.admin-analytics-teacher-table .qt-head > *,
+.admin-analytics-teacher-table .qt-row > *,
+.admin-analytics-student-table .qt-head > *,
+.admin-analytics-student-table .qt-row > * {
+  min-width: 0;
+}
+
+.admin-analytics-cohorts {
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The student drill-down reuses the org chart primitives at modal scale. */
+.admin-student-trend {
+  height: 120px;
+  margin-top: 8px;
+}
+
+.admin-student-topics {
+  margin-top: 8px;
+}
+
+.admin-teacher-stats section {
+  margin-top: 16px;
+}
+
 /* --- Groups as cards ---------------------------------------------------- */
 
 .admin-group-table {

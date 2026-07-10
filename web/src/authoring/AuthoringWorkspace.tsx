@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useAuth, type SessionUser } from '../auth/context'
 import QuizEditor from './QuizEditor'
 import QuizList from './QuizList'
+import TeacherAnalyticsPanel from './TeacherAnalyticsPanel'
 import './authoring.css'
 
-type View = { kind: 'list' } | { kind: 'editor'; quizId: string }
+type View = { kind: 'list' } | { kind: 'editor'; quizId: string } | { kind: 'analytics' }
 
 function initials(fullName: string): string {
   return fullName
@@ -36,12 +37,20 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className="rail-item rail-item-active"
+            className={`rail-item${view.kind !== 'analytics' ? ' rail-item-active' : ''}`}
             type="button"
             onClick={() => setView({ kind: 'list' })}
           >
             <span className="rail-dot" aria-hidden="true" />
             Quizzes
+          </button>
+          <button
+            className={`rail-item${view.kind === 'analytics' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView({ kind: 'analytics' })}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            Analytics
           </button>
         </nav>
 
@@ -72,6 +81,8 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
       <main className="workspace-main">
         {view.kind === 'list' ? (
           <QuizList onOpen={(quizId) => setView({ kind: 'editor', quizId })} />
+        ) : view.kind === 'analytics' ? (
+          <TeacherAnalyticsPanel teacherId={user.id} />
         ) : (
           <QuizEditor
             quizId={view.quizId}
