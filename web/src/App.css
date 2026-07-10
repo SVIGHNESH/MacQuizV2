@@ -391,6 +391,44 @@
   color: var(--color-text-muted);
 }
 
+/* Rate-limited state (docs/11 Sh3): a warning-tinted panel whose countdown is
+   the loudest thing in it, because the number is the only new information a
+   locked-out user gets on each look. */
+.rate-limit-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  background: var(--color-warning-tint);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-option-row);
+}
+
+.rate-limit-message {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-warning-on-tint);
+}
+
+.rate-limit-countdown {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.rate-limit-countdown-label {
+  font: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+.rate-limit-countdown-value {
+  font: 750 24px/1 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
 /* Buttons */
 
 .button {

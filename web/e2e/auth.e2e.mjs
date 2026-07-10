@@ -214,6 +214,81 @@ async function teacherFlow(browser, oneTimePassword) {
   check(stale.status === 401, 'the one-time password no longer works')
 }
 
+// --- Sh3: the rate-limited sign-in state ------------------------------------
+
+// The login limiter is 5 attempts per account per minute (docs/08 section 4)
+// and it refuses on the *email* before the credential is ever looked up, so an
+// address that belongs to nobody trips it exactly the same way. Priming the
+// bucket over the API keeps the browser to the one submit that matters: the
+// one whose 429 the UI has to render.
+async function rateLimitFlow(browser) {
+  const victim = `ratelimit.e2e.${process.pid}@macquiz.local`
+  for (let i = 0; i < 5; i++) {
+    await fetch(`${BASE}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: victim, password: 'not-the-password' }),
+    })
+  }
+
+  // Its own cookie jar: teacherFlow leaves a live session behind, and a
+  // signed-in browser never renders the sign-in form at all.
+  const context = await browser.createBrowserContext()
+  const page = await context.newPage()
+  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  await signIn(page, victim, 'not-the-password')
+
+  check(
+    await waitForText(page, '.rate-limit-notice', 'Too many sign-in attempts'),
+    'the sixth attempt in a minute renders the rate-limited notice',
+  )
+  check(
+    (await textOf(page, '.chip-lifecycle-warning')).includes('Rate limited'),
+    'the notice carries the Rate limited chip',
+  )
+
+  const first = await textOf(page, '.rate-limit-countdown-value')
+  check(
+    /^\d{2}:\d{2}$/.test(first) && first !== '00:00',
+    `the countdown reads mm:ss and has time left (got ${JSON.stringify(first)})`,
+  )
+  check(
+    await page.$eval('button[type=submit]', (el) => el.disabled),
+    'Sign in is disabled while the lockout runs',
+  )
+  check(
+    (await page.$('.form-error')) === null,
+    'the countdown replaces the static error, rather than doubling it',
+  )
+  await shot(page, '07-rate-limited.png')
+
+  const spokenBefore = await textOf(page, '.rate-limit-notice .visually-hidden')
+  check(
+    /^\s*Try again in \d+ seconds\.\s*$/.test(spokenBefore),
+    `the notice carries a spoken wait (got ${JSON.stringify(spokenBefore)})`,
+  )
+
+  // Retry-After is a deadline, not a static number: it must visibly drain.
+  await new Promise((resolve) => setTimeout(resolve, 2200))
+  const later = await textOf(page, '.rate-limit-countdown-value')
+  check(
+    later !== first && seconds(later) < seconds(first),
+    `the countdown ticks down (${first} -> ${later})`,
+  )
+  // ...but the text inside the role=alert must not, or a screen reader is
+  // interrupted with a fresh announcement on every tick.
+  check(
+    (await textOf(page, '.rate-limit-notice .visually-hidden')) === spokenBefore,
+    'the spoken wait stays frozen while the numeral ticks',
+  )
+  await context.close()
+}
+
+function seconds(mmss) {
+  const [m, s] = mmss.split(':').map(Number)
+  return m * 60 + s
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
 const browser = await puppeteer.launch({
   executablePath: CHROMIUM,
@@ -224,6 +299,8 @@ try {
   await adminFlow(browser)
   const oneTimePassword = await provisionTeacher()
   await teacherFlow(browser, oneTimePassword)
+  // Last: it burns six of the per-IP login budget that every flow above shares.
+  await rateLimitFlow(browser)
 } finally {
   await browser.close()
 }
