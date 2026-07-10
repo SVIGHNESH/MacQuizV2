@@ -1011,3 +1011,66 @@
   font: 600 13.5px/1.4 var(--font-sans);
   color: var(--color-ink);
 }
+
+/* Preview: the draft toolbar's student-view modal. Wider than the house
+   confirm dialog because it renders a real question with its options. */
+.editor-topline-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preview-panel {
+  width: min(620px, 100%);
+}
+
+/* The panel takes focus on open so the keyboard and the screen reader land in
+   the dialog, but it is not a control - it must not wear a focus ring. */
+.preview-panel:focus {
+  outline: none;
+}
+
+.preview-question {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--color-well);
+}
+
+.preview-question-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-question-text {
+  margin: 8px 0 16px;
+  font: 650 18px/1.4 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.preview-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* The controls are inert, not unavailable: a student's fresh question shows
+   crisp option rows, so the browser's disabled dimming would misrepresent it. */
+.preview-fieldset:disabled .option-row input,
+.preview-fieldset:disabled .input {
+  opacity: 1;
+  cursor: default;
+}
+
+.preview-actions {
+  margin-top: 20px;
+}
+
+/* Paging sits left, dismissal right, so Close never lands under a Next click. */
+.preview-actions .button-quiet:first-child {
+  margin-right: auto;
+}

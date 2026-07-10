@@ -10,6 +10,7 @@ import {
 } from './model'
 import ImportPanel from './ImportPanel'
 import LiveMonitorPanel from './LiveMonitorPanel'
+import PreviewModal from './PreviewModal'
 import PublishPanel from './PublishPanel'
 import QuestionCard from './QuestionCard'
 import QuizStatsPanel from './QuizStatsPanel'
@@ -103,6 +104,7 @@ function LoadedEditor({
   })
   const [actionError, setActionError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const [questionStates, setQuestionStates] = useState<
     Record<string, SaveState>
   >({})
@@ -149,6 +151,12 @@ function LoadedEditor({
 
   const onQuestionSaveState = useCallback((id: string, state: SaveState) => {
     setQuestionStates((prev) => ({ ...prev, [id]: state }))
+  }, [])
+
+  const onQuestionSaved = useCallback((saved: TeacherQuestion) => {
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === saved.id ? saved : q)),
+    )
   }, [])
 
   const aggregate = useMemo((): { text: string; tone: string } => {
@@ -234,13 +242,32 @@ function LoadedEditor({
         <button className="button button-quiet back-button" onClick={onBack}>
           ← All quizzes
         </button>
-        <span
-          className={`save-badge save-badge-${aggregate.tone} save-indicator`}
-          role="status"
-        >
-          {aggregate.text}
-        </span>
+        <div className="editor-topline-actions">
+          <button
+            className="button button-quiet"
+            type="button"
+            disabled={questions.length === 0}
+            onClick={() => setPreviewing(true)}
+          >
+            Preview
+          </button>
+          <span
+            className={`save-badge save-badge-${aggregate.tone} save-indicator`}
+            role="status"
+          >
+            {aggregate.text}
+          </span>
+        </div>
       </div>
+
+      {previewing && (
+        <PreviewModal
+          quizTitle={settings.title}
+          shuffled={settings.shuffleQuestions}
+          questions={questions}
+          onDismiss={() => setPreviewing(false)}
+        />
+      )}
 
       <section className="panel">
         <div className="editor-title-row">
@@ -331,6 +358,7 @@ function LoadedEditor({
             onMove={moveQuestion}
             onDelete={deleteQuestion}
             onSaveState={onQuestionSaveState}
+            onSaved={onQuestionSaved}
           />
         ))}
       </div>

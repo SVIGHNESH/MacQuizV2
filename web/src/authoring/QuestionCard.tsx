@@ -19,6 +19,7 @@ interface QuestionCardProps {
   onMove: (id: string, direction: -1 | 1) => void
   onDelete: (id: string) => Promise<void>
   onSaveState: (id: string, state: SaveState) => void
+  onSaved: (question: TeacherQuestion) => void
 }
 
 function saveStateLabel(state: SaveState): { text: string; tone: string } {
@@ -41,6 +42,7 @@ export default function QuestionCard({
   onMove,
   onDelete,
   onSaveState,
+  onSaved,
 }: QuestionCardProps) {
   const [draft, setDraft] = useState<QuestionDraft>(() =>
     fromQuestion(question),
@@ -62,14 +64,20 @@ export default function QuestionCard({
         params: { path: { id: question.id } },
         body: serialized.input,
       })
-      if (result.data) return { ok: true }
+      if (result.data) {
+        // Hand the server's copy back up: the card owns the draft, so without
+        // this the parent's questions array freezes at the text the editor
+        // loaded with, and anything reading it (the preview) shows stale text.
+        onSaved(result.data.question)
+        return { ok: true }
+      }
       return {
         ok: false,
         message: result.error?.message ?? 'Saving failed.',
         fields: result.error?.fields,
       }
     },
-    [question.id],
+    [question.id, onSaved],
   )
 
   const saveState = useAutosave(draft, save)

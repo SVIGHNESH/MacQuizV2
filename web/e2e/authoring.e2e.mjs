@@ -270,6 +270,58 @@ async function authoringFlow(browser) {
   )
   await shot(page, '12-question-edited.png')
 
+  // --- Preview: the draft toolbar's student view -----------------------------
+  // The whole point of the feature is that it shows what a student receives,
+  // so the load-bearing assertion is the negative one: the option the teacher
+  // just marked correct must NOT come through as selected.
+  await clickButtonWithText(page, 'Preview', '.editor-topline-actions')
+  check(
+    await waitForText(page, '.preview-panel .modal-title', QUIZ_TITLE),
+    'the Preview button opens the student preview',
+  )
+  check(
+    await waitForText(
+      page,
+      '.preview-question-text',
+      'Which gas do plants absorb for photosynthesis?',
+    ),
+    'the preview shows the question text the teacher just saved, not the stale load',
+  )
+  check(
+    (await page.$$eval('.preview-panel .option-row', (rows) => rows.length)) ===
+      3,
+    'the preview renders all three options of the single-choice question',
+  )
+  check(
+    (await page.$$eval('.preview-panel .option-row-selected', (r) => r.length)) ===
+      0 &&
+      (await page.$$eval('.preview-panel .option-row input:checked', (r) => r.length)) === 0,
+    'the preview does not reveal the correct answer',
+  )
+  check(
+    await page.$eval(
+      '.preview-actions button',
+      (el) => el.textContent.trim() === 'Previous' && el.disabled,
+    ),
+    'Previous is disabled on the first question',
+  )
+  await shot(page, '12b-preview.png')
+  await clickButtonWithText(page, 'Next', '.preview-actions')
+  check(
+    await waitForText(page, '.preview-panel .chip-type', 'Multi select'),
+    'Next pages the preview to the second question',
+  )
+  await page.keyboard.press('Escape')
+  check(
+    await page
+      .waitForFunction(() => !document.querySelector('.preview-panel'), {
+        timeout: 3000,
+      })
+      .then(() => true)
+      .catch(() => false),
+    'Escape dismisses the preview',
+  )
+
   // Reorder: move the short-answer question (4th) up one.
   await page.click(
     '.question-card:nth-of-type(4) [aria-label="Move question up"]',
