@@ -148,14 +148,28 @@ func (s *Service) SetEmailSender(e EmailSender) {
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,
 	max_attempts, shuffle_questions, published_at, version, created_at,
-	release_policy, results_released_at`
+	release_policy, results_released_at, guardrails`
 
 func scanQuiz(scan func(dest ...any) error) (Quiz, error) {
 	var q Quiz
+	// guardrails is NULL until publish; scan the jsonb into a byte slice so a
+	// draft's NULL does not error, then decode only when a row actually carries
+	// a ladder. (*json.RawMessage would mis-handle the NULL - see the repo's
+	// nullable-jsonb convention.)
+	var guardrailsJSON []byte
 	err := scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 		&q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions, &q.PublishedAt,
-		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt)
-	return q, err
+		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt,
+		&guardrailsJSON)
+	if err != nil {
+		return q, err
+	}
+	if len(guardrailsJSON) > 0 {
+		if err := json.Unmarshal(guardrailsJSON, &q.Guardrails); err != nil {
+			return q, fmt.Errorf("decode guardrails: %w", err)
+		}
+	}
+	return q, nil
 }
 
 // CreateQuiz opens a new draft owned by the acting teacher
