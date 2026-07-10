@@ -16,7 +16,7 @@
 //       E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD (default compose bootstrap creds)
 // Screenshots land in /tmp/macquiz-e2e/.
 
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import puppeteer from 'puppeteer-core'
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
@@ -24,6 +24,7 @@ const CHROMIUM = process.env.E2E_CHROMIUM ?? '/usr/bin/chromium'
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@macquiz.local'
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'admin-dev-password'
 const SHOT_DIR = '/tmp/macquiz-e2e'
+const DOWNLOAD_DIR = `${SHOT_DIR}/downloads-${process.pid}`
 
 const teacherEmail = `import.e2e.${process.pid}@macquiz.local`
 const teacherPassword = 'rivers-outlast-borders'
@@ -94,6 +95,19 @@ async function clickButtonWithText(page, text, scope = '') {
 
 function questionCount(page) {
   return page.$$eval('.question-card', (cards) => cards.length)
+}
+
+// Chromium writes a `.crdownload` placeholder first and renames it once the
+// blob is flushed, so a bare readdir can catch a half-written file.
+async function waitForDownload(dir, timeout = 5000) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const names = await readdir(dir).catch(() => [])
+    const done = names.find((n) => n.endsWith('.csv'))
+    if (done) return { name: done, body: await readFile(`${dir}/${done}`, 'utf8') }
+    if (Date.now() > deadline) throw new Error(`no download landed in ${dir}`)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
 }
 
 // --- API-side setup: a ready-to-work teacher --------------------------------
@@ -220,6 +234,29 @@ async function importFlow(browser, badCsvPath, goodCsvPath) {
     await shot(page, '21-import-failed.png')
     check((await questionCount(page)) === 0, 'a failed import writes no questions')
 
+    // docs/07 section 2: the failed state offers a downloadable error report.
+    const cdp = await browser.target().createCDPSession()
+    await cdp.send('Browser.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: DOWNLOAD_DIR,
+      eventsEnabled: true,
+    })
+    await clickButtonWithText(page, 'Download error report', '.import-panel')
+    const report = await waitForDownload(DOWNLOAD_DIR).catch(() => null)
+    check(
+      report !== null && report.name.startsWith('import-errors-'),
+      'the failed state downloads an import-errors CSV',
+    )
+    const lines = (report?.body ?? '').split('\r\n')
+    check(
+      lines[0] === 'row,column,problem',
+      'the error report carries the row/column/problem header',
+    )
+    check(
+      lines.length === 2 && lines[1].startsWith('1,correct,'),
+      'the error report body names the offending row and column',
+    )
+
     await clickButtonWithText(page, 'Try another file', '.import-panel')
   }
 
@@ -250,6 +287,8 @@ async function importFlow(browser, badCsvPath, goodCsvPath) {
 }
 
 await mkdir(SHOT_DIR, { recursive: true })
+await rm(DOWNLOAD_DIR, { recursive: true, force: true })
+await mkdir(DOWNLOAD_DIR, { recursive: true })
 const badCsvPath = `${SHOT_DIR}/import-bad.csv`
 const goodCsvPath = `${SHOT_DIR}/import-good.csv`
 await writeFile(badCsvPath, BAD_CSV)

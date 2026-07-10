@@ -4,6 +4,42 @@ import type { Import, TeacherQuestion } from './model'
 
 const POLL_MS = 1200
 
+type RowError = NonNullable<Import['error_report']>[number]
+
+/** RFC 4180: quote a field only when it carries a delimiter, quote, or newline. */
+function csvField(value: string | number): string {
+  const text = String(value)
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+}
+
+/**
+ * The "downloadable error report" of docs/07 section 2. The rows are already
+ * in hand from the import poll, so this is a pure client-side serialization -
+ * no endpoint exists, and none is needed. CRLF line endings keep Excel happy.
+ */
+function errorReportCsv(rows: readonly RowError[]): string {
+  return [
+    ['row', 'column', 'problem'],
+    ...rows.map((r) => [r.row, r.column, r.message]),
+  ]
+    .map((cells) => cells.map(csvField).join(','))
+    .join('\r\n')
+}
+
+function downloadErrorReport(imp: Import) {
+  const blob = new Blob([errorReportCsv(imp.error_report ?? [])], {
+    type: 'text/csv;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `import-errors-${imp.id}.csv`
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'uploading' }
@@ -195,13 +231,23 @@ export default function ImportPanel({
               </div>
             ))}
           </div>
-          <button
-            className="button button-quiet"
-            type="button"
-            onClick={reset}
-          >
-            Try another file
-          </button>
+          <div className="import-actions">
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={(phase.imp.error_report ?? []).length === 0}
+              onClick={() => downloadErrorReport(phase.imp)}
+            >
+              Download error report
+            </button>
+            <button
+              className="button button-quiet import-actions-end"
+              type="button"
+              onClick={reset}
+            >
+              Try another file
+            </button>
+          </div>
         </div>
       )}
 

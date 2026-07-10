@@ -646,6 +646,10 @@
   gap: 10px;
 }
 
+.import-actions-end {
+  margin-left: auto;
+}
+
 .import-error-table {
   display: grid;
   gap: 1px;
