@@ -130,7 +130,22 @@ const minutesFromNow = (min) => new Date(Date.now() + min * 60_000)
 
 // Click a wizard step in the header. The step button's text is the index
 // glued to the label ("2Audience"), so a substring match on the label lands it.
+// Waits for the header first: reopening a quiz loads the editor asynchronously,
+// so the steps may not be mounted the instant we navigate.
 async function goToStep(page, label) {
+  await page.waitForFunction(
+    (want) => {
+      const root = document.querySelector('.wizard-steps')
+      return Boolean(
+        root &&
+          [...root.querySelectorAll('button')].some((b) =>
+            (b.textContent ?? '').includes(want),
+          ),
+      )
+    },
+    { timeout: 8000 },
+    label,
+  )
   await clickButtonWithText(page, label, '.wizard-steps')
 }
 
