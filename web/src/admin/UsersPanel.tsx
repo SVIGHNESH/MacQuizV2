@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
 import CredentialModal from './CredentialModal'
+import TeacherStatsModal from './TeacherStatsModal'
 
 type User = components['schemas']['User']
 
@@ -56,6 +57,7 @@ export default function UsersPanel() {
   const [createFields, setCreateFields] = useState<Record<string, string>>({})
 
   const [revealed, setRevealed] = useState<{ user: User; password: string } | null>(null)
+  const [statsFor, setStatsFor] = useState<User | null>(null)
   const [busyUserID, setBusyUserID] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
@@ -240,6 +242,14 @@ export default function UsersPanel() {
         />
       )}
 
+      {statsFor && (
+        <TeacherStatsModal
+          teacherID={statsFor.id}
+          fullName={statsFor.full_name}
+          onDismiss={() => setStatsFor(null)}
+        />
+      )}
+
       {rowError && <p className="form-error">{rowError}</p>}
 
       <div className="admin-filter-row">
@@ -316,6 +326,15 @@ export default function UsersPanel() {
                     </span>
                   </span>
                   <span className="qt-actions">
+                    {user.role === 'teacher' && (
+                      <button
+                        className="button button-small button-quiet"
+                        type="button"
+                        onClick={() => setStatsFor(user)}
+                      >
+                        Activity
+                      </button>
+                    )}
                     {user.role !== 'admin' && (
                       <>
                         <button

@@ -100,6 +100,74 @@
   padding: 11px;
 }
 
+/* --- Teacher activity drill-down (docs/07 section 4, per-teacher · Admin) -
+   Wider than the destructive modal it shares .modal-panel with: this one
+   carries a three-card stat row, not one sentence of consequence. ---------- */
+
+.admin-teacher-stats {
+  width: min(520px, 100%);
+}
+
+.admin-teacher-stats .modal-title {
+  margin-top: 2px;
+}
+
+.admin-teacher-stats .stat-cards {
+  margin-top: 18px;
+}
+
+.admin-teacher-stats .stat-card {
+  padding: 14px;
+}
+
+.teacher-stat-rows {
+  margin: 14px 0 0;
+  display: grid;
+  gap: 1px;
+  background: var(--color-border-hairline);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.teacher-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--color-surface);
+}
+
+.teacher-stat-row dt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
+.teacher-stat-unit {
+  font: 550 10px/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.teacher-stat-row dd {
+  margin: 0;
+  font: 750 16px/1 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.admin-teacher-stats .hint {
+  margin-top: 10px;
+}
+
+.admin-teacher-stats .modal-actions {
+  margin-top: 18px;
+}
+
 /* --- Users -------------------------------------------------------------- */
 
 .admin-filter-row {

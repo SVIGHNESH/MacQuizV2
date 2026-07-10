@@ -205,6 +205,67 @@ async function adminConsoleFlow(browser) {
   )
   void reenableButton
 
+  // --- Per-teacher activity drill-down (docs/07 section 4, "Per teacher") ---
+  const teacherRowForStats = await page.evaluateHandle(
+    (email) =>
+      [...document.querySelectorAll('.admin-user-table .qt-row')].find((row) =>
+        row.textContent.includes(email),
+      ),
+    teacherEmail,
+  )
+  const activityButtons = await teacherRowForStats.asElement()?.$$('button')
+  let openedActivity = false
+  for (const b of activityButtons ?? []) {
+    const label = await b.evaluate((el) => el.textContent)
+    if (label?.includes('Activity')) {
+      await b.click()
+      openedActivity = true
+      break
+    }
+  }
+  check(openedActivity, 'a teacher row offers an Activity drill-down')
+  check(
+    await waitForText(page, '.admin-teacher-stats', 'Quizzes created'),
+    'the drill-down loads GET /analytics/teachers/:id and names the metrics',
+  )
+  const statValues = await page.$$eval('.admin-teacher-stats .stat-card-value', (els) =>
+    els.map((el) => el.textContent.trim()),
+  )
+  check(
+    statValues.join('|') === '0|0|0',
+    `a teacher who has authored nothing reads as zeroes (got ${statValues.join('|')})`,
+  )
+  const rowValues = await page.$$eval('.admin-teacher-stats .teacher-stat-row dd', (els) =>
+    els.map((el) => el.textContent.trim()),
+  )
+  check(
+    rowValues.length === 3 && rowValues.every((v) => v === '—'),
+    `averages with nothing to average render an em dash, not a zero (got ${rowValues.join('|')})`,
+  )
+  await shot(page, 'admin-03-teacher-activity.png')
+
+  await page.keyboard.press('Escape')
+  const dismissed = await page
+    .waitForFunction(() => document.querySelector('.admin-teacher-stats') === null, {
+      timeout: 3000,
+    })
+    .then(() => true)
+    .catch(() => false)
+  check(dismissed, 'Escape dismisses the teacher activity drill-down')
+
+  // Students and admins have no teacher analytics, so no Activity affordance.
+  const studentRowActivity = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('.admin-user-table .qt-row')]
+        .filter((row) => row.querySelector('.admin-user-role')?.textContent.trim() !== 'Teacher')
+        .some((row) =>
+          [...row.querySelectorAll('button')].some((b) =>
+            (b.textContent ?? '').includes('Activity'),
+          ),
+        ),
+  )
+  check(!studentRowActivity, 'only teacher rows expose the Activity drill-down')
+
   // --- Groups: create a cohort, provision a student, set membership --------
   await clickButtonWithText(page, 'Groups', '.rail-nav')
   check(
