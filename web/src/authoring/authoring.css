@@ -378,7 +378,10 @@
   color: var(--color-surface);
 }
 
-.wizard-step {
+/* :not([hidden]) so an explicit display doesn't override the hidden
+   attribute's display:none - author CSS otherwise wins over the UA sheet and
+   every step would render at once. */
+.wizard-step:not([hidden]) {
   display: grid;
   gap: 16px;
 }
