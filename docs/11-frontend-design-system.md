@@ -169,6 +169,12 @@ The design system implies these UI contexts; build them from the recipes above:
 | Student attempt player | Option-row selection, timer (tabular, red-tint under 2 min), guardrail warning toasts, fullscreen blocker overlay, lockout screen (danger tint, reason shown) |
 | Results / leaderboard | Dark island leaderboard, stat cards, toast ("Quiz submitted - graded instantly") |
 
+**Note - teacher authoring is a 3-step wizard, not the single publish-footer page in the mockup.**
+The `MacQuiz v2 frontend design` mockup draws the draft editor as one surface with a sticky publish-validation footer.
+The implementation instead splits authoring for draft and scheduled quizzes into a linear Questions -> Audience -> Schedule wizard (`QuizEditor.tsx`): the title and questions live on step 1, the audience picker on step 2 (its Next persists the picks and refuses to advance with nobody assigned), and attempts/shuffle plus the schedule window and guardrail ladder on step 3.
+Live, closed, and archived quizzes keep the flat single-page layout, since those are monitoring surfaces rather than creation ones.
+This is a deliberate departure from the mockup; treat the wizard as the source of truth for the authoring flow.
+
 ## 7. Key literal tokens for implementation
 
 - Focus ring: `rgba(37,99,235,.12)` at 3px.
