@@ -3089,7 +3089,7 @@ components:
         One snapshot question as the player sees it. The answer key is
         structurally absent; when the quiz shuffles, positions are
         renumbered densely in the per-attempt order.
-      required: [id, position, type, body, points]
+      required: [id, position, type, body, points, penalty]
       properties:
         id:
           type: string
@@ -3107,6 +3107,12 @@ components:
             $ref: "#/components/schemas/QuestionOption"
         points:
           type: number
+        penalty:
+          type: number
+          description: >-
+            Marks subtracted if this question is answered wrong, already
+            resolved against the quiz's marking defaults. 0 means no
+            negative marking; unanswered questions are never penalized.
     AttemptAnswer:
       type: object
       required: [question_id, response, time_spent_ms, saved_at]
@@ -3197,7 +3203,8 @@ components:
         internals, or (structurally) a question.
       required:
         [id, title, status, starts_at, ends_at, duration_sec, max_attempts,
-         version, question_count, results_released_at, attempts]
+         version, question_count, negative_marking, results_released_at,
+         attempts]
       properties:
         id:
           type: string
@@ -3222,6 +3229,12 @@ components:
           type: integer
         question_count:
           type: integer
+        negative_marking:
+          type: boolean
+          description: >-
+            True when any question in the pinned snapshot carries a penalty,
+            so the student knows the rule before starting. Wrong answers
+            subtract marks; unanswered questions never do.
         results_released_at:
           type: string
           format: date-time

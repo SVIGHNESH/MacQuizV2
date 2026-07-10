@@ -128,6 +128,10 @@ interface QuizSettingsDraft {
   title: string
   maxAttempts: number
   shuffleQuestions: boolean
+  /** Marks a question earns when it doesn't set its own. */
+  defaultPoints: number
+  /** Marks a wrong answer costs quiz-wide; 0 disables negative marking. */
+  defaultPenalty: number
 }
 
 function LoadedEditor({
@@ -145,6 +149,8 @@ function LoadedEditor({
     title: quiz.title,
     maxAttempts: quiz.max_attempts,
     shuffleQuestions: quiz.shuffle_questions,
+    defaultPoints: quiz.default_points,
+    defaultPenalty: quiz.default_penalty,
   })
   const [actionError, setActionError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -185,12 +191,36 @@ function LoadedEditor({
           fields: { max_attempts: 'Must be between 1 and 10.' },
         }
       }
+      if (
+        !Number.isFinite(value.defaultPoints) ||
+        value.defaultPoints <= 0 ||
+        value.defaultPoints > 1000
+      ) {
+        return {
+          ok: false,
+          message: 'Default marks must be greater than zero.',
+          fields: { default_points: 'Must be greater than zero and at most 1000.' },
+        }
+      }
+      if (
+        !Number.isFinite(value.defaultPenalty) ||
+        value.defaultPenalty < 0 ||
+        value.defaultPenalty > 1000
+      ) {
+        return {
+          ok: false,
+          message: 'Negative marks must be zero or more.',
+          fields: { default_penalty: 'Must be between 0 and 1000.' },
+        }
+      }
       const result = await api.PATCH('/api/v1/quizzes/{id}', {
         params: { path: { id: quiz.id } },
         body: {
           title: value.title.trim(),
           max_attempts: value.maxAttempts,
           shuffle_questions: value.shuffleQuestions,
+          default_points: value.defaultPoints,
+          default_penalty: value.defaultPenalty,
         },
       })
       if (result.data) return { ok: true }
@@ -371,6 +401,57 @@ function LoadedEditor({
           Shuffle questions per student
         </span>
       </label>
+      <label className="field">
+        <span className="field-label">Marks per question</span>
+        <input
+          id="quiz-default-points"
+          className="input input-points tabular"
+          type="number"
+          min={0.5}
+          max={1000}
+          step={0.5}
+          value={
+            Number.isFinite(settings.defaultPoints) ? settings.defaultPoints : ''
+          }
+          disabled={!editable}
+          onChange={(e) =>
+            setSettings({ ...settings, defaultPoints: e.target.valueAsNumber })
+          }
+        />
+        {settingsFields.default_points ? (
+          <p className="field-error">{settingsFields.default_points}</p>
+        ) : (
+          <p className="field-hint">
+            Questions without their own marks use this.
+          </p>
+        )}
+      </label>
+      <label className="field">
+        <span className="field-label">Negative marks per wrong answer</span>
+        <input
+          id="quiz-default-penalty"
+          className="input input-points tabular"
+          type="number"
+          min={0}
+          max={1000}
+          step={0.5}
+          value={
+            Number.isFinite(settings.defaultPenalty) ? settings.defaultPenalty : ''
+          }
+          disabled={!editable}
+          onChange={(e) =>
+            setSettings({ ...settings, defaultPenalty: e.target.valueAsNumber })
+          }
+        />
+        {settingsFields.default_penalty ? (
+          <p className="field-error">{settingsFields.default_penalty}</p>
+        ) : (
+          <p className="field-hint">
+            0 disables negative marking. Skipped questions are never penalized,
+            and a total never drops below zero.
+          </p>
+        )}
+      </label>
     </div>
   )
 
@@ -393,6 +474,8 @@ function LoadedEditor({
             index={index}
             count={questions.length}
             editable={editable}
+            defaultPoints={settings.defaultPoints}
+            defaultPenalty={settings.defaultPenalty}
             onMove={moveQuestion}
             onDelete={deleteQuestion}
             onSaveState={onQuestionSaveState}

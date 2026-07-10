@@ -259,6 +259,12 @@ function AssignedCard({
           {formatDuration(quiz.duration_sec)}
           {quiz.status === 'live' && ` · closes ${formatClock(quiz.ends_at)}`}
         </p>
+        {quiz.negative_marking && (
+          <p className="assigned-negative-marking">
+            Negative marking - wrong answers subtract marks; skipped questions
+            don&rsquo;t.
+          </p>
+        )}
       </div>
 
       <CardBody quiz={quiz} state={state} />

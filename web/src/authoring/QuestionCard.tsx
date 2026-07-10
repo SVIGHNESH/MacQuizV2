@@ -16,6 +16,9 @@ interface QuestionCardProps {
   count: number
   /** False once the quiz left draft: the content is a frozen snapshot. */
   editable: boolean
+  /** The quiz's marking defaults, shown as the blank inputs' placeholders. */
+  defaultPoints: number
+  defaultPenalty: number
   onMove: (id: string, direction: -1 | 1) => void
   onDelete: (id: string) => Promise<void>
   onSaveState: (id: string, state: SaveState) => void
@@ -39,6 +42,8 @@ export default function QuestionCard({
   index,
   count,
   editable,
+  defaultPoints,
+  defaultPenalty,
   onMove,
   onDelete,
   onSaveState,
@@ -353,18 +358,43 @@ export default function QuestionCard({
 
       <div className="field-row">
         <label className="field field-points">
-          <span className="field-label">Points</span>
+          <span className="field-label">Marks</span>
           <input
             className="input input-points tabular"
             type="number"
             min={0.5}
             max={1000}
             step={0.5}
+            placeholder={`${defaultPoints}`}
             value={Number.isFinite(draft.points) ? draft.points : ''}
             disabled={!editable}
             onChange={(e) => edit({ points: e.target.valueAsNumber })}
           />
-          {fields.points && <p className="field-error">{fields.points}</p>}
+          {fields.points ? (
+            <p className="field-error">{fields.points}</p>
+          ) : (
+            <p className="field-hint">Blank uses the quiz default.</p>
+          )}
+        </label>
+
+        <label className="field field-points">
+          <span className="field-label">Negative marks</span>
+          <input
+            className="input input-points tabular"
+            type="number"
+            min={0}
+            max={1000}
+            step={0.5}
+            placeholder={`${defaultPenalty}`}
+            value={Number.isFinite(draft.penalty) ? draft.penalty : ''}
+            disabled={!editable}
+            onChange={(e) => edit({ penalty: e.target.valueAsNumber })}
+          />
+          {fields.penalty ? (
+            <p className="field-error">{fields.penalty}</p>
+          ) : (
+            <p className="field-hint">Cost of a wrong answer.</p>
+          )}
         </label>
 
         <label className="field field-topic">

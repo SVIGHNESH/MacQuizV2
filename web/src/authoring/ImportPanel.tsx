@@ -9,20 +9,21 @@ const POLL_MS = 1200
  * The example file for docs/07 section 2 step 1's template: one row per
  * question type, showing the correct-answer convention each type expects
  * (option letter, comma-separated letters, true/false, |-separated accepted
- * answers) plus the optional topic tag that feeds topic_strengths. Kept in
- * sync with the server by the import e2e suite, which uploads this exact
- * download and expects every row to validate.
+ * answers) plus the optional columns - topic (feeds topic_strengths) and
+ * penalty (negative marks for a wrong answer; blank inherits the quiz's
+ * default). Kept in sync with the server by the import e2e suite, which
+ * uploads this exact download and expects every row to validate.
  */
 const TEMPLATE_ROWS = [
   ['type', 'question', 'option_a', 'option_b', 'option_c', 'option_d',
-    'option_e', 'option_f', 'correct', 'points', 'topic'],
+    'option_e', 'option_f', 'correct', 'points', 'penalty', 'topic'],
   ['single', 'Which planet is known as the Red Planet?',
-    'Mars', 'Venus', 'Jupiter', 'Mercury', '', '', 'a', '2', 'astronomy'],
+    'Mars', 'Venus', 'Jupiter', 'Mercury', '', '', 'a', '2', '0.5', 'astronomy'],
   ['multi', 'Which of these are prime numbers?',
-    '2', '3', '4', '9', '11', '', 'a,b,e', '3', 'arithmetic'],
-  ['truefalse', 'The Sun is a star.', '', '', '', '', '', '', 'true', '1', 'astronomy'],
+    '2', '3', '4', '9', '11', '', 'a,b,e', '3', '', 'arithmetic'],
+  ['truefalse', 'The Sun is a star.', '', '', '', '', '', '', 'true', '1', '', 'astronomy'],
   ['short', 'What does CPU stand for?', '', '', '', '', '', '',
-    'Central Processing Unit|central processing unit', '2', 'computing'],
+    'Central Processing Unit|central processing unit', '2', '1', 'computing'],
 ]
 
 /** The "downloadable error report" of docs/07 section 2. */

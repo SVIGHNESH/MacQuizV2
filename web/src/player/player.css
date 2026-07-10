@@ -128,6 +128,22 @@
   color: var(--color-text-secondary);
 }
 
+/* Amber is evidence, not alarm: the marking rule is a fact of this quiz the
+   student should read before starting, same tone as the guardrail notices. */
+.assigned-negative-marking {
+  margin: 4px 0 0;
+  font: 500 11.5px/1.4 var(--font-sans);
+  color: var(--color-warning-on-tint);
+}
+
+/* Rides the question eyebrow: the stakes of this one question. */
+.player-question-marks {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* The card body grows so every action button lines up across the row. */
 .assigned-status,
 .assigned-note,

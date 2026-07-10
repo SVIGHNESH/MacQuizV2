@@ -761,6 +761,13 @@ export default function AttemptPlayer({
               <div className="player-question-headline">
                 <span className="player-question-eyebrow">
                   Question {safeIndex + 1} of {questionCount}
+                  <span className="player-question-marks tabular">
+                    {' · '}
+                    {currentQuestion.points}{' '}
+                    {currentQuestion.points === 1 ? 'mark' : 'marks'}
+                    {currentQuestion.penalty > 0 &&
+                      ` · −${currentQuestion.penalty} if wrong`}
+                  </span>
                 </span>
                 <h2 className="player-question-text">
                   {currentQuestion.body.text}

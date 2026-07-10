@@ -265,12 +265,15 @@ const (
 // AssignedQuiz The student-facing quiz shape - window, budget, size, and the caller's own attempt history. Never the owner, the guardrail internals, or (structurally) a question.
 type AssignedQuiz struct {
 	// Attempts The caller's own attempts, oldest first.
-	Attempts      []AttemptSummary   `json:"attempts"`
-	DurationSec   int                `json:"duration_sec"`
-	EndsAt        time.Time          `json:"ends_at"`
-	Id            openapi_types.UUID `json:"id"`
-	MaxAttempts   int                `json:"max_attempts"`
-	QuestionCount int                `json:"question_count"`
+	Attempts    []AttemptSummary   `json:"attempts"`
+	DurationSec int                `json:"duration_sec"`
+	EndsAt      time.Time          `json:"ends_at"`
+	Id          openapi_types.UUID `json:"id"`
+	MaxAttempts int                `json:"max_attempts"`
+
+	// NegativeMarking True when any question in the pinned snapshot carries a penalty, so the student knows the rule before starting. Wrong answers subtract marks; unanswered questions never do.
+	NegativeMarking bool `json:"negative_marking"`
+	QuestionCount   int  `json:"question_count"`
 
 	// ResultsReleasedAt Null means scores are withheld.
 	ResultsReleasedAt *time.Time `json:"results_released_at"`
@@ -349,9 +352,12 @@ type AttemptDetail struct {
 
 // AttemptQuestion One snapshot question as the player sees it. The answer key is structurally absent; when the quiz shuffles, positions are renumbered densely in the per-attempt order.
 type AttemptQuestion struct {
-	Body     QuestionBody        `json:"body"`
-	Id       openapi_types.UUID  `json:"id"`
-	Options  *[]QuestionOption   `json:"options,omitempty"`
+	Body    QuestionBody       `json:"body"`
+	Id      openapi_types.UUID `json:"id"`
+	Options *[]QuestionOption  `json:"options,omitempty"`
+
+	// Penalty Marks subtracted if this question is answered wrong, already resolved against the quiz's marking defaults. 0 means no negative marking; unanswered questions are never penalized.
+	Penalty  float32             `json:"penalty"`
 	Points   float32             `json:"points"`
 	Position int                 `json:"position"`
 	Type     AttemptQuestionType `json:"type"`

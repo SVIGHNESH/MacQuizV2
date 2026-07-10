@@ -119,7 +119,10 @@ All attempt terminations go through one idempotent routine `submit(attempt_id, k
 
 Submission enqueues a grading job.
 Choice and true/false questions compare against the snapshot key; short answers use normalized exact/numeric matching.
-Grading writes `is_correct`, `points_awarded`, and the attempt `score`, then emits a `graded` event.
+A correct answer earns the question's marks; an answered-but-wrong one subtracts its penalty (negative marking).
+Marks and penalty resolve per question at publish from the quiz's `default_points`/`default_penalty` unless the question overrides them, and are frozen in the version snapshot.
+Unanswered questions score 0 and are never penalized, and the attempt total floors at zero.
+Grading writes `is_correct`, `points_awarded` (which may be negative for a penalized answer), and the attempt `score`, then emits a `graded` event.
 
 ## 5. Rate limits
 

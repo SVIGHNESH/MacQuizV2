@@ -1541,6 +1541,8 @@ export interface components {
             body: components["schemas"]["QuestionBody"];
             options?: components["schemas"]["QuestionOption"][];
             points: number;
+            /** @description Marks subtracted if this question is answered wrong, already resolved against the quiz's marking defaults. 0 means no negative marking; unanswered questions are never penalized. */
+            penalty: number;
         };
         AttemptAnswer: {
             /** Format: uuid */
@@ -1603,6 +1605,8 @@ export interface components {
             max_attempts: number;
             version: number;
             question_count: number;
+            /** @description True when any question in the pinned snapshot carries a penalty, so the student knows the rule before starting. Wrong answers subtract marks; unanswered questions never do. */
+            negative_marking: boolean;
             /**
              * Format: date-time
              * @description Null means scores are withheld.

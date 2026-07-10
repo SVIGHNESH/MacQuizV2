@@ -766,15 +766,18 @@ func assignedStudents(ctx context.Context, db querier, quizID string) ([]Assigne
 // attempt history so the list can offer resume, count slots, and link to
 // released results.
 type AssignedQuiz struct {
-	ID                string           `json:"id"`
-	Title             string           `json:"title"`
-	Status            string           `json:"status"` // derived: upcoming quizzes read scheduled, open ones live
-	StartsAt          *time.Time       `json:"starts_at"`
-	EndsAt            *time.Time       `json:"ends_at"`
-	DurationSec       int              `json:"duration_sec"`
-	MaxAttempts       int              `json:"max_attempts"`
-	Version           int              `json:"version"`
-	QuestionCount     int              `json:"question_count"`
+	ID            string     `json:"id"`
+	Title         string     `json:"title"`
+	Status        string     `json:"status"` // derived: upcoming quizzes read scheduled, open ones live
+	StartsAt      *time.Time `json:"starts_at"`
+	EndsAt        *time.Time `json:"ends_at"`
+	DurationSec   int        `json:"duration_sec"`
+	MaxAttempts   int        `json:"max_attempts"`
+	Version       int        `json:"version"`
+	QuestionCount int        `json:"question_count"`
+	// NegativeMarking is true when any snapshot question carries a penalty,
+	// so the student knows the rule before starting an attempt.
+	NegativeMarking   bool             `json:"negative_marking"`
 	ResultsReleasedAt *time.Time       `json:"results_released_at"`
 	Attempts          []AttemptSummary `json:"attempts"`
 }
@@ -799,6 +802,8 @@ func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT z.id, z.title, z.status, z.starts_at, z.ends_at, z.duration_sec,
 		        z.max_attempts, z.version, jsonb_array_length(v.questions),
+		        EXISTS (SELECT 1 FROM jsonb_array_elements(v.questions) q
+		                WHERE (q->>'penalty')::numeric > 0),
 		        z.results_released_at
 		 FROM quiz_assignments a
 		 JOIN quizzes z ON z.id = a.quiz_id
@@ -816,7 +821,7 @@ func (s *Service) AssignedQuizzes(ctx context.Context, actor authusers.User) ([]
 		var q AssignedQuiz
 		if err := rows.Scan(&q.ID, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 			&q.DurationSec, &q.MaxAttempts, &q.Version, &q.QuestionCount,
-			&q.ResultsReleasedAt); err != nil {
+			&q.NegativeMarking, &q.ResultsReleasedAt); err != nil {
 			return nil, fmt.Errorf("scan assigned quiz: %w", err)
 		}
 		q.Status = string(effectiveStatus(apischema.QuizStatus(q.Status), q.StartsAt, q.EndsAt, now))

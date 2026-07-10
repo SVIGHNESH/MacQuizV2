@@ -198,6 +198,38 @@ func TestNegativeMarkingFlow(t *testing.T) {
 		return id
 	}
 
+	t.Run("students see the negative-marking flag before starting", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "GET", "/api/v1/quizzes/assigned", nil, mixed)
+		if status != 200 {
+			t.Fatalf("assigned list = %d %v", status, body)
+		}
+		assigned := body["quizzes"].([]any)
+		if len(assigned) != 1 {
+			t.Fatalf("assigned = %d quizzes, want 1", len(assigned))
+		}
+		q := assigned[0].(map[string]any)
+		if q["negative_marking"] != true {
+			t.Fatalf("negative_marking = %v, want true (every question carries a penalty)", q["negative_marking"])
+		}
+
+		// The player payload carries each question's resolved stakes.
+		status, body, _ = itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/attempts", nil, mixed)
+		if status != 200 && status != 201 {
+			t.Fatalf("start attempt = %d %v", status, body)
+		}
+		byID := map[string]map[string]any{}
+		for _, raw := range body["questions"].([]any) {
+			pq := raw.(map[string]any)
+			byID[pq["id"].(string)] = pq
+		}
+		if pq := byID[inheritQ]; pq["points"] != float64(4) || pq["penalty"] != float64(1) {
+			t.Fatalf("player inherit question = %v/%v, want 4/1", pq["points"], pq["penalty"])
+		}
+		if pq := byID[overrideQ]; pq["points"] != float64(6) || pq["penalty"] != float64(2) {
+			t.Fatalf("player override question = %v/%v, want 6/2", pq["points"], pq["penalty"])
+		}
+	})
+
 	// mixed: inherit-question wrong (-1), override-question right (+6) -> 5.
 	// skipper: inherit-question wrong (-1), override UNANSWERED (no penalty)
 	// -> -1, floored to 0.
