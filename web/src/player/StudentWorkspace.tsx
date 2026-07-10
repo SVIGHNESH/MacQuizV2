@@ -4,6 +4,7 @@ import AssignedList from './AssignedList'
 import AttemptPlayer, { type PlayerEntry } from './AttemptPlayer'
 import ResultReview from './ResultReview'
 import MyAnalytics from './MyAnalytics'
+import SdcTeamPanel from '../components/SdcTeamPanel'
 import '../authoring/authoring.css'
 import './player.css'
 
@@ -12,6 +13,7 @@ type View =
   | { kind: 'player'; entry: PlayerEntry }
   | { kind: 'result'; attemptId: string }
   | { kind: 'analytics' }
+  | { kind: 'team' }
 
 // docs/05 section 3's user:{id}:notify envelope, same shape as the
 // attempt:{id} channel's RealtimeEvent (AttemptPlayer.tsx) minus attempt_id -
@@ -141,9 +143,9 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className={`rail-item${view.kind !== 'analytics' ? ' rail-item-active' : ''}`}
+            className={`rail-item${view.kind !== 'analytics' && view.kind !== 'team' ? ' rail-item-active' : ''}`}
             type="button"
-            aria-current={view.kind !== 'analytics' ? 'page' : undefined}
+            aria-current={view.kind !== 'analytics' && view.kind !== 'team' ? 'page' : undefined}
             onClick={toList}
           >
             <span className="rail-dot" aria-hidden="true" />
@@ -157,6 +159,15 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
           >
             <span className="rail-dot" aria-hidden="true" />
             My analytics
+          </button>
+          <button
+            className={`rail-item${view.kind === 'team' ? ' rail-item-active' : ''}`}
+            type="button"
+            aria-current={view.kind === 'team' ? 'page' : undefined}
+            onClick={() => setView({ kind: 'team' })}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            SDC Team
           </button>
         </nav>
 
@@ -218,6 +229,7 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
           <ResultReview attemptId={view.attemptId} onBack={toList} />
         )}
         {view.kind === 'analytics' && <MyAnalytics studentId={user.id} />}
+        {view.kind === 'team' && <SdcTeamPanel eyebrow="Student workspace" />}
       </main>
     </div>
   )

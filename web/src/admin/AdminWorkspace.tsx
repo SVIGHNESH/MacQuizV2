@@ -5,10 +5,11 @@ import GroupsPanel from './GroupsPanel'
 import OrgStatsPanel from './OrgStatsPanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import AuditPanel from './AuditPanel'
+import SdcTeamPanel from '../components/SdcTeamPanel'
 import '../authoring/authoring.css'
 import './admin.css'
 
-type View = 'overview' | 'users' | 'groups' | 'analytics' | 'audit'
+type View = 'overview' | 'users' | 'groups' | 'analytics' | 'audit' | 'team'
 
 function initials(fullName: string): string {
   return fullName
@@ -81,6 +82,14 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
             <span className="rail-dot" aria-hidden="true" />
             Audit log
           </button>
+          <button
+            className={`rail-item${view === 'team' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView('team')}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            SDC Team
+          </button>
         </nav>
 
         <div className="rail-user">
@@ -116,6 +125,8 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
           <GroupsPanel />
         ) : view === 'analytics' ? (
           <AnalyticsPanel />
+        ) : view === 'team' ? (
+          <SdcTeamPanel eyebrow="Admin console" />
         ) : (
           <AuditPanel />
         )}

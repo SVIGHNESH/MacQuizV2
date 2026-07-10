@@ -3,9 +3,14 @@ import { useAuth, type SessionUser } from '../auth/context'
 import QuizEditor from './QuizEditor'
 import QuizList from './QuizList'
 import TeacherAnalyticsPanel from './TeacherAnalyticsPanel'
+import SdcTeamPanel from '../components/SdcTeamPanel'
 import './authoring.css'
 
-type View = { kind: 'list' } | { kind: 'editor'; quizId: string } | { kind: 'analytics' }
+type View =
+  | { kind: 'list' }
+  | { kind: 'editor'; quizId: string }
+  | { kind: 'analytics' }
+  | { kind: 'team' }
 
 function initials(fullName: string): string {
   return fullName
@@ -37,7 +42,7 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className={`rail-item${view.kind !== 'analytics' ? ' rail-item-active' : ''}`}
+            className={`rail-item${view.kind !== 'analytics' && view.kind !== 'team' ? ' rail-item-active' : ''}`}
             type="button"
             onClick={() => setView({ kind: 'list' })}
           >
@@ -51,6 +56,14 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
           >
             <span className="rail-dot" aria-hidden="true" />
             Analytics
+          </button>
+          <button
+            className={`rail-item${view.kind === 'team' ? ' rail-item-active' : ''}`}
+            type="button"
+            onClick={() => setView({ kind: 'team' })}
+          >
+            <span className="rail-dot" aria-hidden="true" />
+            SDC Team
           </button>
         </nav>
 
@@ -83,6 +96,8 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
           <QuizList onOpen={(quizId) => setView({ kind: 'editor', quizId })} />
         ) : view.kind === 'analytics' ? (
           <TeacherAnalyticsPanel teacherId={user.id} />
+        ) : view.kind === 'team' ? (
+          <SdcTeamPanel eyebrow="Teacher workspace" />
         ) : (
           <QuizEditor
             quizId={view.quizId}

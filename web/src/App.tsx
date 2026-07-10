@@ -45,6 +45,14 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <Screens />
+        {/* The SDC credit floats over every screen, the quiz player
+            included. pointer-events: none - it is a watermark, so it must
+            never intercept a click meant for the page under it. */}
+        <img
+          className="sdc-float"
+          src="/sdc-logo.png"
+          alt="Software Development Cell"
+        />
       </AuthProvider>
     </ToastProvider>
   )

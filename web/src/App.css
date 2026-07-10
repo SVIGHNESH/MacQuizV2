@@ -544,3 +544,42 @@
   font: 450 12.5px/1.5 var(--font-sans);
   color: var(--color-text-secondary);
 }
+
+/* --- SDC watermark ------------------------------------------------------ */
+
+/* Floats over every screen, the quiz player included. pointer-events: none
+   keeps it a pure watermark - nothing under it becomes unclickable - and the
+   gentle bob is what makes it read as "hovering" rather than stuck on. */
+.sdc-float {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  width: 84px;
+  z-index: 90;
+  opacity: 0.85;
+  pointer-events: none;
+  user-select: none;
+  animation: sdc-hover 3.6s ease-in-out infinite;
+}
+
+@keyframes sdc-hover {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* In the quiz player the footer's submit actions own the bottom-right
+   corner; the watermark rides just above them instead of on them. */
+body:has(.player-footer) .sdc-float {
+  bottom: 88px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdc-float {
+    animation: none;
+  }
+}
