@@ -11,12 +11,13 @@ import (
 // student can even see a quiz.
 
 func sampleQuestion() Question {
+	points := 2.0
 	return Question{
 		ID: "q1", QuizID: "z1", Position: 1, Type: "single",
 		Body:    json.RawMessage(`{"text":"Pick one"}`),
 		Options: json.RawMessage(`[{"key":"a","text":"Red"},{"key":"b","text":"Blue"}]`),
 		Correct: json.RawMessage(`"a"`),
-		Points:  2, Source: "manual",
+		Points:  &points, Source: "manual",
 	}
 }
 

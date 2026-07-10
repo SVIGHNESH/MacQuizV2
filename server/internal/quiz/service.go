@@ -79,7 +79,11 @@ type Question struct {
 	Body     json.RawMessage `json:"body"`
 	Options  json.RawMessage `json:"options,omitempty"`
 	Correct  json.RawMessage `json:"-"`
-	Points   float64         `json:"points"`
+	// Points and Penalty are nil when the question inherits the quiz's
+	// default_points/default_penalty; publish resolves the effective values
+	// into the version snapshot.
+	Points  *float64 `json:"points"`
+	Penalty *float64 `json:"penalty"`
 	// Topic is the free-text taxonomy tag student_stats.topic_strengths
 	// aggregates against; nil when the question is untagged.
 	Topic  *string `json:"topic"`
@@ -93,6 +97,8 @@ type QuizPatch struct {
 	Title            *string
 	MaxAttempts      *int
 	ShuffleQuestions *bool
+	DefaultPoints    *float64
+	DefaultPenalty   *float64
 }
 
 // Service owns quiz and question authoring. All multi-statement writes use
@@ -148,7 +154,8 @@ func (s *Service) SetEmailSender(e EmailSender) {
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,
 	max_attempts, shuffle_questions, published_at, version, created_at,
-	release_policy, results_released_at, guardrails`
+	release_policy, results_released_at, guardrails,
+	default_points::float8, default_penalty::float8`
 
 // decodeGuardrails fills q.Guardrails from the raw jsonb the guardrails column
 // holds. It is NULL (nil bytes) until publish, which must leave the pointer nil
@@ -168,13 +175,18 @@ func decodeGuardrails(raw []byte, q *Quiz) error {
 func scanQuiz(scan func(dest ...any) error) (Quiz, error) {
 	var q Quiz
 	var guardrailsJSON []byte
+	// database/sql cannot scan a float into the generated float32 fields, so
+	// the marking defaults come through float64 temporaries.
+	var defaultPoints, defaultPenalty float64
 	err := scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt, &q.EndsAt,
 		&q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions, &q.PublishedAt,
 		&q.Version, &q.CreatedAt, &q.ReleasePolicy, &q.ResultsReleasedAt,
-		&guardrailsJSON)
+		&guardrailsJSON, &defaultPoints, &defaultPenalty)
 	if err != nil {
 		return q, err
 	}
+	q.DefaultPoints = float32(defaultPoints)
+	q.DefaultPenalty = float32(defaultPenalty)
 	return q, decodeGuardrails(guardrailsJSON, &q)
 }
 
@@ -221,15 +233,20 @@ func (s *Service) ListQuizzes(ctx context.Context, actor authusers.User) ([]Quiz
 	for rows.Next() {
 		var q Quiz
 		var guardrailsJSON []byte
-		// quizColumns now carries guardrails, so this list scan - which appends
-		// count(q.id) and therefore can't reuse scanQuiz - must read it too, or
-		// the trailing count lands in the wrong column and the query 500s.
+		var defaultPoints, defaultPenalty float64
+		// quizColumns carries guardrails and the marking defaults, so this
+		// list scan - which appends count(q.id) and therefore can't reuse
+		// scanQuiz - must read them too, or the trailing count lands in the
+		// wrong column and the query 500s.
 		if err := rows.Scan(&q.Id, &q.OwnerId, &q.Title, &q.Status, &q.StartsAt,
 			&q.EndsAt, &q.DurationSec, &q.MaxAttempts, &q.ShuffleQuestions,
 			&q.PublishedAt, &q.Version, &q.CreatedAt, &q.ReleasePolicy,
-			&q.ResultsReleasedAt, &guardrailsJSON, &q.QuestionCount); err != nil {
+			&q.ResultsReleasedAt, &guardrailsJSON, &defaultPoints, &defaultPenalty,
+			&q.QuestionCount); err != nil {
 			return nil, fmt.Errorf("scan quiz: %w", err)
 		}
+		q.DefaultPoints = float32(defaultPoints)
+		q.DefaultPenalty = float32(defaultPenalty)
 		if err := decodeGuardrails(guardrailsJSON, &q); err != nil {
 			return nil, err
 		}
@@ -302,13 +319,23 @@ func (s *Service) UpdateQuiz(ctx context.Context, actor authusers.User, id strin
 		q.ShuffleQuestions = *patch.ShuffleQuestions
 		changes["shuffle_questions"] = *patch.ShuffleQuestions
 	}
+	if patch.DefaultPoints != nil && float32(*patch.DefaultPoints) != q.DefaultPoints {
+		q.DefaultPoints = float32(*patch.DefaultPoints)
+		changes["default_points"] = *patch.DefaultPoints
+	}
+	if patch.DefaultPenalty != nil && float32(*patch.DefaultPenalty) != q.DefaultPenalty {
+		q.DefaultPenalty = float32(*patch.DefaultPenalty)
+		changes["default_penalty"] = *patch.DefaultPenalty
+	}
 	if len(changes) == 0 {
 		return q, nil
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE quizzes SET title = $1, max_attempts = $2, shuffle_questions = $3
-		 WHERE id = $4`, q.Title, q.MaxAttempts, q.ShuffleQuestions, id); err != nil {
+		`UPDATE quizzes SET title = $1, max_attempts = $2, shuffle_questions = $3,
+		        default_points = $4, default_penalty = $5
+		 WHERE id = $6`, q.Title, q.MaxAttempts, q.ShuffleQuestions,
+		q.DefaultPoints, q.DefaultPenalty, id); err != nil {
 		return Quiz{}, fmt.Errorf("update quiz: %w", err)
 	}
 	if err := audit.Write(ctx, tx, actor.ID, "quizzes.updated", "quiz", id, changes); err != nil {
@@ -347,7 +374,7 @@ func (s *Service) DeleteQuiz(ctx context.Context, actor authusers.User, id strin
 	return nil
 }
 
-const questionColumns = `id, quiz_id, position, type, body, options, correct, points::float8, topic, source`
+const questionColumns = `id, quiz_id, position, type, body, options, correct, points::float8, penalty::float8, topic, source`
 
 func scanQuestion(scan func(dest ...any) error) (Question, error) {
 	var q Question
@@ -356,7 +383,7 @@ func scanQuestion(scan func(dest ...any) error) (Question, error) {
 	// truefalse and short questions.
 	var body, options, correct []byte
 	err := scan(&q.ID, &q.QuizID, &q.Position, &q.Type, &body, &options,
-		&correct, &q.Points, &q.Topic, &q.Source)
+		&correct, &q.Points, &q.Penalty, &q.Topic, &q.Source)
 	q.Body, q.Options, q.Correct = body, options, correct
 	return q, err
 }
@@ -375,12 +402,12 @@ func (s *Service) AddQuestion(ctx context.Context, actor authusers.User, quizID 
 	}
 
 	q, err := scanQuestion(tx.QueryRowContext(ctx,
-		`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, topic)
+		`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, penalty, topic)
 		 SELECT $1, coalesce(max(position), 0) + 1,
-		        $2::question_type, $3::jsonb, $4::jsonb, $5::jsonb, $6::numeric, $7
+		        $2::question_type, $3::jsonb, $4::jsonb, $5::jsonb, $6::numeric, $7::numeric, $8
 		 FROM questions WHERE quiz_id = $1
 		 RETURNING `+questionColumns,
-		quizID, in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.topic).Scan)
+		quizID, in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.penalty, in.topic).Scan)
 	if err != nil {
 		return Question{}, fmt.Errorf("insert question: %w", err)
 	}
@@ -540,11 +567,11 @@ func (s *Service) CommitImport(ctx context.Context, actor authusers.User, import
 	inserted := make([]Question, 0, len(rows))
 	for i, row := range rows {
 		q, err := scanQuestion(tx.QueryRowContext(ctx,
-			`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, topic, source, import_id)
-			 VALUES ($1, $2, $3::question_type, $4::jsonb, $5::jsonb, $6::jsonb, $7::numeric, $8, 'import', $9)
+			`INSERT INTO questions (quiz_id, position, type, body, options, correct, points, penalty, topic, source, import_id)
+			 VALUES ($1, $2, $3::question_type, $4::jsonb, $5::jsonb, $6::jsonb, $7::numeric, $8::numeric, $9, 'import', $10)
 			 RETURNING `+questionColumns,
 			quizID, basePos+i+1, row.Input.Type, row.Input.Body, nullableJSON(row.Input.Options),
-			row.Input.Correct, row.Input.points, row.Input.topic, importID).Scan)
+			row.Input.Correct, row.Input.points, row.Input.penalty, row.Input.topic, importID).Scan)
 		if err != nil {
 			return Import{}, nil, fmt.Errorf("insert imported question (row %d): %w", row.Row, err)
 		}
@@ -582,10 +609,10 @@ func (s *Service) UpdateQuestion(ctx context.Context, actor authusers.User, ques
 	}
 
 	q, err := scanQuestion(tx.QueryRowContext(ctx,
-		`UPDATE questions SET type = $1, body = $2, options = $3, correct = $4, points = $5, topic = $6
-		 WHERE id = $7
+		`UPDATE questions SET type = $1, body = $2, options = $3, correct = $4, points = $5, penalty = $6, topic = $7
+		 WHERE id = $8
 		 RETURNING `+questionColumns,
-		in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.topic, questionID).Scan)
+		in.Type, in.Body, nullableJSON(in.Options), in.Correct, in.points, in.penalty, in.topic, questionID).Scan)
 	if err != nil {
 		return Question{}, fmt.Errorf("update question: %w", err)
 	}

@@ -99,11 +99,11 @@ function questionCount(page) {
 
 // Chromium writes a `.crdownload` placeholder first and renames it once the
 // blob is flushed, so a bare readdir can catch a half-written file.
-async function waitForDownload(dir, timeout = 5000) {
+async function waitForDownload(dir, prefix = '', timeout = 5000) {
   const deadline = Date.now() + timeout
   for (;;) {
     const names = await readdir(dir).catch(() => [])
-    const done = names.find((n) => n.endsWith('.csv'))
+    const done = names.find((n) => n.endsWith('.csv') && n.startsWith(prefix))
     if (done) return { name: done, body: await readFile(`${dir}/${done}`, 'utf8') }
     if (Date.now() > deadline) throw new Error(`no download landed in ${dir}`)
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -281,6 +281,37 @@ async function importFlow(browser, badCsvPath, goodCsvPath) {
       'committing adds both imported rows as questions',
     )
     await shot(page, '23-import-committed.png')
+  }
+
+  // --- The example template round-trips: its own download must validate ---
+  {
+    await clickButtonWithText(page, 'Download example CSV', '.import-panel')
+    const template = await waitForDownload(
+      DOWNLOAD_DIR,
+      'question-import-template',
+    ).catch(() => null)
+    check(
+      template !== null &&
+        template.body.startsWith('type,question,option_a'),
+      'the idle panel downloads the example CSV with the template header',
+    )
+    check(
+      ['single', 'multi', 'truefalse', 'short'].every((t) =>
+        (template?.body ?? '').includes(`${t},`),
+      ),
+      'the example covers every question type',
+    )
+
+    const input = await page.$('.import-panel input[type=file]')
+    await input.uploadFile(`${DOWNLOAD_DIR}/${template.name}`)
+    check(
+      await waitForText(page, '.import-panel', '4 questions validated and ready to add', 8000),
+      'uploading the example back validates all 4 rows clean',
+    )
+    await shot(page, '24-import-template-ready.png')
+    // Cancel rather than commit: the committed-count checks above stay the
+    // suite's source of truth for what landed in the quiz.
+    await clickButtonWithText(page, 'Cancel', '.import-panel')
   }
 
   await page.close()

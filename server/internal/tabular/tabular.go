@@ -10,7 +10,28 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strings"
 )
+
+// ExcessCells reports a record whose CONTENT overflows the header - the
+// signature of an unquoted delimiter splitting a cell in two and shifting
+// every later column right. Callers show the returned message instead of
+// letting their per-column checks blame the wrong cells. Trailing empty
+// cells are not an overflow: spreadsheet software pads rows with
+// styled-but-blank cells, and a bare trailing comma is harmless.
+func ExcessCells(rec []string, headerWidth int) (string, bool) {
+	if len(rec) <= headerWidth {
+		return "", false
+	}
+	for _, cell := range rec[headerWidth:] {
+		if strings.TrimSpace(cell) != "" {
+			return fmt.Sprintf(
+				"has %d cells but the header names %d columns - a cell containing a comma must be wrapped in double quotes",
+				len(rec), headerWidth), true
+		}
+	}
+	return "", false
+}
 
 // xlsxSignature is the leading four bytes of every .xlsx file - it is a ZIP
 // archive under the hood - so Records can tell the two supported formats

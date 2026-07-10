@@ -705,10 +705,15 @@ type PublishQuizRequestReleasePolicy string
 
 // Question A question as any client may see it. The answer key is NOT part of this schema; only the owner-facing TeacherQuestion carries it, and the student serializer strips it structurally.
 type Question struct {
-	Body     QuestionBody       `json:"body"`
-	Id       openapi_types.UUID `json:"id"`
-	Options  *[]QuestionOption  `json:"options,omitempty"`
-	Points   float32            `json:"points"`
+	Body    QuestionBody       `json:"body"`
+	Id      openapi_types.UUID `json:"id"`
+	Options *[]QuestionOption  `json:"options,omitempty"`
+
+	// Penalty Marks subtracted when this question is answered wrong. Null means the quiz's default_penalty applies.
+	Penalty *float32 `json:"penalty"`
+
+	// Points Null means the quiz's default_points applies.
+	Points   *float32           `json:"points"`
 	Position int                `json:"position"`
 	QuizId   openapi_types.UUID `json:"quiz_id"`
 	Source   QuestionSource     `json:"source"`
@@ -740,8 +745,11 @@ type QuestionInput struct {
 	// Options Required for single/multi (2-8 entries); omitted otherwise.
 	Options *[]QuestionOption `json:"options,omitempty"`
 
-	// Points Defaults to 1; must be positive.
-	Points *float32 `json:"points,omitempty"`
+	// Penalty Omitted or null means the quiz's default_penalty applies; when set, must be between 0 and 1000.
+	Penalty *float32 `json:"penalty"`
+
+	// Points Omitted or null means the quiz's default_points applies; when set, must be positive and at most 1000.
+	Points *float32 `json:"points"`
 
 	// Topic Optional free-text topic tag, 1-60 characters after trimming. Omitted, null, or blank leaves the question untagged.
 	Topic *string           `json:"topic"`
@@ -764,9 +772,15 @@ type QuestionResponse struct {
 
 // Quiz defines model for Quiz.
 type Quiz struct {
-	CreatedAt   time.Time  `json:"created_at"`
-	DurationSec *int       `json:"duration_sec"`
-	EndsAt      *time.Time `json:"ends_at"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// DefaultPenalty Marks subtracted for an answered-but-wrong question that does not set its own penalty. 0 disables negative marking quiz-wide. Unanswered questions are never penalized, and an attempt's total never drops below zero.
+	DefaultPenalty float32 `json:"default_penalty"`
+
+	// DefaultPoints The quiz-wide marking scheme: marks a question earns when it does not set its own points. Resolved into the version snapshot at publish.
+	DefaultPoints float32    `json:"default_points"`
+	DurationSec   *int       `json:"duration_sec"`
+	EndsAt        *time.Time `json:"ends_at"`
 
 	// Guardrails The anti-cheat ladder frozen at publish. Null while the quiz is a draft (never published); populated from the publish request once scheduled, so reopening a scheduled quiz reseeds its real settings.
 	Guardrails    *Guardrails        `json:"guardrails"`
@@ -966,10 +980,15 @@ type TeacherQuestion struct {
 	Body QuestionBody `json:"body"`
 
 	// Correct The answer key. The option key (single), option keys (multi), a boolean (truefalse), or {accepted: [...]} (short). Owner-facing responses only.
-	Correct  interface{}           `json:"correct"`
-	Id       openapi_types.UUID    `json:"id"`
-	Options  *[]QuestionOption     `json:"options,omitempty"`
-	Points   float32               `json:"points"`
+	Correct interface{}        `json:"correct"`
+	Id      openapi_types.UUID `json:"id"`
+	Options *[]QuestionOption  `json:"options,omitempty"`
+
+	// Penalty Marks subtracted when this question is answered wrong. Null means the quiz's default_penalty applies.
+	Penalty *float32 `json:"penalty"`
+
+	// Points Null means the quiz's default_points applies.
+	Points   *float32              `json:"points"`
 	Position int                   `json:"position"`
 	QuizId   openapi_types.UUID    `json:"quiz_id"`
 	Source   TeacherQuestionSource `json:"source"`
@@ -1032,9 +1051,14 @@ type TeacherStudentQuizScoreStatus string
 
 // UpdateQuizRequest defines model for UpdateQuizRequest.
 type UpdateQuizRequest struct {
-	MaxAttempts      *int    `json:"max_attempts,omitempty"`
-	ShuffleQuestions *bool   `json:"shuffle_questions,omitempty"`
-	Title            *string `json:"title,omitempty"`
+	// DefaultPenalty Quiz-wide negative marks per wrong answer; 0 disables.
+	DefaultPenalty *float32 `json:"default_penalty,omitempty"`
+
+	// DefaultPoints Quiz-wide marks per question (draft-only, like the rest).
+	DefaultPoints    *float32 `json:"default_points,omitempty"`
+	MaxAttempts      *int     `json:"max_attempts,omitempty"`
+	ShuffleQuestions *bool    `json:"shuffle_questions,omitempty"`
+	Title            *string  `json:"title,omitempty"`
 }
 
 // UpdateUserRequest defines model for UpdateUserRequest.

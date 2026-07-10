@@ -95,6 +95,13 @@ func ParseUserImportFile(r io.Reader) ([]UserImportRow, []UserImportRowError, er
 			break
 		}
 
+		// An unquoted comma splits a cell and shifts every later column
+		// right; name that instead of blaming the shifted cells.
+		if msg, misaligned := tabular.ExcessCells(rec, len(records[0])); misaligned {
+			errs = append(errs, UserImportRowError{Row: rowNum, Column: "row", Message: msg})
+			continue
+		}
+
 		role := strings.ToLower(get(rec, "role"))
 		email := get(rec, "email")
 		fullName := get(rec, "full_name")

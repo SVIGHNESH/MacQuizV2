@@ -145,16 +145,21 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	// The snapshot is assembled in SQL on purpose: Question tags Correct
 	// with json:"-", so a Go-side marshal would silently drop the answer key
 	// and break grading. jsonb_build_object copies the raw rows.
+	// The marking scheme resolves here: a question's own points/penalty win,
+	// the quiz defaults fill the gaps, and the snapshot carries only the
+	// effective numbers - grading and old attempts never see the indirection.
 	newVersion := q.Version + 1
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO quiz_versions (quiz_id, version, questions, guardrails)
 		 SELECT $1, $2, jsonb_agg(jsonb_build_object(
 		            'id', id, 'position', position, 'type', type, 'body', body,
-		            'options', options, 'correct', correct, 'points', points,
+		            'options', options, 'correct', correct,
+		            'points', coalesce(points, $4::numeric),
+		            'penalty', coalesce(penalty, $5::numeric),
 		            'topic', topic)
 		            ORDER BY position), $3::jsonb
 		 FROM questions WHERE quiz_id = $1`,
-		id, newVersion, guardrailsJSON); err != nil {
+		id, newVersion, guardrailsJSON, q.DefaultPoints, q.DefaultPenalty); err != nil {
 		return Quiz{}, fmt.Errorf("write snapshot: %w", err)
 	}
 

@@ -178,9 +178,11 @@ func (h *Handler) handleGetQuiz(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateQuizRequest struct {
-	Title            *string `json:"title"`
-	MaxAttempts      *int    `json:"max_attempts"`
-	ShuffleQuestions *bool   `json:"shuffle_questions"`
+	Title            *string  `json:"title"`
+	MaxAttempts      *int     `json:"max_attempts"`
+	ShuffleQuestions *bool    `json:"shuffle_questions"`
+	DefaultPoints    *float64 `json:"default_points"`
+	DefaultPenalty   *float64 `json:"default_penalty"`
 }
 
 func (h *Handler) handleUpdateQuiz(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +202,12 @@ func (h *Handler) handleUpdateQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxAttempts != nil && (*req.MaxAttempts < 1 || *req.MaxAttempts > 10) {
 		fields["max_attempts"] = "must be between 1 and 10"
+	}
+	if req.DefaultPoints != nil && (*req.DefaultPoints <= 0 || *req.DefaultPoints > maxPoints) {
+		fields["default_points"] = "must be greater than zero and at most 1000"
+	}
+	if req.DefaultPenalty != nil && (*req.DefaultPenalty < 0 || *req.DefaultPenalty > maxPoints) {
+		fields["default_penalty"] = "must be between 0 and 1000"
 	}
 	if len(fields) > 0 {
 		httpapi.WriteFieldErrors(w, fields)

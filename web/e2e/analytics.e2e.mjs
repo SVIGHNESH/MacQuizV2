@@ -506,6 +506,35 @@ async function teacherAnalyticsTabFlow(browser) {
   )
   check(visibleRows === 1, `searching narrows the roster to one row (got ${visibleRows})`)
 
+  // Quiz mode: picking a quiz flips the roster into a highest-marks ranking
+  // scoped to that quiz alone.
+  await type(page, '.admin-search', '')
+  const quizOptionValue = await page.$eval(
+    '.teacher-analytics-quiz-filter',
+    (el, title) => [...el.options].find((o) => o.textContent === title)?.value ?? '',
+    QUIZ_TITLE,
+  )
+  check(quizOptionValue !== '', 'the quiz filter lists the conducted quiz')
+  await page.select('.teacher-analytics-quiz-filter', quizOptionValue)
+  const rankRows = await page.$$eval('.teacher-quiz-rank-table .qt-row', (rows) =>
+    rows.map((r) => ({
+      rank: r.querySelector('.teacher-rank-num')?.textContent.trim(),
+      email: r.querySelector('.admin-user-email')?.textContent ?? '',
+      score: r.querySelectorAll('.qt-num')[1]?.textContent.trim(),
+    })),
+  )
+  check(
+    rankRows.length === 2 &&
+      rankRows[0].rank === '1' && rankRows[0].email.includes('alice') && rankRows[0].score === '100%' &&
+      rankRows[1].rank === '2' && rankRows[1].email.includes('bob') && rankRows[1].score === '50%',
+    `the quiz ranking orders highest marks first (got ${JSON.stringify(rankRows)})`,
+  )
+  check(
+    (await page.$('.teacher-rank-top')) !== null,
+    'the top scorer\'s rank is highlighted',
+  )
+  await shot(page, '97-teacher-quiz-ranking.png')
+
   await page.close()
 }
 

@@ -75,6 +75,10 @@ type Question struct {
 	Options  json.RawMessage `json:"options,omitempty"`
 	Correct  json.RawMessage `json:"-"`
 	Points   float64         `json:"points"`
+	// Penalty is the marks an answered-but-wrong response costs, already
+	// resolved against the quiz default at publish. Snapshots written before
+	// negative marking existed carry no key and decode to 0 - no penalty.
+	Penalty float64 `json:"penalty"`
 }
 
 // Answer is one autosaved response as resume returns it.
@@ -1086,6 +1090,7 @@ type snapshotWire struct {
 	Options  json.RawMessage `json:"options"`
 	Correct  json.RawMessage `json:"correct"`
 	Points   float64         `json:"points"`
+	Penalty  float64         `json:"penalty"`
 }
 
 // decodeSnapshot parses the immutable question snapshot into player
@@ -1106,6 +1111,7 @@ func decodeSnapshot(raw []byte) ([]Question, error) {
 		questions[i] = Question{
 			ID: w.ID, Position: w.Position, Type: w.Type, Body: w.Body,
 			Options: options, Correct: w.Correct, Points: w.Points,
+			Penalty: w.Penalty,
 		}
 	}
 	return questions, nil

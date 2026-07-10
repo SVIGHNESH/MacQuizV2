@@ -104,8 +104,9 @@ func TestValidateQuestion(t *testing.T) {
 	}
 }
 
-// TestValidateDefaultsPoints checks that omitted points normalize to the
-// schema default of 1.
+// TestValidateDefaultsPoints checks that omitted points and penalty
+// normalize to nil - "inherit the quiz's marking defaults", resolved into
+// the version snapshot at publish - while explicit values pass through.
 func TestValidateDefaultsPoints(t *testing.T) {
 	in := QuestionInput{
 		Type: "truefalse", Body: json.RawMessage(`{"text":"x"}`),
@@ -114,8 +115,23 @@ func TestValidateDefaultsPoints(t *testing.T) {
 	if fields := in.Validate(); len(fields) != 0 {
 		t.Fatalf("Validate() = %v, want valid", fields)
 	}
-	if in.points != 1 {
-		t.Fatalf("normalized points = %v, want 1", in.points)
+	if in.points != nil || in.penalty != nil {
+		t.Fatalf("normalized points/penalty = %v/%v, want nil/nil (inherit)", in.points, in.penalty)
+	}
+
+	points, penalty := 4.0, 1.5
+	in.Points, in.Penalty = &points, &penalty
+	if fields := in.Validate(); len(fields) != 0 {
+		t.Fatalf("Validate() = %v, want valid", fields)
+	}
+	if in.points == nil || *in.points != 4 || in.penalty == nil || *in.penalty != 1.5 {
+		t.Fatalf("normalized points/penalty = %v/%v, want 4/1.5", in.points, in.penalty)
+	}
+
+	bad := -0.5
+	in.Penalty = &bad
+	if fields := in.Validate(); fields["penalty"] == "" {
+		t.Fatalf("Validate() = %v, want a penalty field error", fields)
 	}
 }
 

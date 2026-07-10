@@ -36,7 +36,10 @@ export interface QuestionDraft {
   correctKeys: string[]
   correctBool: boolean
   accepted: string[]
+  /** NaN means "inherit the quiz's default marks" (a blank input). */
   points: number
+  /** NaN means "inherit the quiz's default negative marks". */
+  penalty: number
   /** Free-text analytics tag; the empty string means untagged. */
   topic: string
 }
@@ -56,7 +59,8 @@ export function fromQuestion(q: TeacherQuestion): QuestionDraft {
     correctKeys: [],
     correctBool: true,
     accepted: [],
-    points: q.points,
+    points: q.points ?? NaN,
+    penalty: q.penalty ?? NaN,
     topic: q.topic ?? '',
   }
   switch (q.type) {
@@ -96,10 +100,21 @@ export function toInput(
 ): { input: QuestionInput } | { fields: Record<string, string> } {
   const fields: Record<string, string> = {}
   if (draft.text.trim() === '') fields.body = 'The question text is required.'
-  if (!Number.isFinite(draft.points) || draft.points <= 0) {
-    fields.points = 'Points must be greater than zero.'
-  } else if (draft.points > 1000) {
-    fields.points = 'Points must be at most 1000.'
+  // A blank (NaN) value inherits the quiz's marking defaults; only an
+  // explicit value is range-checked.
+  if (Number.isFinite(draft.points)) {
+    if (draft.points <= 0) {
+      fields.points = 'Marks must be greater than zero.'
+    } else if (draft.points > 1000) {
+      fields.points = 'Marks must be at most 1000.'
+    }
+  }
+  if (Number.isFinite(draft.penalty)) {
+    if (draft.penalty < 0) {
+      fields.penalty = 'Negative marks must be zero or more.'
+    } else if (draft.penalty > 1000) {
+      fields.penalty = 'Negative marks must be at most 1000.'
+    }
   }
   const topic = draft.topic.trim()
   // Code points, not UTF-16 units: the server counts runes against the same
@@ -112,7 +127,11 @@ export function toInput(
     type: draft.type,
     body: { text: draft.text.trim() },
     correct: null,
-    points: draft.points,
+    // Blank means "inherit the quiz default", and it must travel as an
+    // explicit null: omitting the key on a full-state update would leave a
+    // previously-set override standing. Same rule as topic below.
+    points: Number.isFinite(draft.points) ? draft.points : null,
+    penalty: Number.isFinite(draft.penalty) ? draft.penalty : null,
     // Blank is untagged, and it must travel as an explicit null: omitting the
     // key on a full-state update would leave a previously-set tag standing.
     topic: topic === '' ? null : topic,
@@ -163,7 +182,8 @@ export function newQuestionInput(type: QuestionType): QuestionInput {
     type,
     body: { text: 'Untitled question' },
     correct: null,
-    points: 1,
+    // No points/penalty: a fresh question rides the quiz's marking defaults
+    // until the teacher overrides it.
   }
   switch (type) {
     case 'single':

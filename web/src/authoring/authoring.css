@@ -708,6 +708,7 @@
 
 .import-upload-row {
   display: flex;
+  gap: 10px;
 }
 
 .import-result {
@@ -800,6 +801,26 @@
 .teacher-analytics-table .qt-head > *,
 .teacher-analytics-table .qt-row > * {
   min-width: 0;
+}
+
+.teacher-quiz-rank-table .qt-head,
+.teacher-quiz-rank-table .qt-row {
+  grid-template-columns: 44px minmax(0, 2fr) 96px 150px;
+}
+
+.teacher-quiz-rank-table .qt-head > *,
+.teacher-quiz-rank-table .qt-row > * {
+  min-width: 0;
+}
+
+.teacher-rank-num {
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* The top mark, but only when the ranking is actually by score. */
+.teacher-rank-num.teacher-rank-top {
+  color: var(--color-primary);
 }
 
 .teacher-analytics-activity {

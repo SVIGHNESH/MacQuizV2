@@ -2251,6 +2251,8 @@ components:
           release_policy,
           results_released_at,
           guardrails,
+          default_points,
+          default_penalty,
         ]
       properties:
         id:
@@ -2310,6 +2312,19 @@ components:
             The anti-cheat ladder frozen at publish. Null while the quiz is a
             draft (never published); populated from the publish request once
             scheduled, so reopening a scheduled quiz reseeds its real settings.
+        default_points:
+          type: number
+          description: >-
+            The quiz-wide marking scheme: marks a question earns when it
+            does not set its own points. Resolved into the version snapshot
+            at publish.
+        default_penalty:
+          type: number
+          description: >-
+            Marks subtracted for an answered-but-wrong question that does
+            not set its own penalty. 0 disables negative marking quiz-wide.
+            Unanswered questions are never penalized, and an attempt's total
+            never drops below zero.
     QuestionBody:
       type: object
       required: [text]
@@ -2332,7 +2347,7 @@ components:
         A question as any client may see it. The answer key is NOT part of
         this schema; only the owner-facing TeacherQuestion carries it, and
         the student serializer strips it structurally.
-      required: [id, quiz_id, position, type, body, points, source]
+      required: [id, quiz_id, position, type, body, points, penalty, source]
       properties:
         id:
           type: string
@@ -2353,6 +2368,14 @@ components:
             $ref: "#/components/schemas/QuestionOption"
         points:
           type: number
+          nullable: true
+          description: Null means the quiz's default_points applies.
+        penalty:
+          type: number
+          nullable: true
+          description: >-
+            Marks subtracted when this question is answered wrong. Null
+            means the quiz's default_penalty applies.
         topic:
           type: string
           nullable: true
@@ -2394,7 +2417,16 @@ components:
             option keys for choice types.
         points:
           type: number
-          description: Defaults to 1; must be positive.
+          nullable: true
+          description: >-
+            Omitted or null means the quiz's default_points applies; when
+            set, must be positive and at most 1000.
+        penalty:
+          type: number
+          nullable: true
+          description: >-
+            Omitted or null means the quiz's default_penalty applies; when
+            set, must be between 0 and 1000.
         topic:
           type: string
           nullable: true
@@ -2412,6 +2444,17 @@ components:
           maximum: 10
         shuffle_questions:
           type: boolean
+        default_points:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 1000
+          description: Quiz-wide marks per question (draft-only, like the rest).
+        default_penalty:
+          type: number
+          minimum: 0
+          maximum: 1000
+          description: Quiz-wide negative marks per wrong answer; 0 disables.
     QuizResponse:
       type: object
       required: [quiz]

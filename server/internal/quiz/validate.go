@@ -13,10 +13,13 @@ type QuestionInput struct {
 	Options json.RawMessage `json:"options"`
 	Correct json.RawMessage `json:"correct"`
 	Points  *float64        `json:"points"`
+	Penalty *float64        `json:"penalty"`
 	Topic   *string         `json:"topic"`
 
-	// points is the normalized value (default 1) set by Validate.
-	points float64
+	// points/penalty are the normalized values set by Validate; nil inherits
+	// the quiz's default_points/default_penalty at publish.
+	points  *float64
+	penalty *float64
 	// topic is the normalized tag (trimmed, nil when blank) set by Validate.
 	// A blank tag and an absent one are the same thing - untagged; storing ""
 	// would make the empty string a topic the rollup could aggregate under.
@@ -77,14 +80,26 @@ func (in *QuestionInput) Validate() map[string]string {
 		}
 	}
 
-	in.points = 1
+	// nil means "inherit the quiz's default_points/default_penalty"; publish
+	// resolves the effective values into the version snapshot.
+	in.points = nil
 	if in.Points != nil {
 		if *in.Points <= 0 {
 			fields["points"] = "must be greater than zero"
 		} else if *in.Points > maxPoints {
 			fields["points"] = "must be at most 1000"
 		} else {
-			in.points = *in.Points
+			in.points = in.Points
+		}
+	}
+	in.penalty = nil
+	if in.Penalty != nil {
+		if *in.Penalty < 0 {
+			fields["penalty"] = "must be zero or more"
+		} else if *in.Penalty > maxPoints {
+			fields["penalty"] = "must be at most 1000"
+		} else {
+			in.penalty = in.Penalty
 		}
 	}
 

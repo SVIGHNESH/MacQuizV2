@@ -151,7 +151,9 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublis
 		response, answered := responses[q.ID]
 		if !answered {
 			// An unanswered question simply contributes nothing; there is no
-			// row to mark, and the snapshot documents what was skipped.
+			// row to mark, and the snapshot documents what was skipped. In
+			// particular it is never penalized - negative marking prices a
+			// wrong commitment, not a blank.
 			continue
 		}
 		correct, awarded := gradeQuestion(q, response)
@@ -162,6 +164,13 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublis
 			correct, awarded, attemptID, q.ID); err != nil {
 			return false, fmt.Errorf("mark answer: %w", err)
 		}
+	}
+	// Penalties can drive the sum below zero; the attempt total floors at 0
+	// so every downstream percentage (leaderboard accuracy's documented 0..1,
+	// accuracy trends, result percentages) keeps its range. Per-answer
+	// points_awarded stays honest above - the review can show each -N.
+	if score < 0 {
+		score = 0
 	}
 
 	res, err := tx.ExecContext(ctx,
@@ -221,6 +230,10 @@ func gradeQuestion(q Question, response json.RawMessage) (correct bool, awarded 
 	}
 	if correct {
 		awarded = q.Points
+	} else {
+		// Answered and wrong: the snapshot's resolved penalty applies (0
+		// when the quiz never enabled negative marking).
+		awarded = -q.Penalty
 	}
 	return correct, awarded
 }

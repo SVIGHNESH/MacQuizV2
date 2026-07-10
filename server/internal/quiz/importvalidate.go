@@ -22,11 +22,15 @@ var importTemplateColumns = []string{
 	"correct", "points",
 }
 
-// topicColumn is the one OPTIONAL template column: a file written against the
-// original fixed header still parses, and one that carries topic tags feeds
-// student_stats.topic_strengths. It is not in importTemplateColumns because a
-// missing topic column is not a malformed file.
-const topicColumn = "topic"
+// topicColumn and penaltyColumn are the OPTIONAL template columns: a file
+// written against the original fixed header still parses. topic feeds
+// student_stats.topic_strengths; penalty is the per-question negative-marking
+// override (blank inherits the quiz's default_penalty). Neither is in
+// importTemplateColumns because their absence is not a malformed file.
+const (
+	topicColumn   = "topic"
+	penaltyColumn = "penalty"
+)
 
 // ImportRowError is one validation failure against a specific row/column of
 // a bulk-import file, shaped to serialize directly into imports.error_report.
@@ -100,6 +104,16 @@ func parseImportRecords(header []string, records [][]string) ([]ImportRow, []Imp
 			break
 		}
 
+		// A row with real content beyond the header's last column is almost
+		// always an unquoted comma splitting a cell in two - every later
+		// column shifts right and the per-column checks below would report
+		// baffling errors about the wrong cells. Name the actual problem
+		// instead.
+		if msg, misaligned := tabular.ExcessCells(rec, len(header)); misaligned {
+			errs = append(errs, ImportRowError{Row: rowNum, Column: "row", Message: msg})
+			continue
+		}
+
 		typ := strings.ToLower(get(rec, "type"))
 		question := get(rec, "question")
 
@@ -156,8 +170,19 @@ func parseImportRecords(header []string, records [][]string) ([]ImportRow, []Imp
 			}
 		}
 
+		if _, ok := col[penaltyColumn]; ok {
+			if penaltyRaw := get(rec, penaltyColumn); penaltyRaw != "" {
+				p, perr := strconv.ParseFloat(penaltyRaw, 64)
+				if perr != nil {
+					rowErrs = append(rowErrs, ImportRowError{Row: rowNum, Column: "penalty", Message: "penalty must be a number"})
+				} else {
+					in.Penalty = &p
+				}
+			}
+		}
+
 		fields := in.Validate()
-		for _, c := range []string{"type", "body", "options", "correct", "points", "topic"} {
+		for _, c := range []string{"type", "body", "options", "correct", "points", "penalty", "topic"} {
 			if msg, ok := fields[c]; ok {
 				rowErrs = append(rowErrs, ImportRowError{Row: rowNum, Column: c, Message: msg})
 			}

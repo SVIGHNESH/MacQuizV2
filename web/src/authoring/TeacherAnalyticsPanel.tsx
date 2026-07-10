@@ -58,6 +58,7 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('name')
+  const [quizFilter, setQuizFilter] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -87,6 +88,18 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
     }
   }, [teacherId])
 
+  // The quiz picker's options, derived from the roster itself - every quiz
+  // any student was assigned to is already in the per-student breakdowns.
+  const quizOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const s of students ?? []) {
+      for (const q of s.quizzes) {
+        if (!seen.has(q.quiz_id)) seen.set(q.quiz_id, q.title)
+      }
+    }
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [students])
+
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
     const rows = (students ?? []).filter(
@@ -113,6 +126,42 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
     return sorted
   }, [students, search, sort])
 
+  // Quiz mode: one row per student assigned to the picked quiz, carrying
+  // that quiz's own score - the "who scored highest on this quiz" ranking.
+  const ranked = useMemo(() => {
+    if (!quizFilter) return null
+    const needle = search.trim().toLowerCase()
+    const rows = (students ?? []).flatMap((s) => {
+      if (
+        needle &&
+        !s.full_name.toLowerCase().includes(needle) &&
+        !s.email.toLowerCase().includes(needle)
+      ) {
+        return []
+      }
+      const entry = s.quizzes.find((q) => q.quiz_id === quizFilter)
+      return entry ? [{ student: s, entry }] : []
+    })
+    switch (sort) {
+      case 'name':
+        break // the server already sorted by name
+      case 'recent':
+        rows.sort((a, b) =>
+          (b.entry.submitted_at ?? '').localeCompare(a.entry.submitted_at ?? ''),
+        )
+        break
+      default:
+        // score (and the overall-only 'violations') rank highest marks
+        // first; a student who never submitted sorts last, then by name.
+        rows.sort(
+          (a, b) =>
+            byNumber(a.entry.score_percent, b.entry.score_percent) ||
+            a.student.full_name.localeCompare(b.student.full_name),
+        )
+    }
+    return rows
+  }, [students, quizFilter, search, sort])
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -121,7 +170,20 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
       return next
     })
 
-  const exportCsv = () =>
+  const exportCsv = () => {
+    if (ranked) {
+      downloadCsv('quiz-ranking.csv', [
+        ['rank', 'student', 'email', 'score_percent', 'submitted_at'],
+        ...ranked.map((r, i) => [
+          i + 1, r.student.full_name, r.student.email,
+          r.entry.score_percent === null || r.entry.score_percent === undefined
+            ? ''
+            : Math.round(r.entry.score_percent),
+          r.entry.submitted_at ?? '',
+        ]),
+      ])
+      return
+    }
     downloadCsv('student-performance.csv', [
       ['student', 'email', 'quiz', 'quiz_status', 'score_percent', 'submitted_at'],
       ...visible.flatMap((s) =>
@@ -134,6 +196,7 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
         ]),
       ),
     ])
+  }
 
   if (loadError) return <p className="form-error">{loadError}</p>
   if (!stats || !students) {
@@ -185,19 +248,47 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
           aria-label="Search students"
         />
         <select
+          className="input teacher-analytics-quiz-filter"
+          value={quizFilter}
+          onChange={(e) => {
+            setQuizFilter(e.target.value)
+            // Picking a quiz is the "who scored highest on it" question, so
+            // the ranking leads with the top mark.
+            if (e.target.value) setSort('score')
+          }}
+          aria-label="Filter by quiz"
+        >
+          <option value="">All quizzes</option>
+          {quizOptions.map(([id, title]) => (
+            <option key={id} value={id}>
+              {title}
+            </option>
+          ))}
+        </select>
+        <select
           className="input"
           value={sort}
           onChange={(e) => setSort(e.target.value as Sort)}
           aria-label="Sort students"
         >
-          <option value="name">By name</option>
-          <option value="score">Highest score</option>
-          <option value="violations">Most violations</option>
-          <option value="recent">Recently active</option>
+          {ranked ? (
+            <>
+              <option value="score">Highest score</option>
+              <option value="name">By name</option>
+              <option value="recent">Recently submitted</option>
+            </>
+          ) : (
+            <>
+              <option value="name">By name</option>
+              <option value="score">Highest score</option>
+              <option value="violations">Most violations</option>
+              <option value="recent">Recently active</option>
+            </>
+          )}
         </select>
       </div>
 
-      {visible.length === 0 ? (
+      {(ranked ?? visible).length === 0 ? (
         <section className="panel empty-state">
           <h2 className="card-title">
             {students.length === 0 ? 'No students yet' : 'Nothing matches'}
@@ -205,8 +296,44 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
           <p className="hint">
             {students.length === 0
               ? 'Students appear here once they are assigned to one of your quizzes.'
-              : 'Adjust the search or the sort.'}
+              : 'Adjust the search or the filters.'}
           </p>
+        </section>
+      ) : ranked ? (
+        <section className="panel table-panel">
+          <div className="quiz-table teacher-quiz-rank-table" role="table" aria-label="Quiz ranking">
+            <div className="qt-head" role="row">
+              <span role="columnheader" className="qt-num">#</span>
+              <span role="columnheader">Student</span>
+              <span role="columnheader" className="qt-num">Score</span>
+              <span role="columnheader">Submitted</span>
+            </div>
+            {ranked.map((r, i) => (
+              <div key={r.student.student_id} className="qt-row" role="row">
+                <span
+                  className={`qt-num tabular teacher-rank-num${
+                    sort === 'score' && i === 0 && r.entry.score_percent != null
+                      ? ' teacher-rank-top'
+                      : ''
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span className="admin-user-identity">
+                  <span className="admin-user-name" title={r.student.full_name}>
+                    {r.student.full_name}
+                  </span>
+                  <span className="admin-user-email" title={r.student.email}>
+                    {r.student.email}
+                  </span>
+                </span>
+                <span className="qt-num tabular">{SCORE(r.entry.score_percent)}</span>
+                <span className="teacher-analytics-activity">
+                  {r.entry.submitted_at ? lastActivity(r.entry.submitted_at) : 'Not attempted'}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       ) : (
         <section className="panel table-panel">

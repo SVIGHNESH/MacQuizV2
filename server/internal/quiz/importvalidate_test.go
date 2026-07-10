@@ -7,6 +7,36 @@ import (
 
 const importHeader = "type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct,points\n"
 
+// An unquoted comma inside a cell splits it and shifts every later column
+// right; the report must name that, not the shifted cells' confusing
+// downstream failures (a real support case: "points must be a number" on a
+// truefalse row whose question carried a comma).
+func TestParseImportCSV_UnquotedCommaShiftsColumns(t *testing.T) {
+	csv := importHeader +
+		"truefalse,In Big-O notation, O(1) is constant time.,,,,,,,true,1\n"
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseImportCSV: %v", err)
+	}
+	if len(rows) != 0 || len(errs) != 1 {
+		t.Fatalf("got %d rows / %d errs, want 0 / 1", len(rows), len(errs))
+	}
+	if errs[0].Row != 1 || errs[0].Column != "row" ||
+		!strings.Contains(errs[0].Message, "double quotes") {
+		t.Fatalf("err = %+v, want a row-level quote-the-comma message", errs[0])
+	}
+}
+
+// A bare trailing comma (one empty extra cell) is harmless and must not trip
+// the overflow check.
+func TestParseImportCSV_TrailingEmptyCellIsLegal(t *testing.T) {
+	csv := importHeader + "truefalse,Sky is blue,,,,,,,true,1,\n"
+	rows, errs, err := ParseImportCSV(strings.NewReader(csv))
+	if err != nil || len(errs) != 0 || len(rows) != 1 {
+		t.Fatalf("ParseImportCSV = (%d rows, %+v, %v), want one clean row", len(rows), errs, err)
+	}
+}
+
 func TestParseImportCSV_ValidFile(t *testing.T) {
 	csv := importHeader +
 		"single,Pick red,Red,Blue,,,,,a,2\n" +

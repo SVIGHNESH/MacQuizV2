@@ -86,6 +86,21 @@ func TestParseUserImportFile_SkipsBlankRowsKeepsNumbering(t *testing.T) {
 	}
 }
 
+func TestParseUserImportFile_UnquotedCommaShiftsColumns(t *testing.T) {
+	csv := "role,email,full_name\n" +
+		"student,priya@school.test,Sharma, Priya\n"
+	rows, errs, err := authusers.ParseUserImportFile(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("ParseUserImportFile: %v", err)
+	}
+	if len(rows) != 0 || len(errs) != 1 {
+		t.Fatalf("got %d rows / %d errs, want 0 / 1", len(rows), len(errs))
+	}
+	if errs[0].Column != "row" || !strings.Contains(errs[0].Message, "double quotes") {
+		t.Fatalf("err = %+v, want a row-level quote-the-comma message", errs[0])
+	}
+}
+
 func TestParseUserImportFile_RowLimit(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("role,email,full_name\n")

@@ -1185,6 +1185,10 @@ export interface components {
             results_released_at: string | null;
             /** @description The anti-cheat ladder frozen at publish. Null while the quiz is a draft (never published); populated from the publish request once scheduled, so reopening a scheduled quiz reseeds its real settings. */
             guardrails: components["schemas"]["Guardrails"] | null;
+            /** @description The quiz-wide marking scheme: marks a question earns when it does not set its own points. Resolved into the version snapshot at publish. */
+            default_points: number;
+            /** @description Marks subtracted for an answered-but-wrong question that does not set its own penalty. 0 disables negative marking quiz-wide. Unanswered questions are never penalized, and an attempt's total never drops below zero. */
+            default_penalty: number;
         };
         QuestionBody: {
             text: string;
@@ -1205,7 +1209,10 @@ export interface components {
             type: "single" | "multi" | "truefalse" | "short";
             body: components["schemas"]["QuestionBody"];
             options?: components["schemas"]["QuestionOption"][];
-            points: number;
+            /** @description Null means the quiz's default_points applies. */
+            points: number | null;
+            /** @description Marks subtracted when this question is answered wrong. Null means the quiz's default_penalty applies. */
+            penalty: number | null;
             /** @description Free-text topic tag, or null when the question is untagged. Tags are frozen into the version snapshot on publish and drive StudentStats.topic_strengths. */
             topic?: string | null;
             /** @enum {string} */
@@ -1223,8 +1230,10 @@ export interface components {
             options?: components["schemas"]["QuestionOption"][];
             /** @description The answer key; shape depends on type. Must reference existing option keys for choice types. */
             correct: unknown;
-            /** @description Defaults to 1; must be positive. */
-            points?: number;
+            /** @description Omitted or null means the quiz's default_points applies; when set, must be positive and at most 1000. */
+            points?: number | null;
+            /** @description Omitted or null means the quiz's default_penalty applies; when set, must be between 0 and 1000. */
+            penalty?: number | null;
             /** @description Optional free-text topic tag, 1-60 characters after trimming. Omitted, null, or blank leaves the question untagged. */
             topic?: string | null;
         };
@@ -1232,6 +1241,10 @@ export interface components {
             title?: string;
             max_attempts?: number;
             shuffle_questions?: boolean;
+            /** @description Quiz-wide marks per question (draft-only, like the rest). */
+            default_points?: number;
+            /** @description Quiz-wide negative marks per wrong answer; 0 disables. */
+            default_penalty?: number;
         };
         QuizResponse: {
             quiz: components["schemas"]["Quiz"];
