@@ -48,6 +48,10 @@ type Deps struct {
 	Attempt   *attempt.Handler
 	Analytics *analytics.Handler
 	Realtime  *realtime.Gateway
+	// QueueLagMaxSec is the /healthz queue-depth ceiling in seconds
+	// (config.HealthQueueLagMaxSec). 0 - the zero value, so router-shell
+	// tests keep their old behaviour - leaves queue lag informational.
+	QueueLagMaxSec int
 }
 
 // New returns the root HTTP handler for the API process.
@@ -76,7 +80,7 @@ func New(build BuildInfo, deps Deps) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Timeout(30 * time.Second))
 
-		r.Get("/healthz", handleHealth(build, deps.DB, deps.Redis))
+		r.Get("/healthz", handleHealth(build, deps.DB, deps.Redis, deps.QueueLagMaxSec))
 		r.Get("/readyz", handleReady(deps.DB))
 		r.Get("/deploy-check", handleDeployCheck(deps.DB))
 
@@ -172,7 +176,12 @@ const healthCheckTimeout = 2 * time.Second
 // is not wired (nil, as in router-shell-only tests) is skipped rather than
 // treated as down. Any wired-but-failing dependency flips the response to 503
 // so external monitoring alerts on it.
-func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger) http.HandlerFunc {
+//
+// queueLagMaxSec is the queue-depth half of that check: a backlog older than
+// it means the worker is not draining, which puts deadline timers and
+// auto-submits at risk, so it fails the endpoint the same way an unreachable
+// dependency does. 0 disables the gate (queue lag stays informational).
+func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger, queueLagMaxSec int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 		defer cancel()
@@ -186,11 +195,15 @@ func handleHealth(build BuildInfo, db *sql.DB, redis RedisPinger) http.HandlerFu
 				healthy = false
 			} else {
 				checks.Database = "ok"
-				// Queue lag is a supplementary signal, not a liveness
-				// condition on its own - a query failure here does not flip
-				// the overall status, it just omits the field.
+				// The queue-depth check. A query failure here is not itself a
+				// liveness condition - it just omits the field - but a real
+				// backlog past the configured ceiling is: the queue carries
+				// the deadline timers and auto-submits a live quiz depends on.
 				if lag, err := QueueLagSeconds(ctx, db); err == nil {
 					checks.QueueLagSeconds = &lag
+					if queueLagMaxSec > 0 && lag > float64(queueLagMaxSec) {
+						healthy = false
+					}
 				}
 			}
 		}

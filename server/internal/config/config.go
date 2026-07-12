@@ -37,6 +37,15 @@ type Config struct {
 	ShutdownGrace time.Duration
 	// Env is "development" or "production"; controls log format and defaults.
 	Env string
+	// HealthQueueLagMaxSec is the queue-lag ceiling /healthz gates on
+	// (docs/10 section 2: "/healthz checks DB connectivity, Redis
+	// connectivity, and queue depth"). A backlog older than this flips the
+	// endpoint to 503 so external monitoring alerts on a wedged worker -
+	// deadline timers and auto-submits ride on that queue. The default (60 s)
+	// is docs/10 section 3's page threshold for queue lag, high enough that a
+	// routine worker restart does not flap the check. 0 disables the gate and
+	// keeps queue_lag_seconds purely informational.
+	HealthQueueLagMaxSec int
 	// AuthSecret signs JWT access tokens (HS256). The development default
 	// works with the Compose stack; production must set its own.
 	AuthSecret string
@@ -92,6 +101,8 @@ func Load() Config {
 		ShutdownGrace:    10 * time.Second,
 		Env:              getenv("MACQUIZ_ENV", "development"),
 		AuthSecret:       getenv("MACQUIZ_AUTH_SECRET", "dev-only-insecure-secret"),
+
+		HealthQueueLagMaxSec: getenvInt("MACQUIZ_HEALTH_QUEUE_LAG_MAX_SEC", 60),
 
 		BootstrapAdminEmail:    os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_EMAIL"),
 		BootstrapAdminPassword: os.Getenv("MACQUIZ_BOOTSTRAP_ADMIN_PASSWORD"),

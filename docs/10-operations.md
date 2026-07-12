@@ -23,6 +23,7 @@ Status: implementation baseline.
 
 - UptimeRobot pings `/healthz` every 5 min from outside, alerting by email/Telegram.
   `/healthz` checks DB connectivity, Redis connectivity, and queue depth.
+  The queue-depth half gates on `MACQUIZ_HEALTH_QUEUE_LAG_MAX_SEC` (default 60, section 3's page threshold for queue lag; 0 disables the gate): a backlog older than that returns 503 with `status: "error"`, the same as an unreachable dependency, because deadline timers and auto-submits ride on that queue.
   External probing catches the "VM died" failure class that self-hosted monitoring cannot see.
 - Grafana Cloud free tier receives OpenTelemetry metrics from the app.
   Key series: autosave latency (`macquiz.attempt.autosave.duration`), WebSocket connection count (`macquiz.realtime.ws_connections`), queue lag (`macquiz.queue.lag_seconds`, the same query `/healthz` uses), and violation/kick event rates (`macquiz.attempt.violations`, `macquiz.attempt.kicks`).

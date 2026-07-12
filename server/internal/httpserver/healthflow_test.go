@@ -55,7 +55,7 @@ func TestHealthzDependencyChecks(t *testing.T) {
 		}
 	})
 
-	t.Run("overdue job reported as queue lag", func(t *testing.T) {
+	t.Run("overdue job under the lag ceiling stays healthy", func(t *testing.T) {
 		if _, err := sqlDB.ExecContext(ctx, `
 			INSERT INTO river_job (state, queue, priority, args, kind, scheduled_at, max_attempts)
 			VALUES ('available', 'default', 1, '{}', 'test_kind', NOW() - INTERVAL '30 seconds', 1)
@@ -63,13 +63,33 @@ func TestHealthzDependencyChecks(t *testing.T) {
 			t.Fatalf("insert overdue river_job: %v", err)
 		}
 
-		h := New(BuildInfo{Version: "test"}, Deps{DB: sqlDB, Redis: fakeRedis{}})
+		h := New(BuildInfo{Version: "test"}, Deps{DB: sqlDB, Redis: fakeRedis{}, QueueLagMaxSec: 300})
 		srv := httptest.NewServer(h)
 		defer srv.Close()
 
 		status, body := getRaw(t, srv, "/healthz")
 		if status != 200 {
 			t.Fatalf("status = %d, want 200: %v", status, body)
+		}
+		if body.Checks.QueueLagSeconds == nil || *body.Checks.QueueLagSeconds < 25 {
+			t.Fatalf("queue_lag_seconds = %v, want >= 25", body.Checks.QueueLagSeconds)
+		}
+	})
+
+	// The same backlog against a tighter ceiling is the docs/10 section 2
+	// queue-depth gate: a worker that is not draining fails /healthz, because
+	// deadline timers and auto-submits ride on that queue.
+	t.Run("queue lag past the ceiling flips to 503", func(t *testing.T) {
+		h := New(BuildInfo{Version: "test"}, Deps{DB: sqlDB, Redis: fakeRedis{}, QueueLagMaxSec: 10})
+		srv := httptest.NewServer(h)
+		defer srv.Close()
+
+		status, body := getRaw(t, srv, "/healthz")
+		if status != 503 {
+			t.Fatalf("status = %d, want 503: %v", status, body)
+		}
+		if body.Status != "error" || body.Checks.Database != "ok" || body.Checks.Redis != "ok" {
+			t.Fatalf("unexpected body: %+v", body)
 		}
 		if body.Checks.QueueLagSeconds == nil || *body.Checks.QueueLagSeconds < 25 {
 			t.Fatalf("queue_lag_seconds = %v, want >= 25", body.Checks.QueueLagSeconds)

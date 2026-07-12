@@ -241,7 +241,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Addr: cfg.Addr,
 		Handler: httpserver.New(
 			httpserver.BuildInfo{Version: version, Commit: commit},
-			httpserver.Deps{DB: sqlDB, Redis: publisher, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler, Analytics: analyticsHandler, Realtime: gateway},
+			httpserver.Deps{DB: sqlDB, Redis: publisher, Auth: authHandler, Quiz: quizHandler, Attempt: attemptHandler, Analytics: analyticsHandler, Realtime: gateway, QueueLagMaxSec: cfg.HealthQueueLagMaxSec},
 		),
 	}
 

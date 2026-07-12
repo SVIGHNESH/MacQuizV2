@@ -15,7 +15,10 @@ export type PlayerEntry =
   | { kind: 'start'; quizId: string }
   | { kind: 'resume'; attemptId: string }
 
-const AUTOSAVE_DELAY_MS = 600
+// docs/06 section 2: "Autosave: debounced 2 s client-side". The server's
+// per-attempt autosave rate limit (attempt/http.go) is sized for this cadence,
+// and submit/time-up flush any pending timer, so nothing is lost at the edge.
+const AUTOSAVE_DELAY_MS = 2000
 
 // docs/11 section 5 "calm under pressure": urgency is expressed once, and the
 // design's St2 frame fixes the moment - the timer goes red-tint under 2:00.
