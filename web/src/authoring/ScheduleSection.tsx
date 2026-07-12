@@ -75,6 +75,8 @@ export default function ScheduleSection({
   const [publishing, setPublishing] = useState(false)
   const [fields, setFields] = useState<Record<string, string>>({})
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   const scheduled = quiz.status === 'scheduled'
 
@@ -144,6 +146,33 @@ export default function ScheduleSection({
       )
       return
     }
+    onPublished(result.data.quiz)
+  }
+
+  /**
+   * Call the quiz off before it opens (docs/06 section 1: "while Scheduled:
+   * reschedule and cancel are allowed"). It goes back to Draft with its window
+   * cleared - reversible by republishing, which is why this asks for a plain
+   * inline confirmation rather than the typed-reason modal force-close uses.
+   * The returned draft flows through the same onPublished channel a publish
+   * does, so the editor re-derives its editable/wizard state from the status.
+   */
+  const cancelSchedule = async () => {
+    setCancelling(true)
+    setPublishError(null)
+    const result = await api
+      .POST('/api/v1/quizzes/{id}/cancel', {
+        params: { path: { id: quiz.id } },
+      })
+      .catch(() => null)
+    setCancelling(false)
+    if (!result?.data) {
+      setPublishError(
+        result?.error?.message ?? 'Could not cancel the scheduled quiz.',
+      )
+      return
+    }
+    setConfirmingCancel(false)
     onPublished(result.data.quiz)
   }
 
@@ -368,6 +397,43 @@ export default function ScheduleSection({
               ? 'Reschedule & republish'
               : 'Publish quiz'}
         </button>
+        {scheduled && (
+          <span className="schedule-cancel">
+            {confirmingCancel ? (
+              <>
+                <span className="field-hint">
+                  The questions and the audience are kept.
+                </span>
+                <button
+                  id="cancel-schedule-confirm"
+                  className="button button-danger"
+                  type="button"
+                  disabled={cancelling}
+                  onClick={() => void cancelSchedule()}
+                >
+                  {cancelling ? 'Cancelling…' : 'Return to draft'}
+                </button>
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  disabled={cancelling}
+                  onClick={() => setConfirmingCancel(false)}
+                >
+                  Keep it scheduled
+                </button>
+              </>
+            ) : (
+              <button
+                id="cancel-schedule-button"
+                className="button button-quiet-danger"
+                type="button"
+                onClick={() => setConfirmingCancel(true)}
+              >
+                Cancel schedule
+              </button>
+            )}
+          </span>
+        )}
       </div>
     </section>
   )

@@ -140,6 +140,19 @@ func (h *Handler) handleForceCloseQuiz(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
 }
 
+func (h *Handler) handleCancelQuiz(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "no such quiz")
+	if !ok {
+		return
+	}
+	q, err := h.svc.Cancel(r.Context(), actor, id)
+	if h.writeLifecycleError(w, "cancel quiz", err, "no such quiz") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"quiz": q})
+}
+
 type extendRequest struct {
 	EndsAt *time.Time `json:"ends_at"`
 }

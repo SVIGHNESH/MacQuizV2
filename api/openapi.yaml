@@ -929,6 +929,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/quizzes/{id}/cancel:
+    post:
+      operationId: cancelQuiz
+      summary: Cancel a scheduled quiz, returning it to Draft (owner)
+      description: >-
+        Calls off a quiz that is scheduled but has not opened yet (docs/06
+        section 1: "while Scheduled: reschedule and cancel are allowed"). The
+        quiz goes back to Draft and its window is cleared, so it becomes
+        editable again and drops off student dashboards; the version history,
+        the audience, and the guardrail/duration settings are kept, and the
+        next publish reuses them at version n+1. Owner-teacher only.
+        Cancelling an already-draft quiz is an idempotent no-op that returns
+        the quiz unchanged; a quiz that has already opened (live, or scheduled
+        with starts_at in the past), closed, or archived answers 409
+        QUIZ_NOT_CANCELLABLE - force-close it instead.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The quiz, now a draft again with no window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            QUIZ_NOT_CANCELLABLE - the quiz has already opened or is past its
+            window, so it can no longer be called off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/quizzes/{id}/extend:
     post:
       operationId: extendQuiz

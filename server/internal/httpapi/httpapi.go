@@ -23,6 +23,7 @@ const (
 	CodeQuizNotEditable         = "QUIZ_NOT_EDITABLE"
 	CodeQuizNotLive             = "QUIZ_NOT_LIVE"
 	CodeQuizNotClosed           = "QUIZ_NOT_CLOSED"
+	CodeQuizNotCancellable      = "QUIZ_NOT_CANCELLABLE"
 	CodeResultsNotReleased      = "RESULTS_NOT_RELEASED"
 	CodeAttemptLimitReached     = "ATTEMPT_LIMIT_REACHED"
 	CodeAttemptDeadlinePassed   = "ATTEMPT_DEADLINE_PASSED"

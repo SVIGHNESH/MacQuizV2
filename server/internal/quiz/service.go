@@ -39,6 +39,11 @@ var (
 	// already terminal (docs/06 section 1: force-close is a Live/Scheduled
 	// action).
 	ErrNotClosable = errors.New("only a live or scheduled quiz can be force-closed")
+	// ErrNotCancellable marks a cancel of a quiz that is not still-scheduled:
+	// once a quiz has opened (or its window has passed) the students may have
+	// seen it, so calling it off is a force-close, not a cancel (docs/06
+	// section 1: cancel is a Scheduled-only affordance).
+	ErrNotCancellable = errors.New("only a scheduled quiz that has not opened can be cancelled")
 	// ErrNotExtendable marks an extend of a quiz that is not effectively live:
 	// a not-yet-started quiz uses reschedule, a closed/archived one is already
 	// terminal (docs/06 section 1: extend is the once-Live affordance).

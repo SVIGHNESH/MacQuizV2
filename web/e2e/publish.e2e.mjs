@@ -18,6 +18,9 @@
 //      ladder, and audience - all persist; republish reschedules as version 2;
 //      the quiz list shows the Scheduled chip
 //   7. API-side: the cohort student's GET /quizzes/assigned carries the quiz
+//   8. cancel: the scheduled quiz is called off back to Draft - the editor
+//      unlocks, the list chip reads Draft, the student's assigned list drops
+//      it, and a republish puts it back as version 3 with the audience intact
 //
 // Run:  node e2e/publish.e2e.mjs
 // Env:  E2E_BASE_URL (default http://localhost:5173)
@@ -536,6 +539,89 @@ async function assignedListCheck() {
   )
 }
 
+/** Whether the cohort student's dashboard currently carries the quiz. */
+async function studentSeesQuiz(cookies) {
+  const res = await fetch(`${BASE}/api/v1/quizzes/assigned`, {
+    headers: { Cookie: cookies },
+  })
+  const body = await res.json()
+  return (body.quizzes ?? []).some((q) => q.title === QUIZ_TITLE)
+}
+
+// Calling the quiz off before it opens (docs/06 section 1: "while Scheduled:
+// reschedule and cancel are allowed"): back to Draft, then republished. Runs
+// after assignedListCheck, which pins the pre-cancel version-2 state.
+async function cancelFlow(browser) {
+  const zane = await login(studentBEmail, studentBPassword)
+  // A fresh tab in the same browser: the teacher's session cookie is still in
+  // the jar, so this lands straight on the workspace (and spends none of the
+  // login rate-limit budget the suite order is built around).
+  const page = await browser.newPage()
+  await page.setViewport({ width: 1280, height: 1400 })
+  await page.goto(BASE, { waitUntil: 'networkidle0' })
+  await waitForText(page, '.page-title', 'Quizzes', 8000)
+  await clickButtonWithText(page, QUIZ_TITLE)
+  await goToStep(page, 'Schedule')
+  await waitForText(page, '.window-summary', 'Version 2', 8000)
+
+  // The escape hatch asks first - a bare click must not unpublish anything.
+  await clickButtonWithText(page, 'Cancel schedule')
+  check(
+    await waitForText(page, '.schedule-cancel', 'Keep it scheduled'),
+    'cancelling a schedule asks for confirmation first',
+  )
+  await shot(page, '26-cancel-confirm.png')
+
+  await page.click('#cancel-schedule-confirm')
+  check(
+    await waitForText(page, '.chip-status', 'Draft', 8000),
+    'cancelling the schedule returns the quiz to Draft',
+  )
+  check(
+    await page
+      .waitForFunction(() => !document.querySelector('#quiz-title')?.disabled, {
+        timeout: 5000,
+      })
+      .then(() => true)
+      .catch(() => false),
+    'the cancelled draft is editable again',
+  )
+  check(
+    await waitForText(page, '#publish-button', 'Publish quiz'),
+    'the cancelled quiz offers publish instead of republish',
+  )
+  check(
+    !(await studentSeesQuiz(zane.cookies)),
+    'the cancelled quiz drops off the student dashboard',
+  )
+  await shot(page, '27-cancelled-draft.png')
+
+  // Republish: the audience and the questions survived, so the window is the
+  // only thing to re-supply, and the version picks up where it left off.
+  await goToStep(page, 'Schedule')
+  await setInputValue(
+    page,
+    '#publish-starts-at',
+    toLocalInput(minutesFromNow(30)),
+  )
+  await setInputValue(
+    page,
+    '#publish-ends-at',
+    toLocalInput(minutesFromNow(90)),
+  )
+  await clickButtonWithText(page, 'Publish quiz')
+  check(
+    await waitForText(page, '.window-summary', 'Version 3', 8000),
+    'republishing after a cancel picks up at version 3',
+  )
+  check(
+    await studentSeesQuiz(zane.cookies),
+    'the republished quiz is back on the student dashboard',
+  )
+  await shot(page, '28-republished-after-cancel.png')
+  await page.close()
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
 await provisionCast()
 
@@ -548,6 +634,7 @@ const browser = await puppeteer.launch({
 try {
   await publishFlow(browser)
   await assignedListCheck()
+  await cancelFlow(browser)
 } finally {
   await browser.close()
 }

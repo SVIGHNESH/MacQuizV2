@@ -53,6 +53,7 @@ Unassigned resources return 404, not 403, so existence is never leaked.
 | `POST /imports/:id/commit` | Commit a validated import transactionally |
 | `POST /quizzes/:id/publish` | Snapshot questions, set window + duration + guardrails, transition to scheduled |
 | `PUT /quizzes/:id/assignments` | Set the audience (student ids and/or group ids, expanded to rows) |
+| `POST /quizzes/:id/cancel` | Scheduled only, before it opens: call the quiz off back to draft, clearing the window (audited, idempotent; 409 `QUIZ_NOT_CANCELLABLE` once open) |
 | `POST /quizzes/:id/extend` | Live only: extend ends_at (audited, broadcast) |
 | `POST /quizzes/:id/close` | Live only: force-close early (audited, broadcast) |
 | `GET /quizzes/:id/results` | Per-student attempt/score table; owner sees scores as grading lands, before release |

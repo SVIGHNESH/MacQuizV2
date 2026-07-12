@@ -295,6 +295,89 @@ func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id strin
 	return q, nil
 }
 
+// Cancel calls off a scheduled quiz before it opens, returning it to Draft
+// (docs/06 section 1: "while Scheduled: reschedule and cancel are allowed").
+// Cancel is the inverse of the publish that scheduled it: the window is
+// cleared and the row goes back to 'draft', so the editor unlocks and
+// AssignedQuizzes stops listing it. Everything publish produced besides the
+// window is kept - the quiz_versions history is append-only, the audience and
+// the guardrail/duration settings survive - so the next publish is a plain
+// version n+1 reschedule rather than a rebuild.
+//
+// The state gate lives in the UPDATE's WHERE clause rather than in Go: the row
+// is only cancellable while it is still 'scheduled' AND starts_at is in the
+// future by the server clock, which is the same now() the open sweep tests. The
+// FOR UPDATE lock serializes this against the sweep, so a quiz cannot be
+// cancelled out from under an open that is already committing, and a scheduled
+// row whose starts_at has passed - effectively live, even before its open_quiz
+// job lands - answers ErrNotCancellable rather than silently unpublishing a
+// quiz students can already see. A quiz that is already a draft is an
+// idempotent no-op; live, closed, and archived answer ErrNotCancellable (a
+// started quiz is force-closed, not cancelled).
+//
+// No realtime publish and no scheduler work: no attempt can exist before the
+// quiz opens, and the queued open_quiz/close_quiz jobs just run SweepDueQuizzes,
+// whose predicate needs status IN (scheduled, live) - a cancelled draft is inert
+// against the stale jobs, the 1-minute sweep, and the worker's boot re-scan.
+func (s *Service) Cancel(ctx context.Context, actor authusers.User, id string) (Quiz, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Quiz{}, fmt.Errorf("begin cancel tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after commit
+
+	q, err := s.ownedForUpdate(ctx, tx, actor, id)
+	if err != nil {
+		return Quiz{}, err
+	}
+	// quizColumns/scanQuiz omit the question count (Iteration 1), so populate
+	// it for parity with Publish/ForceClose/Extend - all return a QuizResponse.
+	var questionCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT count(*) FROM questions WHERE quiz_id = $1`, id).Scan(&questionCount); err != nil {
+		return Quiz{}, fmt.Errorf("count questions: %w", err)
+	}
+	switch q.Status {
+	case "draft":
+		// Already back at the start: a double-click or a retried request
+		// changes nothing, matching the idempotence of force-close/archive.
+		q.QuestionCount = questionCount
+		return q, nil
+	case "scheduled":
+		// cancellable, if it has not effectively opened - the UPDATE decides.
+	default: // live, closed, archived: the students have seen it.
+		return Quiz{}, ErrNotCancellable
+	}
+	fromStatus, fromStartsAt, fromEndsAt := q.Status, q.StartsAt, q.EndsAt
+
+	q, err = scanQuiz(tx.QueryRowContext(ctx,
+		`UPDATE quizzes
+		 SET status = 'draft', starts_at = NULL, ends_at = NULL, published_at = NULL
+		 WHERE id = $1 AND status = 'scheduled' AND starts_at > now()
+		 RETURNING `+quizColumns, id).Scan)
+	if errors.Is(err, sql.ErrNoRows) {
+		// starts_at has passed: the quiz is effectively live already.
+		return Quiz{}, ErrNotCancellable
+	}
+	if err != nil {
+		return Quiz{}, fmt.Errorf("cancel quiz: %w", err)
+	}
+	q.QuestionCount = questionCount
+
+	changes := map[string]audit.Change{}
+	audit.Diff(changes, "status", string(fromStatus), string(q.Status))
+	audit.DiffTime(changes, "starts_at", fromStartsAt, nil)
+	audit.DiffTime(changes, "ends_at", fromEndsAt, nil)
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.cancelled", "quiz", id,
+		map[string]any{"changes": changes, "version": q.Version}); err != nil {
+		return Quiz{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Quiz{}, fmt.Errorf("commit cancel: %w", err)
+	}
+	return q, nil
+}
+
 // Extend moves a live quiz's ends_at later (docs/04: POST /quizzes/:id/extend
 // "Live only: extend ends_at"; docs/06 section 1: once Live the teacher can
 // only extend, force-close, or kick). It flips ends_at forward and, in the

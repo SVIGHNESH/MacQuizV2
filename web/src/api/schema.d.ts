@@ -492,6 +492,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quizzes/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a scheduled quiz, returning it to Draft (owner)
+         * @description Calls off a quiz that is scheduled but has not opened yet (docs/06 section 1: "while Scheduled: reschedule and cancel are allowed"). The quiz goes back to Draft and its window is cleared, so it becomes editable again and drops off student dashboards; the version history, the audience, and the guardrail/duration settings are kept, and the next publish reuses them at version n+1. Owner-teacher only. Cancelling an already-draft quiz is an idempotent no-op that returns the quiz unchanged; a quiz that has already opened (live, or scheduled with starts_at in the past), closed, or archived answers 409 QUIZ_NOT_CANCELLABLE - force-close it instead.
+         */
+        post: operations["cancelQuiz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quizzes/{id}/extend": {
         parameters: {
             query?: never;
@@ -2713,6 +2733,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             /** @description QUIZ_NOT_LIVE - the quiz is a draft and was never opened, so there is nothing to force-close. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelQuiz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quiz, now a draft again with no window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description QUIZ_NOT_CANCELLABLE - the quiz has already opened or is past its window, so it can no longer be called off. */
             409: {
                 headers: {
                     [name: string]: unknown;

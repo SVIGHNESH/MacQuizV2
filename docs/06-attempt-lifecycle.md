@@ -13,10 +13,13 @@ Draft -> Scheduled -> Live -> Closed -> Archived
 |-----------|---------|-------|
 | Draft -> Scheduled | Teacher publishes | Requires >= 1 question, valid future window (starts_at < ends_at), duration, >= 1 assigned student; snapshots questions and guardrails, writes version |
 | Scheduled -> Live | Scheduler at `starts_at` | `open_quiz` job enqueued at the exact timestamp; API also treats the quiz as live on read if starts_at has passed (lazy validation) |
+| Scheduled -> Draft | Teacher cancels | `POST /quizzes/:id/cancel` before the quiz opens; clears the window and unlocks the editor |
 | Live -> Closed | Scheduler at `ends_at`, or teacher force-close | `close_quiz` job force-submits all open attempts (`kind='forced'`), grading runs, results release per policy |
 | Closed -> Archived | Teacher archives | Read-only; analytics retained |
 
 While Scheduled: reschedule and cancel are allowed.
+Cancel returns the quiz to Draft with `starts_at`/`ends_at`/`published_at` cleared, so it drops off student dashboards and becomes editable again; the version history is append-only and the audience, duration, and guardrails survive, so the next publish is a plain version n+1 reschedule.
+It is refused (409 `QUIZ_NOT_CANCELLABLE`) once the quiz has effectively opened - the gate is `status = 'scheduled' AND starts_at > now()` on the server clock, so a scheduled row whose `starts_at` has passed counts as open even before the `open_quiz` job lands; that one is force-closed, not cancelled.
 Once Live: the teacher can extend `ends_at`, force-close early, kick individual students, or edit the audience (`PUT /quizzes/:id/assignments`) - adding a student is a late invite, removing one is allowed unless they have an in-progress attempt (409 `ASSIGNMENT_IN_PROGRESS`; kick is the only sanctioned way to interrupt one). All of these are audited and broadcast to connected students.
 
 ## 2. Attempt timing
