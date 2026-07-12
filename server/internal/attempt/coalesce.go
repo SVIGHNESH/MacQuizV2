@@ -81,6 +81,14 @@ func (c *ProgressCoalescer) Publish(ctx context.Context, quizID, attemptID, even
 	c.inner.Publish(ctx, quizID, attemptID, eventType, payload)
 }
 
+// PublishNotify passes straight through: the throttle exists to bound the
+// quiz:{id}:events fan-out a 500-student roster produces, and a per-user
+// notification is neither high-rate nor coalescable - dropping one would drop
+// the only copy, since no snapshot reconciles the notify channel.
+func (c *ProgressCoalescer) PublishNotify(ctx context.Context, userID, eventType string, payload any) {
+	c.inner.PublishNotify(ctx, userID, eventType, payload)
+}
+
 // admit returns whether a progress relay for attemptID is allowed now, recording
 // the time when it is. A relay is allowed when the attempt has no recorded relay
 // or its window has fully elapsed. It also amortizes the memory sweep onto the

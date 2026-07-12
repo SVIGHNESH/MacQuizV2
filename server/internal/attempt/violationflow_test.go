@@ -247,6 +247,12 @@ func TestViolationFlowE2E(t *testing.T) {
 			t.Fatalf("report on kicked attempt = %d %v, want 409 ATTEMPT_KICKED", s, b)
 		}
 	})
+
+	t.Run("the flag ladder notifies nobody: the tally is the whole record", func(t *testing.T) {
+		if n := pub.notifyCount(); n != 0 {
+			t.Fatalf("flag ladder sent %d notifications, want 0", n)
+		}
+	})
 }
 
 // TestViolationAutoSubmitLadderE2E pins the Milestone 6 violation-ladder
@@ -425,6 +431,203 @@ func TestViolationAutoSubmitLadderE2E(t *testing.T) {
 		}
 		if st != "graded" || kind != "auto" {
 			t.Fatalf("graded auto-submit = status %q submit_kind %q, want graded/auto", st, kind)
+		}
+	})
+
+	t.Run("the auto_submit ladder never notifies: the actions are exclusive", func(t *testing.T) {
+		if n := pub.notifyCount(); n != 0 {
+			t.Fatalf("auto_submit ladder sent %d notifications, want 0", n)
+		}
+	})
+}
+
+// TestViolationNotifyLadderE2E pins the violation ladder's notify action
+// (docs/06 section 3): the quiz owner is alerted on their own
+// user:{id}:notify channel, and the attempt is left running.
+//
+//   - Counted violations below the snapshotted max_violations alert nobody.
+//   - The counted report that reaches max_violations relays exactly one
+//     attempt.violation_alert to the QUIZ OWNER (not the student, not the whole
+//     quiz channel), naming the student, the quiz, the type, and the count.
+//   - It fires again on every further counted report - the same stateless >=
+//     test auto_submit uses. Nothing records that an alert was sent, so the
+//     escalating count is what the teacher keeps seeing; their client keys the
+//     banner by attempt_id so the repeats replace rather than stack.
+//   - notify is not a termination: the attempt stays in_progress across all of
+//     it, appends no attempt.submitted event, and enqueues no grade job. This is
+//     the whole difference from auto_submit, and the reason the doc lists them
+//     as separate rungs.
+//   - An uncounted (warn-policy) report past the threshold alerts nobody: only
+//     the counted tally drives the ladder.
+func TestViolationNotifyLadderE2E(t *testing.T) {
+	baseURL := os.Getenv("MACQUIZ_TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("MACQUIZ_TEST_DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	sqlDB := itest.FreshDatabase(t, ctx, baseURL, "macquiz_notifyladdertest")
+	if _, err := db.MigrateUp(ctx, sqlDB); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+
+	pub := &capturePublisher{}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := authusers.NewService(sqlDB, "test-secret", log)
+	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
+		DB:      sqlDB,
+		Auth:    authusers.NewHandler(authSvc, false),
+		Quiz:    quiz.NewHandler(quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()}), authSvc),
+		Attempt: attempt.NewHandler(attempt.NewService(sqlDB, log, pub), authSvc),
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	if err := authSvc.EnsureBootstrapAdmin(ctx, "admin@school.test", "admin-password-1", "Root Admin"); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	provision(t, ctx, sqlDB, "teacher", "notifyowner@school.test")
+	provision(t, ctx, sqlDB, "student", "notified@school.test")
+	teacher := login(t, server, "notifyowner@school.test", "account-password")
+	student := login(t, server, "notified@school.test", "account-password")
+	ownerID := userID(t, ctx, sqlDB, "notifyowner@school.test")
+	studentID := userID(t, ctx, sqlDB, "notified@school.test")
+
+	status, body, _ := itest.Call(t, server, "POST", "/api/v1/quizzes",
+		map[string]string{"title": "Notify Ladder"}, teacher)
+	if status != 201 {
+		t.Fatalf("create quiz = %d %v", status, body)
+	}
+	quizID := body["quiz"].(map[string]any)["id"].(string)
+	if status, b, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/questions", map[string]any{
+		"type": "single", "body": map[string]string{"text": "1 + 1 = ?"},
+		"options": []map[string]string{{"key": "a", "text": "2"}, {"key": "b", "text": "3"}},
+		"correct": "a", "points": 1,
+	}, teacher); status != 201 {
+		t.Fatalf("add question = %d %v", status, b)
+	}
+	if status, _, _ := itest.Call(t, server, "PUT", "/api/v1/quizzes/"+quizID+"/assignments",
+		map[string]any{"student_ids": []string{studentID}}, teacher); status != 200 {
+		t.Fatalf("assign = %d", status)
+	}
+	// fullscreen=count with a low ladder (max 2, notify), focus_tracking=warn so
+	// one attempt can also prove an uncounted report past the threshold is silent.
+	if status, b, _ := itest.Call(t, server, "POST", "/api/v1/quizzes/"+quizID+"/publish", map[string]any{
+		"starts_at":    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		"ends_at":      time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		"duration_sec": 120,
+		"guardrails": map[string]any{
+			"fullscreen": "count", "focus_tracking": "warn", "block_clipboard": false,
+			"max_violations": 2, "violation_action": "notify",
+		},
+	}, teacher); status != 200 {
+		t.Fatalf("publish = %d %v", status, b)
+	}
+	if _, err := sqlDB.ExecContext(ctx,
+		`UPDATE quizzes SET starts_at = now() - interval '1 minute' WHERE id = $1`, quizID); err != nil {
+		t.Fatalf("backdate starts_at: %v", err)
+	}
+
+	attemptID := start(t, server, quizID, student)
+	report := func(vtype string) (int, map[string]any) {
+		t.Helper()
+		s, b, _ := itest.Call(t, server, "POST", "/api/v1/attempts/"+attemptID+"/events",
+			map[string]any{"type": vtype}, student)
+		return s, b
+	}
+	// gradeJobs proves notify is not a termination: auto_submit's grade job is the
+	// clearest fingerprint of the funnel this rung must not enter.
+	gradeJobs := func() int {
+		t.Helper()
+		var jobs int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT count(*) FROM river_job
+			 WHERE kind = 'grade_attempt' AND args->>'attempt_id' = $1`, attemptID).Scan(&jobs); err != nil {
+			t.Fatalf("count grade jobs: %v", err)
+		}
+		return jobs
+	}
+
+	t.Run("a counted report below the threshold alerts nobody", func(t *testing.T) {
+		s, b := report("fullscreen")
+		att := b["attempt"].(map[string]any)
+		if s != 200 || att["violation_count"] != float64(1) || att["status"] != "in_progress" {
+			t.Fatalf("first report = %d count=%v status=%v, want 200/1/in_progress", s, att["violation_count"], att["status"])
+		}
+		if n := pub.notifyCount(); n != 0 {
+			t.Fatalf("notifications below threshold = %d, want 0", n)
+		}
+	})
+
+	t.Run("the report that reaches max_violations alerts the owner, and only the owner", func(t *testing.T) {
+		s, b := report("fullscreen")
+		att := b["attempt"].(map[string]any)
+		if s != 200 || att["violation_count"] != float64(2) {
+			t.Fatalf("threshold report = %d count=%v, want 200/2", s, att["violation_count"])
+		}
+		// notify is not a termination - that is the whole difference from auto_submit.
+		if att["status"] != "in_progress" {
+			t.Fatalf("threshold report left attempt %v, want in_progress (notify must not submit)", att["status"])
+		}
+		if sub := filter(events(t, ctx, sqlDB, attemptID), "attempt.submitted"); len(sub) != 0 {
+			t.Fatalf("notify ladder submitted the attempt: %v", sub)
+		}
+		if n := gradeJobs(); n != 0 {
+			t.Fatalf("notify ladder enqueued %d grade jobs, want 0", n)
+		}
+
+		notes := pub.notifies(ownerID)
+		if len(notes) != 1 {
+			t.Fatalf("owner notifications = %d, want exactly 1", len(notes))
+		}
+		got := notes[0]
+		if got.typ != "attempt.violation_alert" {
+			t.Fatalf("notify type = %q, want attempt.violation_alert", got.typ)
+		}
+		want := map[string]any{
+			"quiz_id": quizID, "quiz_title": "Notify Ladder",
+			// provision seeds full_name = email, so that is the student's display name.
+			"attempt_id": attemptID, "student_id": studentID, "student_name": "notified@school.test",
+			"violation_type": "fullscreen", "violation_count": float64(2),
+		}
+		for k, v := range want {
+			if got.payload[k] != v {
+				t.Fatalf("notify payload[%s] = %v, want %v (full payload %v)", k, got.payload[k], v, got.payload)
+			}
+		}
+		// The alert is addressed to a person, so it must not also land on the
+		// student's own channel - they already know, and correct is nearby.
+		if n := pub.notifies(studentID); len(n) != 0 {
+			t.Fatalf("student received %d notifications, want 0", len(n))
+		}
+	})
+
+	t.Run("every further counted violation re-alerts with the escalating count", func(t *testing.T) {
+		if s, b := report("fullscreen"); s != 200 || b["attempt"].(map[string]any)["violation_count"] != float64(3) {
+			t.Fatalf("third report = %d %v, want 200 at count 3", s, b["attempt"])
+		}
+		notes := pub.notifies(ownerID)
+		if len(notes) != 2 {
+			t.Fatalf("owner notifications after third report = %d, want 2", len(notes))
+		}
+		if notes[1].payload["violation_count"] != float64(3) {
+			t.Fatalf("re-alert count = %v, want 3", notes[1].payload["violation_count"])
+		}
+	})
+
+	t.Run("an uncounted report past the threshold alerts nobody", func(t *testing.T) {
+		// focus is warn-policy: it logs and publishes its evidence row but never
+		// advances the tally, so it cannot move the ladder either.
+		if s, b := report("focus"); s != 200 || b["counted"] != false {
+			t.Fatalf("warn report = %d counted=%v, want 200/false", s, b["counted"])
+		}
+		if n := len(pub.notifies(ownerID)); n != 2 {
+			t.Fatalf("owner notifications after a warn report = %d, want 2 (unchanged)", n)
+		}
+		if c := violationCount(t, ctx, sqlDB, attemptID); c != 3 {
+			t.Fatalf("violation_count after warn report = %d, want 3 (untouched)", c)
 		}
 	})
 }

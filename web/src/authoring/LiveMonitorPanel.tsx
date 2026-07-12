@@ -3,19 +3,11 @@ import { api } from '../api/client'
 import { formatRemaining, formatWhen } from '../player/model'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
 import AudienceEditor from './AudienceEditor'
+import { VIOLATION_LABEL, type ViolationTally } from './model'
 import type { components } from '../api/schema'
 
 type LiveRosterRow = components['schemas']['LiveRosterRow']
 type Quiz = components['schemas']['Quiz']
-type ViolationTally = components['schemas']['ViolationTally']
-
-// docs/06 section 3's three guardrails, named the way a teacher reading the
-// hover would describe what the student did, not the way the wire names it.
-const VIOLATION_LABEL: Record<ViolationTally['type'], string> = {
-  fullscreen: 'Left fullscreen',
-  focus: 'Left the tab',
-  clipboard: 'Copy, paste, or right-click',
-}
 
 /**
  * The roster badge's "types on hover" text (docs/05 section 2, docs/06

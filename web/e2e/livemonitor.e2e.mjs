@@ -15,6 +15,10 @@
 //   4. The teacher kicks the student through the two-step destructive-flow
 //      modal (docs/11 section 4); the roster row flips to "Kicked" and a
 //      Readmit control appears, and the student's next autosave is refused.
+//   5. On a separate guardrails-on quiz, the roster's amber violation badge and
+//      its hover breakdown; then, on a third quiz whose ladder is notify, the
+//      teacher gets the violation alert on their own notify channel while
+//      standing on the quiz list, nowhere near a live monitor.
 //
 // Run:  node e2e/livemonitor.e2e.mjs
 // Env:  E2E_BASE_URL (default http://localhost:5173)
@@ -44,6 +48,7 @@ const QUIZ_TITLE = 'Live roster check'
 // blurs the student tab and logs violations nobody asked for. Reporting over
 // the documented REST fallback keeps the counts exactly what the test states.
 const GUARDRAIL_QUIZ_TITLE = 'Guardrail evidence check'
+const NOTIFY_QUIZ_TITLE = 'Notify ladder check'
 
 // Live 3 s from publish, open for 5 minutes - long enough for the scripted
 // student and the kick to run well within the window.
@@ -279,8 +284,39 @@ async function provision() {
     },
   }, 200)
 
+  // A third quiz for the ladder's notify action (docs/06 section 3). It cannot
+  // share the quiz above: that one pins violation_action flag to prove the
+  // teacher is told nothing, and the ladder is snapshotted per version, so the
+  // two policies need two quizzes. max_violations 1 means the very first
+  // counted report is already at the threshold.
+  const notifyQuiz = await request(t.cookies, 'POST', '/api/v1/quizzes', {
+    title: NOTIFY_QUIZ_TITLE,
+  }, 201)
+  const notifyQuizId = notifyQuiz.quiz.id
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${notifyQuizId}/questions`, {
+    type: 'truefalse',
+    body: { text: 'The teacher is told, and the attempt keeps running.' },
+    correct: true,
+    points: 1,
+  }, 201)
+  await request(t.cookies, 'PUT', `/api/v1/quizzes/${notifyQuizId}/assignments`, {
+    student_ids: [student.user.id],
+  }, 200)
+  await request(t.cookies, 'POST', `/api/v1/quizzes/${notifyQuizId}/publish`, {
+    starts_at: startsAt.toISOString(),
+    ends_at: endsAt.toISOString(),
+    duration_sec: DURATION_SEC,
+    guardrails: {
+      fullscreen: 'count',
+      focus_tracking: 'off',
+      block_clipboard: false,
+      max_violations: 1,
+      violation_action: 'notify',
+    },
+  }, 200)
+
   await new Promise((resolve) => setTimeout(resolve, LIVE_DELAY_MS + 1_000))
-  return { quizId, guardQuizId, teacherCookies: t.cookies }
+  return { quizId, guardQuizId, notifyQuizId, teacherCookies: t.cookies }
 }
 
 async function teacherOpensLiveMonitor(browser) {
@@ -530,8 +566,8 @@ async function teacherOpensGuardrailQuiz(teacherPage) {
 // through a fresh API login: every login this suite makes is charged to the
 // per-IP budget the whole e2e run shares (docs/08 section 4), and the student
 // page is sitting idle on its lockout screen with a perfectly good session.
-async function studentTripsGuardrails(studentPage, guardQuizId) {
-  const call = (method, path, body) =>
+function asStudent(studentPage) {
+  return (method, path, body) =>
     studentPage.evaluate(
       async (m, p, b) => {
         const res = await fetch(p, {
@@ -547,7 +583,10 @@ async function studentTripsGuardrails(studentPage, guardQuizId) {
       path,
       body ?? null,
     )
+}
 
+async function studentTripsGuardrails(studentPage, guardQuizId) {
+  const call = asStudent(studentPage)
   const detail = await call('POST', `/api/v1/quizzes/${guardQuizId}/attempts`)
   const attemptId = detail.attempt.id
   const report = async (type, durationMs) => {
@@ -628,8 +667,70 @@ async function snapshotCarriesTheSameEvidence(teacherCookies, guardQuizId) {
   )
 }
 
+// The violation ladder's notify action (docs/06 section 3), which is a
+// notification, not a dashboard cell: it must reach the teacher wherever they
+// are in their workspace. So this leg deliberately walks the teacher OFF the
+// live monitor first - back to the quiz list, where no roster and no monitor
+// socket exist - and proves the alert still lands, over the teacher's own
+// user:{id}:notify socket (docs/05 section 3).
+async function teacherLeavesTheMonitor(teacherPage) {
+  await clickButtonWithText(teacherPage, 'All quizzes')
+  await waitForText(teacherPage, '.qt-title', NOTIFY_QUIZ_TITLE, 8000)
+  check(
+    (await teacherPage.$('.live-monitor-panel')) === null,
+    'the teacher is off the live monitor before any violation is reported',
+  )
+}
+
+async function studentTripsTheNotifyLadder(studentPage, notifyQuizId) {
+  const call = asStudent(studentPage)
+  const detail = await call('POST', `/api/v1/quizzes/${notifyQuizId}/attempts`)
+  const attemptId = detail.attempt.id
+  const report = () =>
+    call('POST', `/api/v1/attempts/${attemptId}/events`, { type: 'fullscreen', duration_ms: null })
+
+  const first = await report()
+  check(
+    first.attempt.status === 'in_progress' && first.attempt.violation_count === 1,
+    'the threshold-reaching violation notifies without terminating the attempt',
+  )
+  return { attemptId, report }
+}
+
+async function teacherSeesTheViolationAlert(teacherPage, report) {
+  check(
+    await waitForText(
+      teacherPage,
+      '.notify-banner',
+      'Sam Student: left fullscreen - violation 1 on "Notify ladder check".',
+      10_000,
+    ),
+    'the alert names the student, what they did, the count, and the quiz',
+  )
+  await shot(teacherPage, '99-teacher-violation-alert.png')
+
+  // The server re-alerts on EVERY counted violation past the threshold, so a
+  // student who keeps leaving fullscreen must update the one banner rather than
+  // stack a new one per report.
+  await report()
+  check(
+    await waitForText(teacherPage, '.notify-banner', 'violation 2 on', 10_000),
+    'a further violation escalates the same banner to the new count',
+  )
+  check(
+    (await teacherPage.$$('.notify-banner')).length === 1,
+    'repeat alerts for one attempt replace the banner instead of stacking',
+  )
+
+  await teacherPage.click('.notify-banner-dismiss')
+  check(
+    (await teacherPage.$$('.notify-banner')).length === 0,
+    'the teacher can dismiss the alert',
+  )
+}
+
 await mkdir(SHOT_DIR, { recursive: true })
-const { quizId, guardQuizId, teacherCookies } = await provision()
+const { quizId, guardQuizId, notifyQuizId, teacherCookies } = await provision()
 void quizId
 
 const browser = await puppeteer.launch({
@@ -650,6 +751,11 @@ try {
   await studentTripsGuardrails(student.page, guardQuizId)
   await teacherSeesViolationEvidence(teacher.page)
   await snapshotCarriesTheSameEvidence(teacherCookies, guardQuizId)
+  // The notify ladder runs last, on its own quiz, with the teacher deliberately
+  // away from the live monitor.
+  await teacherLeavesTheMonitor(teacher.page)
+  const notify = await studentTripsTheNotifyLadder(student.page, notifyQuizId)
+  await teacherSeesTheViolationAlert(teacher.page, notify.report)
   await teacher.context.close()
   await student.context.close()
 } finally {

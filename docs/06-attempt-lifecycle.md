@@ -57,6 +57,15 @@ Each guardrail can be off, warn-only, or counted toward the violation ladder.
 Violation pipeline: client reports over the attempt WebSocket (REST fallback `POST /attempts/:id/events`); the attempt module increments `attempts.violation_count`, appends an `attempt_events` row, and publishes `attempt.violation`.
 Student sees a warning toast ("Violation 2 of 3 - stay in the quiz window"); the teacher's roster row gains an amber badge with count and types on hover.
 
+The three ladder actions differ in who they reach, not in what they record - the tally and the `attempt.violation` rows are written either way:
+
+- `flag` (the default) does nothing further; the roster badge is the whole record.
+- `auto_submit` terminates the attempt through the shared `submit(attempt_id, 'auto')` funnel and enqueues grading, so it fires exactly once (every later report answers the terminal-state error).
+- `notify` leaves the attempt running and publishes `attempt.violation_alert` to the **quiz owner's** own `user:{id}:notify` channel (docs/05 sections 2 and 3), carrying quiz_id, quiz_title, attempt_id, student_id, student_name, violation_type, and violation_count.
+  It fires on *every* counted violation at or past the threshold, not just the one that first reaches it: the server keeps no record that an alert was sent, and the escalating count is the point - a student who keeps leaving fullscreen after the threshold is what the teacher wants to keep seeing.
+  The teacher's client keys its banners by attempt_id, so the repeats update one banner instead of stacking.
+  The alert is a best-effort publish like every other: a teacher whose socket is down loses a banner, not the evidence.
+
 Trust model: browser guardrails deter and document; they do not make cheating impossible.
 Violations are evidence for the teacher, never a sole automatic trigger beyond the configured ladder.
 That is why the default ladder action is `flag`, and why the kick decision stays with a human.

@@ -27,6 +27,7 @@ import (
 type capturePublisher struct {
 	mu       sync.Mutex
 	captured []capturedEvent
+	notified []capturedNotify
 }
 
 type capturedEvent struct {
@@ -34,6 +35,14 @@ type capturedEvent struct {
 	attemptID string
 	typ       string
 	payload   map[string]any
+}
+
+// capturedNotify is one PublishNotify call: the user whose own notify channel
+// it rode, and what it said.
+type capturedNotify struct {
+	userID  string
+	typ     string
+	payload map[string]any
 }
 
 // Publish marshals the typed payload the same way realtime.Publisher does, so
@@ -50,6 +59,45 @@ func (c *capturePublisher) Publish(_ context.Context, quizID, attemptID, eventTy
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.captured = append(c.captured, capturedEvent{quizID, attemptID, eventType, m})
+}
+
+// PublishNotify records the per-user relay leg (the violation ladder's notify
+// action), marshalled the same way, so a test can assert both that it fired to
+// the right user with the right payload and that it did NOT fire at all for the
+// flag and auto_submit ladders.
+func (c *capturePublisher) PublishNotify(_ context.Context, userID, eventType string, payload any) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		panic(err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.notified = append(c.notified, capturedNotify{userID, eventType, m})
+}
+
+// notifies returns the notifications captured for one user, in publish order.
+func (c *capturePublisher) notifies(userID string) []capturedNotify {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []capturedNotify
+	for _, n := range c.notified {
+		if n.userID == userID {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// notifyCount is the total number of notifications relayed to anyone - the
+// assertion a flag or auto_submit ladder makes to prove notify never fired.
+func (c *capturePublisher) notifyCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.notified)
 }
 
 // forAttempt returns the captured events for one attempt, in publish order.

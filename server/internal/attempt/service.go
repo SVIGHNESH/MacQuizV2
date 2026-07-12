@@ -762,9 +762,11 @@ func (s *Service) OverrideScore(ctx context.Context, actor authusers.User, attem
 // violation pipeline. It also fires the ladder's terminal action: once a
 // counted report brings the tally to the snapshotted max_violations and the
 // action is auto_submit, the same transaction auto-submits (kind='auto') and
-// enqueues grading. The default action, flag, needs nothing beyond the counted
-// tally this records, which the live roster's amber badge already reads; notify
-// awaits the user notification channel.
+// enqueues grading; the notify action instead sends the quiz owner an
+// attempt.violation_alert on their own notify channel, naming the student, the
+// type, and the count. The default action, flag, needs nothing beyond the
+// counted tally this records, which the live roster's amber badge already
+// reads.
 //
 // Owner-only (a student reports only their own attempt; anyone else reads 404)
 // and in_progress-only (a terminated attempt accrues no violations - a kicked
@@ -833,22 +835,35 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 
 	// The violation ladder's terminal action (docs/06 section 3): once the
 	// counted tally reaches this attempt's snapshotted max_violations, the
-	// configured action fires. Only auto_submit is active here - flag (the
-	// default) needs nothing beyond the tally the roster badge reads, and notify
-	// awaits the user notification channel. auto_submit rides the shared submit
-	// funnel with kind='auto', so it terminates and grades exactly like a
-	// deadline expiry; the violation_count and the run of attempt.violation rows
-	// are the evidence that explains why. Only a counted report reaches this,
-	// and the attempt is still in_progress (checked above), so submit flips it
-	// here and returns a payload; a repeat is impossible because that flip makes
-	// every later report a terminal-state 409.
+	// configured action fires. flag (the default) needs nothing beyond the tally
+	// the roster badge reads; the other two are handled here.
+	//
+	// auto_submit rides the shared submit funnel with kind='auto', so it
+	// terminates and grades exactly like a deadline expiry; the violation_count
+	// and the run of attempt.violation rows are the evidence that explains why.
+	// Only a counted report reaches this, and the attempt is still in_progress
+	// (checked above), so submit flips it here and returns a payload; a repeat is
+	// impossible because that flip makes every later report a terminal-state 409.
+	//
+	// notify leaves the attempt alone and alerts the quiz owner instead, so it
+	// fires on EVERY counted report at or past the threshold, not just the one
+	// that first reaches it - the same >= test auto_submit uses, and the same
+	// stateless server (nothing records that an alert was already sent). The
+	// escalating count is the point: a student who keeps leaving fullscreen after
+	// the threshold is exactly what the teacher wants to keep seeing. The
+	// teacher's client keys its banner by attempt_id, so the repeats update one
+	// banner rather than stacking.
 	var submittedPay *submittedPayload
+	var notifyPay *violationNotifyPayload
+	var notifyOwnerID string
 	if counted {
 		action, maxViolations, err := guardrailLadder(ctx, tx, a.QuizId.String(), a.QuizVersion)
 		if err != nil {
 			return Attempt{}, false, err
 		}
-		if action == "auto_submit" && maxViolations >= 1 && newCount >= maxViolations {
+		fires := maxViolations >= 1 && newCount >= maxViolations
+		switch {
+		case fires && action == "auto_submit":
 			a, submittedPay, err = submit(ctx, tx, a, "auto")
 			if err != nil {
 				return Attempt{}, false, err
@@ -862,6 +877,25 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 					return Attempt{}, false, err
 				}
 			}
+		case fires && action == "notify":
+			// Read the owner and title from the quiz row this violation just
+			// committed against, inside the same transaction, so the alert names
+			// the quiz as it is - not as it was when some callback was wired.
+			var ownerID, title string
+			if err := tx.QueryRowContext(ctx,
+				`SELECT owner_id, title FROM quizzes WHERE id = $1`, a.QuizId).Scan(&ownerID, &title); err != nil {
+				return Attempt{}, false, fmt.Errorf("load quiz owner for violation notify: %w", err)
+			}
+			notifyOwnerID = ownerID
+			notifyPay = &violationNotifyPayload{
+				QuizID:         a.QuizId.String(),
+				QuizTitle:      title,
+				AttemptID:      a.Id.String(),
+				StudentID:      actor.ID,
+				StudentName:    actor.FullName,
+				ViolationType:  vtype,
+				ViolationCount: newCount,
+			}
 		}
 	}
 
@@ -874,6 +908,13 @@ func (s *Service) ReportViolation(ctx context.Context, actor authusers.User, att
 	s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventViolation, payload)
 	if submittedPay != nil {
 		s.events.Publish(ctx, a.QuizId.String(), a.Id.String(), eventSubmitted, *submittedPay)
+	}
+	// The owner's alert is best-effort by the same contract as every publish: the
+	// attempt.violation row and the tally are already durable, so a teacher whose
+	// socket is down loses a banner, not the evidence - the live roster's badge
+	// and the audit-grade event log still carry it.
+	if notifyPay != nil {
+		s.events.PublishNotify(ctx, notifyOwnerID, eventViolationAlert, *notifyPay)
 	}
 	return a, counted, nil
 }

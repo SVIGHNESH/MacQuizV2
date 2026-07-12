@@ -142,6 +142,45 @@
   justify-self: start;
 }
 
+/* Shell-level notices from the user:{id}:notify channel (docs/05 section 3):
+   they belong to the signed-in session, not to any one screen, so both
+   workspaces stack them above whatever the user happens to be looking at. */
+
+.workspace-notices {
+  display: grid;
+  gap: 8px;
+  max-width: 860px;
+  margin-bottom: 16px;
+}
+
+/* A guardrail violation is evidence against a student, not good news: amber,
+   the same tone the live roster's violation badge already carries, so the two
+   surfaces read as one signal rather than two unrelated alerts. */
+
+.notify-banner {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: var(--text-secondary);
+  color: var(--color-warning-on-tint);
+  background: var(--color-warning-tint);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+}
+
+.notify-banner-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 .page-head {
   display: flex;
   align-items: flex-end;

@@ -19,14 +19,23 @@ type recordedPublish struct {
 // survives the throttle so the test can count what was relayed. It is
 // concurrency-safe because one subtest relays from many goroutines.
 type recordingPublisher struct {
-	mu   sync.Mutex
-	seen []recordedPublish
+	mu       sync.Mutex
+	seen     []recordedPublish
+	notified []recordedPublish
 }
 
 func (r *recordingPublisher) Publish(_ context.Context, quizID, attemptID, eventType string, _ any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seen = append(r.seen, recordedPublish{quizID, attemptID, eventType})
+}
+
+// PublishNotify records the per-user leg under the same lock, so the test can
+// prove the coalescer passes notifications through untouched.
+func (r *recordingPublisher) PublishNotify(_ context.Context, userID, eventType string, _ any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.notified = append(r.notified, recordedPublish{attemptID: userID, eventType: eventType})
 }
 
 func (r *recordingPublisher) count(attemptID, eventType string) int {
@@ -113,6 +122,19 @@ func TestProgressCoalescer(t *testing.T) {
 		}
 		if got := rec.count("att-1", eventGraded); got != 1 {
 			t.Fatalf("graded relayed = %d, want 1", got)
+		}
+	})
+
+	t.Run("notifications pass through: they are per user, not per attempt", func(t *testing.T) {
+		c, rec, _ := newTestCoalescer()
+		// Even repeated within one window, and even for the same recipient: a
+		// dropped notification has no snapshot to reconcile it back.
+		c.PublishNotify(ctx, "teacher-1", eventViolationAlert, violationNotifyPayload{ViolationCount: 2})
+		c.PublishNotify(ctx, "teacher-1", eventViolationAlert, violationNotifyPayload{ViolationCount: 3})
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		if len(rec.notified) != 2 {
+			t.Fatalf("notifications relayed = %d, want 2 (never throttled)", len(rec.notified))
 		}
 	})
 

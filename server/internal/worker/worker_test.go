@@ -108,8 +108,17 @@ func TestWorkerOpensAndClosesQuiz(t *testing.T) {
 			// The realtime relay only parses this URL (it dials lazily), so a
 			// valid dev default lets Run build its publisher without a live
 			// Redis; the events it relays are asserted in the attempt suite.
-			RedisURL:      "redis://localhost:6380/0",
-			ShutdownGrace: 10 * time.Second,
+			RedisURL: "redis://localhost:6380/0",
+			// Deliberately looser than the production default (10 s): what this
+			// test asserts is that cancelling the context stops the worker
+			// cleanly, not how fast River drains under whatever else is running.
+			// A full `go test ./...` puts a dozen DB-backed packages on one
+			// Postgres, and a Stop that needs 12 s under that contention is
+			// contention, not a bug - but with the grace set to the production
+			// value it surfaces as "stop river client: context deadline
+			// exceeded" and reads like one. The select below still fails the
+			// test after 30 s, so a genuinely stuck shutdown is still caught.
+			ShutdownGrace: 25 * time.Second,
 			Env:           "test",
 			ImportDir:     t.TempDir(),
 		}, log)

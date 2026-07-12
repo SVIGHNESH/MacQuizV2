@@ -36,6 +36,15 @@ const (
 	eventReconnected        = "attempt.reconnected"
 )
 
+// eventViolationAlert is the violation ladder's notify action (docs/06 section
+// 3), and the one event in this module that rides the user:{id}:notify channel
+// rather than quiz:{id}:events: it is addressed to the quiz owner personally,
+// so it reaches a teacher who is anywhere in their workspace rather than only
+// one watching this quiz's live monitor. It is a notification, not a state
+// delta - no attempt_events row backs it, because the attempt.violation row
+// that triggered it already is the durable evidence.
+const eventViolationAlert = "attempt.violation_alert"
+
 // startedPayload is the attempt.started delta: the dashboard moves the row to
 // "in progress" and starts its countdown from deadline_at (docs/05 section 2).
 type startedPayload struct {
@@ -91,6 +100,21 @@ type violationPayload struct {
 	ViolationCount int    `json:"violation_count"`
 }
 
+// violationNotifyPayload is the attempt.violation_alert notification (docs/06
+// section 3's notify action). It carries who did what, where, and how many
+// times, so the teacher's banner can name the student and the quiz without a
+// follow-up fetch - the notify socket is open across the whole workspace, so
+// the recipient generally is not looking at either.
+type violationNotifyPayload struct {
+	QuizID         string `json:"quiz_id"`
+	QuizTitle      string `json:"quiz_title"`
+	AttemptID      string `json:"attempt_id"`
+	StudentID      string `json:"student_id"`
+	StudentName    string `json:"student_name"`
+	ViolationType  string `json:"violation_type"`
+	ViolationCount int    `json:"violation_count"`
+}
+
 // sessionInvalidatedPayload is the attempt.session_invalidated delta (docs/08
 // section 1, docs/06 section 3 "Single active session"): recorded when a
 // second device's attempt:{id} socket connects and the gateway force-closes
@@ -127,8 +151,15 @@ type execer interface {
 // gives tests a capture seam. Publish is best-effort and returns nothing: the
 // row is already durable and the live snapshot reconciles any lost delta, so a
 // publish failure must never affect the request that triggered it.
+//
+// PublishNotify is the same relay onto one user's own user:{id}:notify channel
+// (docs/05 section 3), for the events addressed to a person rather than to
+// everyone watching a quiz - today, the violation ladder's notify action. It
+// has the exact shape quiz.EventPublisher declares, so the one wired
+// realtime.Publisher satisfies both modules' interfaces.
 type EventPublisher interface {
 	Publish(ctx context.Context, quizID, attemptID, eventType string, payload any)
+	PublishNotify(ctx context.Context, userID, eventType string, payload any)
 }
 
 // noopPublisher is the default relay: every test that does not exercise the
@@ -137,6 +168,7 @@ type EventPublisher interface {
 type noopPublisher struct{}
 
 func (noopPublisher) Publish(context.Context, string, string, string, any) {}
+func (noopPublisher) PublishNotify(context.Context, string, string, any)   {}
 
 // resolvePublisher picks the wired relay or the no-op fallback, so every emit
 // site can call Publish without a nil guard. The variadic keeps the many

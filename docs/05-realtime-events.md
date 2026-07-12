@@ -29,6 +29,7 @@ The event row is the source of truth; the publish is best-effort delivery.
 | `attempt.graded` | score | Score appears (visible per quiz result policy) |
 | `quiz.extended` / `quiz.closed` | new ends_at | Banner to teacher and all in-progress students |
 | `quiz.assigned` / `quiz.unassigned` | quiz_id, title | Notification banner on the student's `user:{id}:notify` channel |
+| `attempt.violation_alert` | quiz_id, quiz_title, attempt_id, student_id, student_name, violation_type, violation_count | Notification banner on the quiz owner's `user:{id}:notify` channel (the violation ladder's notify action, docs/06 section 3) |
 
 ## 3. Channels and authorization
 
@@ -36,7 +37,7 @@ The event row is the source of truth; the publish is best-effort delivery.
 |---------|---------|------------------|
 | `quiz:{id}:monitor` | Teacher/admin live dashboard | Quiz owner or admin |
 | `attempt:{id}` | Student's own attempt: kick delivery, quiz.extended banners, heartbeat | Attempt owner |
-| `user:{id}:notify` | Assignment notifications (`quiz.assigned`/`quiz.unassigned`) | The user |
+| `user:{id}:notify` | Per-person notifications: assignments (`quiz.assigned`/`quiz.unassigned`) to a student, violation alerts (`attempt.violation_alert`) to a quiz owner | The user |
 
 The gateway checks `can()` once at subscribe and revalidates on token refresh.
 
@@ -51,6 +52,10 @@ The kick and readmit escalations post to the existing `/attempts/:id/kick` and `
 The `attempt:{id}` student-facing channel's heartbeat and disconnected-state pieces are now implemented: `web/src/player/AttemptPlayer.tsx` sends a heartbeat frame on that socket every 10 s (any frame counts - the content is unchecked), and `realtime.Gateway.handleAttempt` (`server/internal/realtime/gateway.go`) runs a real read loop instead of the old write-only `CloseRead` drain to receive it. 25 s (2.5x the client's cadence) without one calls `attempt.Service.LogAttemptDisconnected`, which appends and publishes `attempt.disconnected`; the next heartbeat calls `LogAttemptReconnected` for `attempt.reconnected`. `quiz.LiveRoster` derives the same state for a fresh snapshot from each attempt's most recent `attempt.disconnected`/`attempt.reconnected` row (docs/05 section 4's "materialized from attempts plus recent attempt_events"), so a late-joining dashboard sees a lapsed heartbeat too, not just a live delta. `current_question` is also wired: it is the 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student's autosave resolved, persisted on `attempts.current_question` and carried by both the snapshot and the `attempt.progress` delta.
 
 `user:{id}:notify` is now implemented end to end: `quiz.Service.SetAssignments` diffs the audience before and after each `PUT /quizzes/:id/assignments` call and, after commit, publishes `quiz.assigned`/`quiz.unassigned` (quiz_id, title) to exactly the students whose membership changed - never the whole audience on an unrelated save. `web/src/player/StudentWorkspace.tsx` opens the channel for the whole signed-in session (a teacher can change assignments while the student is mid-attempt on something else) and renders each notification as a dismissable banner.
+
+Teachers hold the same socket, for the same reason: `web/src/authoring/AuthoringWorkspace.tsx` opens `user:{id}:notify` across the whole teacher shell (both workspaces share `web/src/lib/useNotifySocket.ts`) and renders `attempt.violation_alert` as a dismissable amber banner naming the student, what they did, the running count, and the quiz.
+A guardrail trips while the teacher is writing next week's quiz, which is exactly when they most need to be told - so the alert cannot belong to the live monitor, which may not even be mounted.
+Banners are keyed by `attempt_id`: the server re-alerts on every counted violation at or past the threshold, so a repeat updates that student's banner rather than stacking a new one.
 
 The email leg of the same notification is also now implemented: `quiz.Service.emailAssignmentChanges` (`server/internal/quiz/lifecycle.go`) sends one email per affected student through `quiz.EmailSender` - a "you were assigned" mail for a newly-added student, a "you were removed" mail for a dropped one - each fired from its own detached, timeout-bounded goroutine so a slow or unreachable provider never adds latency to the `PUT /quizzes/:id/assignments` request. `email.ResendSender` (`server/internal/email`) is the concrete Resend-backed implementation, wired in `main.go` only when `MACQUIZ_EMAIL_API_KEY` is set; leaving it unset degrades to the package's `noopEmailSender` default, never a boot failure, since the in-app channel above already delivers the same event.
 

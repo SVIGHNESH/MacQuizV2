@@ -8,6 +8,7 @@ export type QuestionOption = components['schemas']['QuestionOption']
 export type ApiError = components['schemas']['Error']
 export type Import = components['schemas']['Import']
 export type QuizStats = components['schemas']['QuizStats']
+export type ViolationTally = components['schemas']['ViolationTally']
 
 export const TYPE_LABEL: Record<QuestionType, string> = {
   single: 'Single choice',
@@ -22,6 +23,15 @@ export const STATUS_LABEL: Record<Quiz['status'], string> = {
   live: 'Live',
   closed: 'Closed',
   archived: 'Archived',
+}
+
+// docs/06 section 3's three guardrails, named the way a teacher reading the
+// roster hover - or a violation alert - would describe what the student did,
+// not the way the wire names it.
+export const VIOLATION_LABEL: Record<ViolationTally['type'], string> = {
+  fullscreen: 'Left fullscreen',
+  focus: 'Left the tab',
+  clipboard: 'Copy, paste, or right-click',
 }
 
 /**
