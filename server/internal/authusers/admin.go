@@ -7,10 +7,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"macquiz/server/internal/audit"
 )
 
 // Sentinel errors for the admin provisioning flows.
@@ -103,15 +106,17 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 		return User{}, "", fmt.Errorf("load user: %w", err)
 	}
 
-	changes := map[string]any{}
-	if patch.FullName != nil && *patch.FullName != u.FullName {
+	// Diffed against the locked row before the patch overwrites it, so the
+	// audit row says what the account looked like before (docs/08 section 7).
+	changes := map[string]audit.Change{}
+	if patch.FullName != nil {
+		audit.Diff(changes, "full_name", u.FullName, *patch.FullName)
 		u.FullName = *patch.FullName
-		changes["full_name"] = *patch.FullName
 	}
 	revokeSessions := false
 	if patch.Status != nil && *patch.Status != u.Status {
+		changes["status"] = audit.Change{From: u.Status, To: *patch.Status}
 		u.Status = *patch.Status
-		changes["status"] = *patch.Status
 		// Disabling must kill live sessions, not wait for token expiry.
 		revokeSessions = *patch.Status == "disabled"
 	}
@@ -126,11 +131,13 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 		if err != nil {
 			return User{}, "", fmt.Errorf("hash reset password: %w", err)
 		}
+		audit.Diff(changes, "must_change_password", u.MustChangePassword, true)
 		u.MustChangePassword = true
-		changes["password_reset"] = true
 		revokeSessions = true
 	}
-	if len(changes) == 0 {
+	// A reset with no other field to move still mutates the credential, so it
+	// is never a no-op even when the diff is otherwise empty.
+	if len(changes) == 0 && !patch.ResetPassword {
 		return u, "", nil
 	}
 
@@ -155,7 +162,14 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 			return User{}, "", fmt.Errorf("revoke sessions: %w", err)
 		}
 	}
-	if err := writeAudit(ctx, tx, actor.ID, "users.updated", "user", id, changes); err != nil {
+	// password_reset stays a flat flag alongside the diff: the credential
+	// itself is never recorded, so "the password was reset" is a fact the
+	// from/to shape cannot carry.
+	detail := map[string]any{"changes": changes}
+	if patch.ResetPassword {
+		detail["password_reset"] = true
+	}
+	if err := writeAudit(ctx, tx, actor.ID, "users.updated", "user", id, detail); err != nil {
 		return User{}, "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -248,6 +262,15 @@ func (s *Service) SetGroupMembers(ctx context.Context, actor User, groupID strin
 			errNotStudents, len(studentIDs)-students, len(studentIDs))
 	}
 
+	// PUT replaces the whole roster, so who joined and who left is only
+	// knowable against the membership this call is about to overwrite - read
+	// it under the group's row lock, before the swap (docs/08 section 7: a
+	// set-valued mutation records added/removed, not a from/to roster dump).
+	added, removed, err := memberDelta(ctx, tx, groupID, studentIDs)
+	if err != nil {
+		return Group{}, err
+	}
+
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM group_members WHERE group_id = $1`, groupID); err != nil {
 		return Group{}, fmt.Errorf("clear members: %w", err)
@@ -260,7 +283,11 @@ func (s *Service) SetGroupMembers(ctx context.Context, actor User, groupID strin
 		}
 	}
 	if err := writeAudit(ctx, tx, actor.ID, "groups.members_set", "group", groupID,
-		map[string]any{"member_count": len(studentIDs)}); err != nil {
+		map[string]any{
+			"member_count":     len(studentIDs),
+			"added_user_ids":   added,
+			"removed_user_ids": removed,
+		}); err != nil {
 		return Group{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -268,6 +295,46 @@ func (s *Service) SetGroupMembers(ctx context.Context, actor User, groupID strin
 	}
 	g.MemberCount = len(studentIDs)
 	return g, nil
+}
+
+// memberDelta returns the ids studentIDs adds to, and drops from, the group's
+// current membership - the diff a groups.members_set audit row carries. Both
+// slices are sorted and never nil, so the recorded shape is stable.
+func memberDelta(ctx context.Context, tx *sql.Tx, groupID string, studentIDs []string) (added, removed []string, err error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT student_id FROM group_members WHERE group_id = $1`, groupID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load prior members: %w", err)
+	}
+	defer rows.Close()
+	prev := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, nil, fmt.Errorf("scan prior member: %w", err)
+		}
+		prev[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	next := map[string]bool{}
+	added, removed = []string{}, []string{}
+	for _, id := range studentIDs {
+		next[id] = true
+		if !prev[id] {
+			added = append(added, id)
+		}
+	}
+	for id := range prev {
+		if !next[id] {
+			removed = append(removed, id)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	return added, removed, nil
 }
 
 // errNotStudents marks membership lists containing non-student (or unknown)

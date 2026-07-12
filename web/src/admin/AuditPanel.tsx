@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
 
@@ -42,6 +42,51 @@ function shortId(id: string): string {
   return id.split('-')[0] ?? id
 }
 
+/** One field's before/after, as the server's audit.Change writes it. */
+type Change = { from: unknown; to: unknown }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * The diff a mutation recorded (docs/08 section 7), or null for a row that
+ * carries none: rows written before the convention, and creates and deletes,
+ * where the resource itself is the change.
+ */
+function changesOf(detail: unknown): [string, Change][] | null {
+  if (!isRecord(detail) || !isRecord(detail.changes)) return null
+  const fields = Object.entries(detail.changes).filter(
+    (entry): entry is [string, Change] => isRecord(entry[1]) && 'to' in entry[1],
+  )
+  return fields.length > 0 ? fields.sort(([a], [b]) => a.localeCompare(b)) : null
+}
+
+/**
+ * Everything in the detail that is not the diff - counts, ids, flags, and the
+ * whole of a legacy row. Keys are sorted: the server writes them from a Go
+ * map, whose order is deliberately random, and evidence that reshuffles itself
+ * between two rows of the same action is harder to read than it needs to be.
+ */
+function contextOf(detail: unknown): Record<string, unknown> | null {
+  if (!isRecord(detail)) return null
+  const rest = Object.entries(detail)
+    .filter(([key]) => key !== 'changes')
+    .sort(([a], [b]) => a.localeCompare(b))
+  return rest.length > 0 ? Object.fromEntries(rest) : null
+}
+
+/**
+ * A recorded value as one line. A null is a real value in a diff - the field
+ * was unset before, or was cleared - so it reads as "unset" rather than as
+ * missing evidence; anything structural is shown as the JSON that was stored.
+ */
+function renderValue(value: unknown): string {
+  if (value === null || value === undefined) return 'unset'
+  if (typeof value === 'string') return value
+  return JSON.stringify(value)
+}
+
 /**
  * The append-only audit trail (docs/04). Keyset-paginated newest first on the
  * entry id, exactly as the server returns it - this screen never sorts or
@@ -53,6 +98,14 @@ export default function AuditPanel() {
   const [cursor, setCursor] = useState<number | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+
+  const toggle = (id: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
 
   useEffect(() => {
     let cancelled = false
@@ -135,39 +188,99 @@ export default function AuditPanel() {
                 <span role="columnheader">Time</span>
                 <span role="columnheader">Actor · action</span>
                 <span role="columnheader">Resource</span>
+                <span role="columnheader">
+                  <span className="visually-hidden">Detail</span>
+                </span>
               </div>
               {entries.map((entry) => {
                 const verb = verbOf(entry.action)
                 const actor = entry.actor_id
                   ? (actors.get(entry.actor_id) ?? shortId(entry.actor_id))
                   : 'System'
+                const changes = changesOf(entry.detail)
+                const context = contextOf(entry.detail)
+                const hasDetail = changes !== null || context !== null
+                const open = expanded.has(entry.id)
                 return (
-                  <div className="audit-row" role="row" key={entry.id}>
-                    <span className="audit-time tabular">
-                      {STAMP.format(new Date(entry.at))}
-                    </span>
-                    <span className="audit-actor">
-                      {actor} ·{' '}
-                      <span
-                        className={
-                          CONSEQUENTIAL.has(verb)
-                            ? 'audit-verb audit-verb-consequential'
-                            : 'audit-verb'
-                        }
-                      >
-                        {verb}
+                  <Fragment key={entry.id}>
+                    <div className="audit-row" role="row">
+                      <span className="audit-time tabular">
+                        {STAMP.format(new Date(entry.at))}
                       </span>
-                    </span>
-                    <span className="audit-resource">
-                      {entry.resource_type}
-                      {entry.resource_id && (
-                        <span className="audit-resource-id tabular">
-                          {' '}
-                          · {shortId(entry.resource_id)}
+                      <span className="audit-actor">
+                        {actor} ·{' '}
+                        <span
+                          className={
+                            CONSEQUENTIAL.has(verb)
+                              ? 'audit-verb audit-verb-consequential'
+                              : 'audit-verb'
+                          }
+                        >
+                          {verb}
                         </span>
-                      )}
-                    </span>
-                  </div>
+                      </span>
+                      <span className="audit-resource">
+                        {entry.resource_type}
+                        {entry.resource_id && (
+                          <span className="audit-resource-id tabular">
+                            {' '}
+                            · {shortId(entry.resource_id)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="audit-detail-cell">
+                        {hasDetail && (
+                          <button
+                            type="button"
+                            className="audit-toggle"
+                            aria-expanded={open}
+                            aria-controls={`audit-detail-${entry.id}`}
+                            onClick={() => toggle(entry.id)}
+                          >
+                            {open ? 'Hide' : 'Detail'}
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                    {open && hasDetail && (
+                      <div
+                        className="audit-detail"
+                        id={`audit-detail-${entry.id}`}
+                        role="row"
+                      >
+                        <span className="audit-detail-body">
+                          {changes && (
+                            <dl className="audit-changes">
+                              {changes.map(([field, change]) => (
+                                <div className="audit-change" key={field}>
+                                  <dt>{field.replace(/_/g, ' ')}</dt>
+                                  <dd>
+                                    <span className="audit-change-from">
+                                      {renderValue(change.from)}
+                                    </span>
+                                    <span
+                                      className="audit-change-arrow"
+                                      aria-hidden="true"
+                                    >
+                                      →
+                                    </span>
+                                    <span className="audit-change-to">
+                                      {renderValue(change.to)}
+                                    </span>
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
+                          {context && (
+                            <pre className="audit-context tabular">
+                              {JSON.stringify(context, null, 2)}
+                            </pre>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </Fragment>
                 )
               })}
             </div>

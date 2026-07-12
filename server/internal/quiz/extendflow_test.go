@@ -242,19 +242,23 @@ func TestExtendE2E(t *testing.T) {
 		if !farOut {
 			t.Fatalf("ends_at not extended")
 		}
-		// Exactly one audit row carrying the before/after window.
+		// Exactly one audit row carrying the before/after window under the
+		// changes convention (docs/08 section 7).
 		var auditCount int
-		var toEnds string
+		var windowMovedLater bool
 		if err := sqlDB.QueryRowContext(ctx,
-			`SELECT count(*), coalesce(max(detail->>'to_ends_at'), '') FROM audit_log
-			 WHERE action = 'quizzes.extended' AND resource_id = $1`, quizID).Scan(&auditCount, &toEnds); err != nil {
+			`SELECT count(*),
+			        coalesce(bool_or((detail->'changes'->'ends_at'->>'to')::timestamptz
+			                       > (detail->'changes'->'ends_at'->>'from')::timestamptz), false)
+			 FROM audit_log
+			 WHERE action = 'quizzes.extended' AND resource_id = $1`, quizID).Scan(&auditCount, &windowMovedLater); err != nil {
 			t.Fatalf("count audit rows: %v", err)
 		}
 		if auditCount != 1 {
 			t.Fatalf("extended audit rows = %d, want 1", auditCount)
 		}
-		if toEnds == "" {
-			t.Fatalf("audit detail missing to_ends_at")
+		if !windowMovedLater {
+			t.Fatalf("audit ends_at diff does not record the old window moving later")
 		}
 		// A fresh close_quiz job scheduled at the new ends_at (distinct from the
 		// original one enqueued at publish, which sits ~2h from publish time).

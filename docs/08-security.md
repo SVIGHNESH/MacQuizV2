@@ -44,6 +44,9 @@ Status: implementation baseline.
 ## 7. Auditability
 
 - Every admin or teacher mutation lands in `audit_log` with actor, action, resource, and diff.
+- The diff convention: an update-type mutation writes `detail.changes = {field: {"from": old, "to": new}}`, carrying only the fields that actually moved (`audit.Change`, written through `audit.Diff` and friends so the equality rules are the same everywhere).
+A set-valued mutation (a quiz's audience, a group's membership) instead writes `added_user_ids` / `removed_user_ids`: for a set, added and removed is the diff, and a whole-roster from/to dump would bury it.
+Rows written before the convention keep their older flat shape, because the table is append-only; the admin console's audit reader renders both.
 - `attempt_events` provides the same trail for students.
 - Both tables are append-only (no UPDATE/DELETE grants).
 

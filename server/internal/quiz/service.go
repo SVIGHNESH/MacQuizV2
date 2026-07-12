@@ -306,26 +306,32 @@ func (s *Service) UpdateQuiz(ctx context.Context, actor authusers.User, id strin
 		return Quiz{}, err
 	}
 
-	changes := map[string]any{}
-	if patch.Title != nil && *patch.Title != q.Title {
+	// The audit diff is taken against the locked row, field by field, before
+	// the patch overwrites it (docs/08 section 7: actor, action, resource, and
+	// diff). It doubles as the no-op check: a patch that restates the current
+	// values leaves changes empty and writes nothing at all. The float fields
+	// are compared at column precision (float32), so a value the column cannot
+	// hold does not read as a change on every save.
+	changes := map[string]audit.Change{}
+	if patch.Title != nil {
+		audit.Diff(changes, "title", q.Title, *patch.Title)
 		q.Title = *patch.Title
-		changes["title"] = *patch.Title
 	}
-	if patch.MaxAttempts != nil && *patch.MaxAttempts != q.MaxAttempts {
+	if patch.MaxAttempts != nil {
+		audit.Diff(changes, "max_attempts", q.MaxAttempts, *patch.MaxAttempts)
 		q.MaxAttempts = *patch.MaxAttempts
-		changes["max_attempts"] = *patch.MaxAttempts
 	}
-	if patch.ShuffleQuestions != nil && *patch.ShuffleQuestions != q.ShuffleQuestions {
+	if patch.ShuffleQuestions != nil {
+		audit.Diff(changes, "shuffle_questions", q.ShuffleQuestions, *patch.ShuffleQuestions)
 		q.ShuffleQuestions = *patch.ShuffleQuestions
-		changes["shuffle_questions"] = *patch.ShuffleQuestions
 	}
-	if patch.DefaultPoints != nil && float32(*patch.DefaultPoints) != q.DefaultPoints {
+	if patch.DefaultPoints != nil {
+		audit.Diff(changes, "default_points", q.DefaultPoints, float32(*patch.DefaultPoints))
 		q.DefaultPoints = float32(*patch.DefaultPoints)
-		changes["default_points"] = *patch.DefaultPoints
 	}
-	if patch.DefaultPenalty != nil && float32(*patch.DefaultPenalty) != q.DefaultPenalty {
+	if patch.DefaultPenalty != nil {
+		audit.Diff(changes, "default_penalty", q.DefaultPenalty, float32(*patch.DefaultPenalty))
 		q.DefaultPenalty = float32(*patch.DefaultPenalty)
-		changes["default_penalty"] = *patch.DefaultPenalty
 	}
 	if len(changes) == 0 {
 		return q, nil
@@ -338,7 +344,8 @@ func (s *Service) UpdateQuiz(ctx context.Context, actor authusers.User, id strin
 		q.DefaultPoints, q.DefaultPenalty, id); err != nil {
 		return Quiz{}, fmt.Errorf("update quiz: %w", err)
 	}
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.updated", "quiz", id, changes); err != nil {
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.updated", "quiz", id,
+		map[string]any{"changes": changes}); err != nil {
 		return Quiz{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -608,6 +615,15 @@ func (s *Service) UpdateQuestion(ctx context.Context, actor authusers.User, ques
 		return Question{}, err
 	}
 
+	// The pre-edit row, for the audit diff (docs/08 section 7). The quiz row
+	// lock taken above already serializes concurrent edits of this question,
+	// so a plain read here sees exactly the row the UPDATE below replaces.
+	old, err := scanQuestion(tx.QueryRowContext(ctx,
+		`SELECT `+questionColumns+` FROM questions WHERE id = $1`, questionID).Scan)
+	if err != nil {
+		return Question{}, fmt.Errorf("load question for diff: %w", err)
+	}
+
 	q, err := scanQuestion(tx.QueryRowContext(ctx,
 		`UPDATE questions SET type = $1, body = $2, options = $3, correct = $4, points = $5, penalty = $6, topic = $7
 		 WHERE id = $8
@@ -616,8 +632,22 @@ func (s *Service) UpdateQuestion(ctx context.Context, actor authusers.User, ques
 	if err != nil {
 		return Question{}, fmt.Errorf("update question: %w", err)
 	}
+
+	// The editor autosaves whole questions, so most saves change one field;
+	// the diff carries only what actually moved. The answer key is included:
+	// the audit log is admin-only, and "what did the teacher change the
+	// correct answer to" is precisely what it exists to answer.
+	changes := map[string]audit.Change{}
+	audit.Diff(changes, "type", old.Type, q.Type)
+	audit.DiffJSON(changes, "body", old.Body, q.Body)
+	audit.DiffJSON(changes, "options", old.Options, q.Options)
+	audit.DiffJSON(changes, "correct", old.Correct, q.Correct)
+	audit.DiffPointer(changes, "points", old.Points, q.Points)
+	audit.DiffPointer(changes, "penalty", old.Penalty, q.Penalty)
+	audit.DiffPointer(changes, "topic", old.Topic, q.Topic)
+
 	if err := audit.Write(ctx, tx, actor.ID, "questions.updated", "question", questionID,
-		map[string]any{"quiz_id": q.QuizID, "type": in.Type}); err != nil {
+		map[string]any{"quiz_id": q.QuizID, "type": in.Type, "changes": changes}); err != nil {
 		return Question{}, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -752,7 +752,7 @@
 .audit-head,
 .audit-row {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1.5fr) minmax(0, 1.4fr);
+  grid-template-columns: 150px minmax(0, 1.5fr) minmax(0, 1.4fr) 64px;
   gap: 12px;
   padding: 12px 18px;
   align-items: center;
@@ -804,6 +804,92 @@
 
 .audit-more {
   justify-self: start;
+}
+
+/* The diff a mutation recorded (docs/08 section 7). Collapsed by default: the
+   log is scanned far more often than it is interrogated, so the evidence sits
+   one click behind the row it belongs to rather than crowding every scan. */
+.audit-detail-cell {
+  justify-self: end;
+}
+
+.audit-toggle {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.audit-toggle:hover {
+  color: var(--color-text-strong);
+  border-color: var(--color-text-muted);
+}
+
+.audit-detail {
+  padding: 0 18px 14px;
+  border-bottom: 1px solid var(--color-well);
+}
+
+.audit-detail-body {
+  display: block;
+  background: var(--color-well);
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
+}
+
+.audit-changes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.audit-change {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.audit-change dt {
+  font: 600 11px/1.4 var(--font-sans);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.audit-change dd {
+  margin: 0;
+  font: 500 12.5px/1.5 var(--font-sans);
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.audit-change-from {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.audit-change-arrow {
+  color: var(--color-text-muted);
+  padding: 0 8px;
+}
+
+.audit-context {
+  margin: 0;
+  font: 500 11.5px/1.5 var(--font-sans);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.audit-changes + .audit-context {
+  border-top: 1px solid var(--color-border-hairline);
+  margin-top: 10px;
+  padding-top: 10px;
 }
 
 .admin-cohort-table .qt-head,

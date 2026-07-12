@@ -357,5 +357,34 @@ func TestAdminProvisioningE2E(t *testing.T) {
 				t.Fatalf("audit rows for %s = %d (err %v), want %d", action, n, err, want)
 			}
 		}
+
+		// docs/08 section 7's diff: the rename row says what the name was
+		// before, not just what it became.
+		var renames int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT count(*) FROM audit_log
+			 WHERE action = 'users.updated'
+			   AND detail->'changes'->'full_name'->>'from' = 'Terry Teacher'
+			   AND detail->'changes'->'full_name'->>'to' = 'Terry Renamed'`).Scan(&renames); err != nil {
+			t.Fatalf("read rename diff: %v", err)
+		}
+		if renames != 1 {
+			t.Fatalf("users.updated rows carrying the rename diff = %d, want 1", renames)
+		}
+
+		// A set-valued mutation records who joined and who left, not a roster
+		// dump: clearing the group removes the two members it had.
+		var added, removed int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT jsonb_array_length(detail->'added_user_ids'),
+			        jsonb_array_length(detail->'removed_user_ids')
+			 FROM audit_log
+			 WHERE action = 'groups.members_set' AND detail->>'member_count' = '0'`,
+		).Scan(&added, &removed); err != nil {
+			t.Fatalf("read members_set delta: %v", err)
+		}
+		if added != 0 || removed != 2 {
+			t.Fatalf("clearing the group recorded +%d/-%d, want +0/-2", added, removed)
+		}
 	})
 }

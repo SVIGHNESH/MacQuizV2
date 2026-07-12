@@ -170,19 +170,23 @@ func TestForceCloseE2E(t *testing.T) {
 		if endsInFuture {
 			t.Fatalf("ends_at still in the future after force-close")
 		}
-		// Exactly one audit row, carrying the pre-close status.
+		// Exactly one audit row, carrying the pre-close status under the
+		// changes convention (docs/08 section 7).
 		var auditCount int
-		var fromStatus string
+		var fromStatus, toStatus string
 		if err := sqlDB.QueryRowContext(ctx,
-			`SELECT count(*), coalesce(max(detail->>'from_status'), '') FROM audit_log
-			 WHERE action = 'quizzes.force_closed' AND resource_id = $1`, quizID).Scan(&auditCount, &fromStatus); err != nil {
+			`SELECT count(*),
+			        coalesce(max(detail->'changes'->'status'->>'from'), ''),
+			        coalesce(max(detail->'changes'->'status'->>'to'), '')
+			 FROM audit_log
+			 WHERE action = 'quizzes.force_closed' AND resource_id = $1`, quizID).Scan(&auditCount, &fromStatus, &toStatus); err != nil {
 			t.Fatalf("count audit rows: %v", err)
 		}
 		if auditCount != 1 {
 			t.Fatalf("force_closed audit rows = %d, want 1", auditCount)
 		}
-		if fromStatus != "live" {
-			t.Fatalf("audit from_status = %q, want live", fromStatus)
+		if fromStatus != "live" || toStatus != "closed" {
+			t.Fatalf("audit status diff = %q -> %q, want live -> closed", fromStatus, toStatus)
 		}
 		// One immediate close_quiz job (scheduled at ~now, distinct from the
 		// original future-dated one enqueued at publish).

@@ -325,6 +325,53 @@ func TestAuthoringFlowE2E(t *testing.T) {
 			}
 		}
 	})
+
+	// docs/08 section 7 promises the trail carries a diff, not just the new
+	// values: an update-type row says what each changed field was before.
+	t.Run("update rows carry a before/after diff", func(t *testing.T) {
+		// The retitle also flipped shuffle_questions; max_attempts was never
+		// patched, so it must not appear at all.
+		var fromTitle, toTitle, shuffleFrom, maxAttempts string
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT detail->'changes'->'title'->>'from', detail->'changes'->'title'->>'to',
+			        detail->'changes'->'shuffle_questions'->>'from',
+			        coalesce(detail->'changes'->>'max_attempts', '')
+			 FROM audit_log WHERE action = 'quizzes.updated'`,
+		).Scan(&fromTitle, &toTitle, &shuffleFrom, &maxAttempts); err != nil {
+			t.Fatalf("read quizzes.updated diff: %v", err)
+		}
+		if fromTitle != "Fractions Unit Test" || toTitle != "Fractions Final" {
+			t.Fatalf("title diff = %q -> %q, want the pre-edit title", fromTitle, toTitle)
+		}
+		if shuffleFrom != "false" {
+			t.Fatalf("shuffle_questions from = %q, want false", shuffleFrom)
+		}
+		if maxAttempts != "" {
+			t.Fatalf("max_attempts in diff = %q, want absent (never patched)", maxAttempts)
+		}
+
+		// The question patch moved body, correct, and points (from unset to 3)
+		// but kept its type - so type must not be listed as a change.
+		var correctFrom, correctTo, pointsFrom, pointsTo, typ string
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT detail->'changes'->'correct'->>'from', detail->'changes'->'correct'->>'to',
+			        coalesce(detail->'changes'->'points'->>'from', 'null'),
+			        detail->'changes'->'points'->>'to',
+			        coalesce(detail->'changes'->>'type', '')
+			 FROM audit_log WHERE action = 'questions.updated'`,
+		).Scan(&correctFrom, &correctTo, &pointsFrom, &pointsTo, &typ); err != nil {
+			t.Fatalf("read questions.updated diff: %v", err)
+		}
+		if correctFrom != "false" || correctTo != "true" {
+			t.Fatalf("answer-key diff = %q -> %q, want false -> true", correctFrom, correctTo)
+		}
+		if pointsFrom != "null" || pointsTo != "3" {
+			t.Fatalf("points diff = %q -> %q, want null -> 3", pointsFrom, pointsTo)
+		}
+		if typ != "" {
+			t.Fatalf("type in diff = %q, want absent (truefalse throughout)", typ)
+		}
+	})
 }
 
 // provision inserts an account with a known password and no forced reset,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"macquiz/server/internal/apischema"
@@ -109,6 +110,8 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 	if q.Status != "draft" && q.Status != "scheduled" {
 		return Quiz{}, ErrNotEditable
 	}
+	// The pre-publish window, for the republish diff below.
+	fromStatus, fromStartsAt, fromEndsAt, fromDuration := q.Status, q.StartsAt, q.EndsAt, q.DurationSec
 
 	// Preconditions that need database facts (docs/04: "at least one
 	// question ... at least one assigned student").
@@ -191,12 +194,23 @@ func (s *Service) Publish(ctx context.Context, actor authusers.User, id string, 
 		return Quiz{}, err
 	}
 
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.published", "quiz", id, map[string]any{
+	detail := map[string]any{
 		"version":      newVersion,
 		"starts_at":    in.StartsAt,
 		"ends_at":      in.EndsAt,
 		"duration_sec": in.DurationSec,
-	}); err != nil {
+	}
+	// A first publish has no prior window to diff against - the four keys
+	// above are the whole story. A republish is a reschedule, so it also
+	// carries what moved (docs/08 section 7).
+	if fromStatus == "scheduled" {
+		changes := map[string]audit.Change{}
+		audit.DiffTime(changes, "starts_at", fromStartsAt, &in.StartsAt)
+		audit.DiffTime(changes, "ends_at", fromEndsAt, &in.EndsAt)
+		audit.DiffPointer(changes, "duration_sec", fromDuration, &in.DurationSec)
+		detail["changes"] = changes
+	}
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.published", "quiz", id, detail); err != nil {
 		return Quiz{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -245,7 +259,7 @@ func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id strin
 	default: // draft: never opened, so there is nothing to close.
 		return Quiz{}, ErrNotClosable
 	}
-	fromStatus := q.Status
+	fromStatus, fromEndsAt := q.Status, q.EndsAt
 
 	q, err = scanQuiz(tx.QueryRowContext(ctx,
 		`UPDATE quizzes SET status = 'closed', ends_at = now()
@@ -264,9 +278,11 @@ func (s *Service) ForceClose(ctx context.Context, actor authusers.User, id strin
 		return Quiz{}, fmt.Errorf("enqueue force-close job: %w", err)
 	}
 
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.force_closed", "quiz", id, map[string]any{
-		"from_status": fromStatus,
-	}); err != nil {
+	changes := map[string]audit.Change{}
+	audit.Diff(changes, "status", string(fromStatus), string(q.Status))
+	audit.DiffTime(changes, "ends_at", fromEndsAt, q.EndsAt)
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.force_closed", "quiz", id,
+		map[string]any{"changes": changes}); err != nil {
 		return Quiz{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -352,10 +368,10 @@ func (s *Service) Extend(ctx context.Context, actor authusers.User, id string, n
 		return Quiz{}, err
 	}
 
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.extended", "quiz", id, map[string]any{
-		"from_ends_at": fromEndsAt,
-		"to_ends_at":   newEndsAt,
-	}); err != nil {
+	changes := map[string]audit.Change{}
+	audit.DiffTime(changes, "ends_at", fromEndsAt, &newEndsAt)
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.extended", "quiz", id,
+		map[string]any{"changes": changes}); err != nil {
 		return Quiz{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -425,7 +441,10 @@ func (s *Service) Archive(ctx context.Context, actor authusers.User, id string) 
 	}
 	q.QuestionCount = questionCount
 
-	if err := audit.Write(ctx, tx, actor.ID, "quizzes.archived", "quiz", id, nil); err != nil {
+	if err := audit.Write(ctx, tx, actor.ID, "quizzes.archived", "quiz", id,
+		map[string]any{"changes": map[string]audit.Change{
+			"status": {From: "closed", To: string(q.Status)},
+		}}); err != nil {
 		return Quiz{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -602,11 +621,32 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 			return nil, fmt.Errorf("insert assignments: %w", err)
 		}
 	}
+	// Who actually joined or left. For a set-valued mutation that IS the diff
+	// (docs/08 section 7's convention): dumping the whole membership as
+	// from/to would bury the two ids that moved in a roster of forty. The
+	// post-commit notify loop below sends to exactly these ids, so the audit
+	// row and the pings can never disagree about who changed.
+	newlyAssigned, newlyDropped := []string{}, []string{}
+	for id := range audience {
+		if !prevAudience[id] {
+			newlyAssigned = append(newlyAssigned, id)
+		}
+	}
+	for id := range prevAudience {
+		if !audience[id] {
+			newlyDropped = append(newlyDropped, id)
+		}
+	}
+	sort.Strings(newlyAssigned)
+	sort.Strings(newlyDropped)
+
 	if err := audit.Write(ctx, tx, actor.ID, "quizzes.assignments_set", "quiz", quizID,
 		map[string]any{
-			"student_ids": len(studentIDs),
-			"group_ids":   len(groupIDs),
-			"total":       len(ids),
+			"student_ids":      len(studentIDs),
+			"group_ids":        len(groupIDs),
+			"total":            len(ids),
+			"added_user_ids":   newlyAssigned,
+			"removed_user_ids": newlyDropped,
 		}); err != nil {
 		return nil, err
 	}
@@ -623,18 +663,11 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	// whose membership actually changed, never the whole new/old audience -
 	// a student re-listed on every save of an unrelated assignment tweak
 	// must not get a fresh "assigned" ping each time.
-	var newlyAssigned, newlyDropped []string
-	for id := range audience {
-		if !prevAudience[id] {
-			newlyAssigned = append(newlyAssigned, id)
-			s.events.PublishNotify(ctx, id, eventAssigned, assignmentPayload{QuizID: quizID, Title: q.Title})
-		}
+	for _, id := range newlyAssigned {
+		s.events.PublishNotify(ctx, id, eventAssigned, assignmentPayload{QuizID: quizID, Title: q.Title})
 	}
-	for id := range prevAudience {
-		if !audience[id] {
-			newlyDropped = append(newlyDropped, id)
-			s.events.PublishNotify(ctx, id, eventUnassigned, assignmentPayload{QuizID: quizID, Title: q.Title})
-		}
+	for _, id := range newlyDropped {
+		s.events.PublishNotify(ctx, id, eventUnassigned, assignmentPayload{QuizID: quizID, Title: q.Title})
 	}
 	s.emailAssignmentChanges(ctx, quizID, q.Title, students, newlyAssigned, newlyDropped)
 	return students, nil

@@ -491,6 +491,25 @@ async function adminConsoleFlow(browser) {
   check(resolvesResources, 'every entry names the resource it acted on')
   await shot(page, 'admin-05-audit-log.png')
 
+  // The diff, not just the verb (docs/08 section 7). The newest `updated` row
+  // is this run's status toggle on the teacher account, so expanding it must
+  // read the account's status back the way it was before the click.
+  const updatedToggle = await page.evaluateHandle(() =>
+    [...document.querySelectorAll('.audit-row')]
+      .find((row) => row.textContent.includes('updated'))
+      ?.querySelector('.audit-toggle'),
+  )
+  await updatedToggle.asElement()?.click()
+  check(
+    await waitForText(page, '.audit-change', 'status', 5000),
+    'expanding an updated row names the field that changed',
+  )
+  check(
+    await waitForText(page, '.audit-detail', 'disabled', 5000),
+    'the expanded diff shows the status the account held before the change',
+  )
+  await shot(page, 'admin-06-audit-diff.png')
+
   await page.close()
 }
 

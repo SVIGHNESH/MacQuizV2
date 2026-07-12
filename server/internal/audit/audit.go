@@ -14,6 +14,107 @@ import (
 	"time"
 )
 
+// Change is one field's before/after pair. Update-type mutations put a
+// map[string]Change (changed fields only) under the detail key "changes", so
+// docs/08 section 7's promised diff has one shape across every module:
+//
+//	{"changes": {"title": {"from": "Old", "to": "New"}}}
+//
+// Set-valued mutations (audience, group membership) record added_*/removed_*
+// id arrays instead: for a set, added and removed IS the diff, and dumping
+// the whole membership from/to would bury it. Rows written before this
+// convention keep their flat shape - audit_log is append-only, so the reader
+// tolerates both.
+type Change struct {
+	From any `json:"from"`
+	To   any `json:"to"`
+}
+
+// Diff records field's before/after in changes when the two values differ,
+// and does nothing when they are equal - so a writer can hand every candidate
+// field to it and the map ends up holding exactly what moved.
+func Diff[T comparable](changes map[string]Change, field string, from, to T) {
+	if from != to {
+		changes[field] = Change{From: from, To: to}
+	}
+}
+
+// DiffPointer is Diff for a nullable column: nil is a value (the field was or
+// became unset), and two non-nil pointers are compared by what they point at,
+// never by address.
+func DiffPointer[T comparable](changes map[string]Change, field string, from, to *T) {
+	switch {
+	case from == nil && to == nil:
+	case from == nil || to == nil:
+		changes[field] = Change{From: derefOrNil(from), To: derefOrNil(to)}
+	case *from != *to:
+		changes[field] = Change{From: *from, To: *to}
+	}
+}
+
+// derefOrNil unwraps a pointer into the value it holds, or an untyped nil.
+// Storing the pointer itself would put a typed nil in the any field: it
+// marshals to null all the same, but a reader comparing against nil would be
+// wrong about it, and this is evidence code.
+func derefOrNil[T any](p *T) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+// DiffTime is Diff for a timestamp column. Instants are compared with
+// time.Time.Equal and recorded in UTC, so the same moment carried in two
+// locations - the zone the driver hands back versus the one the request
+// parsed - is not a change.
+func DiffTime(changes map[string]Change, field string, from, to *time.Time) {
+	switch {
+	case from == nil && to == nil:
+	case from == nil || to == nil:
+		changes[field] = Change{From: utcOrNil(from), To: utcOrNil(to)}
+	case !from.Equal(*to):
+		changes[field] = Change{From: from.UTC(), To: to.UTC()}
+	}
+}
+
+func utcOrNil(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC()
+}
+
+// DiffJSON is Diff for a jsonb column. It compares canonical encodings: the
+// stored value comes back from Postgres already normalized, while an incoming
+// patch is raw client JSON, so a byte-wise compare would report a change for
+// nothing more than reordered keys or added whitespace.
+func DiffJSON(changes map[string]Change, field string, from, to json.RawMessage) {
+	cFrom, cTo := canonicalJSON(from), canonicalJSON(to)
+	if string(cFrom) == string(cTo) {
+		return
+	}
+	changes[field] = Change{From: cFrom, To: cTo}
+}
+
+// canonicalJSON re-encodes a JSON value with sorted object keys and no
+// insignificant whitespace. Invalid or absent JSON is passed through as-is:
+// this is an audit detail, so a value that cannot be parsed is still worth
+// recording verbatim.
+func canonicalJSON(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return raw
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return raw
+	}
+	return b
+}
+
 // Write appends one audit_log row inside the caller's transaction.
 func Write(ctx context.Context, tx *sql.Tx, actorID, action, resourceType, resourceID string, detail map[string]any) error {
 	var detailJSON any
