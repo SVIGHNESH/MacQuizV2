@@ -752,6 +752,38 @@
   font-style: italic;
 }
 
+/* docs/05 section 2's window banners on the teacher side: a quiz extended or
+   closed under the editor. Stacked directly under the topline so they read
+   before whichever tab the status change just swapped in. */
+
+.editor-banners {
+  display: grid;
+  gap: 8px;
+}
+
+.editor-banner {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: var(--text-secondary);
+  color: var(--color-primary-on-tint);
+  background: var(--color-primary-tint);
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+}
+
+.editor-banner-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 /* Published-quiz view tabs: settings vs live scores vs results. */
 
 .editor-tabs {

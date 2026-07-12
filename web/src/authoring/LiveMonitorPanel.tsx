@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import { formatRemaining } from '../player/model'
+import { formatRemaining, formatWhen } from '../player/model'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
 import AudienceEditor from './AudienceEditor'
 import type { components } from '../api/schema'
@@ -90,11 +90,20 @@ export default function LiveMonitorPanel({
   quizId,
   quizTitle,
   onQuizUpdate,
+  onNotice,
 }: {
   quizId: string
   quizTitle: string
   /** Lets the parent editor react to a force-close/extend (status/ends_at). */
   onQuizUpdate?: (quiz: Quiz) => void
+  /**
+   * Raises a docs/05 section 2 window banner to the editor shell. It is not
+   * rendered here because a quiz.closed unmounts this panel - the editor drops
+   * the live tab the moment the status flips - so a banner this component owned
+   * would disappear in the same frame it appeared, exactly when the teacher
+   * most needs to be told why the screen changed.
+   */
+  onNotice?: (text: string) => void
 }) {
   const [roster, setRoster] = useState<LiveRosterRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -156,6 +165,17 @@ export default function LiveMonitorPanel({
     return () => clearInterval(timer)
   }, [])
 
+  // A close this panel did not initiate - the scheduler's sweep reaching
+  // ends_at, or a force-close from the teacher's other window - arrives only as
+  // an event, so the editor is still holding a live quiz. Re-read it and hand
+  // it up, which is the same transition the force-close REST response drives.
+  const refreshQuiz = useCallback(async () => {
+    const result = await api
+      .GET('/api/v1/quizzes/{id}', { params: { path: { id: quizId } } })
+      .catch(() => null)
+    if (result?.data) onQuizUpdate?.(result.data.quiz)
+  }, [quizId, onQuizUpdate])
+
   const applyEvent = useCallback((msg: RealtimeEvent) => {
     // Scheduled outside the updater below, which must stay pure: React invokes
     // it twice under StrictMode.
@@ -165,6 +185,24 @@ export default function LiveMonitorPanel({
         () => void loadSnapshot(),
         VIOLATION_REFETCH_MS,
       )
+    }
+    // docs/05 section 2: a window change is a "banner to teacher and all
+    // in-progress students". The student half is AttemptPlayer's; this is the
+    // teacher's. Both fire for the teacher's own extend/force-close too -
+    // suppressing the echo would buy nothing and cost a self-only blind spot.
+    if (msg.type === 'quiz.extended') {
+      const p = msg.payload as { ends_at: string }
+      setQuizEndsAt(p.ends_at)
+      onNotice?.(`Quiz extended to ${formatWhen(p.ends_at)}.`)
+      // The server clamps every in-progress deadline_at into the new window, so
+      // the roster's "time left" column is stale until it is re-read.
+      void loadSnapshot()
+      return
+    }
+    if (msg.type === 'quiz.closed') {
+      onNotice?.('This quiz has been closed.')
+      void refreshQuiz()
+      return
     }
     setRoster((prev) => {
       if (!prev) return prev
@@ -243,7 +281,7 @@ export default function LiveMonitorPanel({
           return prev
       }
     })
-  }, [loadSnapshot])
+  }, [loadSnapshot, onNotice, refreshQuiz])
 
   // WebSocket deltas with a polling fallback (docs/05 section 5). Connection
   // state and the reconnect loop live entirely in refs/timers, not React

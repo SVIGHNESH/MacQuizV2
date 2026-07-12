@@ -470,6 +470,14 @@ async function teacherExtendsThenForceCloses(teacherPage) {
   )
   const extendError = await teacherPage.$('.live-monitor-panel .form-error')
   check(extendError === null, 'extending the live quiz succeeds with no error')
+  // docs/05 section 2: the new window is a "banner to teacher and all
+  // in-progress students". The teacher's arrives over the monitor socket like
+  // any other delta - including for the extend they just did themselves - so
+  // this also proves the quiz.extended relay reaches the monitor channel.
+  check(
+    await waitForText(teacherPage, '.editor-banner', 'Quiz extended', 8000),
+    'the teacher sees a quiz.extended banner with the new end time',
+  )
   await shot(teacherPage, '96-live-monitor-extended.png')
 
   // Force-close: a reason-less two-step confirm, then the quiz flips to Closed

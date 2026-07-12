@@ -159,6 +159,18 @@ function LoadedEditor({
     Record<string, SaveState>
   >({})
   const [step, setStep] = useState<WizardStep>(1)
+  // docs/05 section 2's window banners ("Banner to teacher and all in-progress
+  // students"). They live at the shell rather than inside the live monitor that
+  // raises them, so the "this quiz has been closed" line is still on screen
+  // after the close swaps that tab out for results - which is the moment it
+  // explains.
+  const [notices, setNotices] = useState<{ id: number; text: string }[]>([])
+  const noticeSeq = useRef(0)
+  // Stable: it is a dependency of the monitor's socket effect, and a new
+  // identity each render would tear the WebSocket down and rebuild it.
+  const pushNotice = useCallback((text: string) => {
+    setNotices((prev) => [...prev, { id: ++noticeSeq.current, text }])
+  }, [])
   // null = "no explicit pick": the page opens on what the status makes
   // interesting (live scores while live, results once closed) and follows a
   // live->closed transition on its own until the teacher picks a tab.
@@ -543,6 +555,26 @@ function LoadedEditor({
         </div>
       </div>
 
+      {notices.length > 0 && (
+        <div className="editor-banners">
+          {notices.map((notice) => (
+            <p className="editor-banner" role="status" key={notice.id}>
+              <span>{notice.text}</span>
+              <button
+                className="editor-banner-dismiss"
+                type="button"
+                aria-label="Dismiss"
+                onClick={() =>
+                  setNotices((prev) => prev.filter((n) => n.id !== notice.id))
+                }
+              >
+                ×
+              </button>
+            </p>
+          ))}
+        </div>
+      )}
+
       {previewing && (
         <PreviewModal
           quizTitle={settings.title}
@@ -665,6 +697,7 @@ function LoadedEditor({
                 quizId={quiz.id}
                 quizTitle={quiz.title}
                 onQuizUpdate={setQuiz}
+                onNotice={pushNotice}
               />
             </div>
           )}
