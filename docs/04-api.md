@@ -141,5 +141,6 @@ See 05-realtime-events.md for the event vocabulary.
 | `attempt:{id}` | The student who owns the attempt |
 | `user:{id}:notify` | The user themselves |
 
-Authorization is checked once at subscribe and revalidated on token refresh.
+Authorization is checked once at subscribe and re-checked every 60 s thereafter; a socket that fails the re-check (disabled account, demoted role, reassigned quiz) is closed with code `4003`.
+See 05-realtime-events.md section 3.
 Starting an attempt from a second device invalidates the first socket (single active session) and is logged as an event.

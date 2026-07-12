@@ -39,7 +39,14 @@ The event row is the source of truth; the publish is best-effort delivery.
 | `attempt:{id}` | Student's own attempt: kick delivery, quiz.extended banners, heartbeat | Attempt owner |
 | `user:{id}:notify` | Per-person notifications: assignments (`quiz.assigned`/`quiz.unassigned`) to a student, violation alerts (`attempt.violation_alert`) to a quiz owner | The user |
 
-The gateway checks `can()` once at subscribe and revalidates on token refresh.
+The gateway checks `can()` once at subscribe and then re-checks it every 60 s for as long as the socket is open.
+It cannot hang that re-check on a token refresh: the access JWT carries no session id and the refresh cookie is path-scoped to `/api/v1/auth`, so a gateway holding an open socket never observes the refresh.
+Periodic revalidation is strictly stronger anyway - it does not depend on the client refreshing at all.
+Each tick re-runs the same decision the subscribe made, against a freshly loaded account: the user must still exist and still be `active` (exactly what `RequireAuth` re-checks on every REST call), and the resource must still be theirs - the quiz's *current* owner for `quiz:{id}:monitor`, judged against the user's *current* role, and the attempt's current owner for `attempt:{id}`.
+A failed re-check closes the socket with code `4003`; the clients treat that as final and do not reconnect.
+So disabling an account, demoting a teacher, or reassigning a quiz drops the live socket within a minute rather than at the end of the exam.
+A database error during a re-check is not a revocation: the socket stays open and the check retries on the next tick, so a Postgres blip cannot disconnect every teacher watching a live quiz.
+Implemented in `server/internal/realtime/gateway.go` (`revalidateInterval`, `statusAuthRevoked`).
 
 ## 4. Consistency: snapshot + delta
 

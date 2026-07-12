@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { AUTH_REVOKED_CLOSE_CODE, SESSION_REPLACED_CLOSE_CODE } from '../lib/wsCloseCodes'
 import { useToast } from '../toast/context'
 import {
   coerceResponse,
@@ -47,10 +48,6 @@ const ATTEMPT_SOCKET_RECONNECT_MS = 3_000
 // matches server/internal/realtime/gateway.go's heartbeatTimeout (25s, 2.5x
 // this), which flags the dashboard row "disconnected" once it lapses.
 const HEARTBEAT_INTERVAL_MS = 10_000
-// Matches server/internal/realtime/gateway.go's statusSessionReplaced: the
-// close code the gateway force-closes a stale attempt:{id} socket with when
-// a second device connects (docs/08 section 1 "single active session").
-const SESSION_REPLACED_CLOSE_CODE = 4001
 
 type Phase =
   | { kind: 'loading' }
@@ -407,6 +404,13 @@ export default function AttemptPlayer({
         // back, so this socket stays down instead of racing it forever.
         if (event.code === SESSION_REPLACED_CLOSE_CODE) {
           setQuizBanner('This attempt was opened in another window or device. This window is no longer live.')
+          return
+        }
+        // docs/05 section 3's revalidation: the account was disabled while the
+        // attempt was open. Every REST call is already being refused, so a
+        // reconnect could only fail the same check again.
+        if (event.code === AUTH_REVOKED_CLOSE_CODE) {
+          setQuizBanner('Your account is no longer active. Sign in again to continue.')
           return
         }
         reconnectTimer = setTimeout(connect, ATTEMPT_SOCKET_RECONNECT_MS)

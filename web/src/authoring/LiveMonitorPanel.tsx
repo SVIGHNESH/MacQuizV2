@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { AUTH_REVOKED_CLOSE_CODE } from '../lib/wsCloseCodes'
 import { formatRemaining, formatWhen } from '../player/model'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
 import AudienceEditor from './AudienceEditor'
@@ -99,7 +100,10 @@ export default function LiveMonitorPanel({
 }) {
   const [roster, setRoster] = useState<LiveRosterRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [connected, setConnected] = useState(false)
+  // Three states, not a connected boolean: a revoked socket (docs/05 section
+  // 3) is down for good, and badging that "Reconnecting…" would promise a
+  // recovery that is never coming.
+  const [socketState, setSocketState] = useState<'live' | 'reconnecting' | 'revoked'>('reconnecting')
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAttemptId, setBusyAttemptId] = useState<string | null>(null)
   const [showAudienceEditor, setShowAudienceEditor] = useState(false)
@@ -298,7 +302,7 @@ export default function LiveMonitorPanel({
       socket = new WebSocket(monitorSocketURL(quizId))
       socket.onopen = () => {
         if (cancelled) return
-        setConnected(true)
+        setSocketState('live')
         stopPolling()
         // Reconcile any delta missed between the last connection and this one.
         void loadSnapshot()
@@ -322,9 +326,18 @@ export default function LiveMonitorPanel({
         }
         applyEvent(msg)
       }
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (cancelled) return
-        setConnected(false)
+        // docs/05 section 3's revalidation: this account was disabled, or the
+        // quiz is no longer ours to watch. The polling fallback would be
+        // refused for the same reason the socket was, so stay down and say so
+        // instead of hammering both every few seconds.
+        if (event.code === AUTH_REVOKED_CLOSE_CODE) {
+          setSocketState('revoked')
+          onNotice?.('You are no longer authorized to watch this quiz. Sign in again to continue.')
+          return
+        }
+        setSocketState('reconnecting')
         startPolling()
         reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
       }
@@ -340,7 +353,7 @@ export default function LiveMonitorPanel({
       if (reconnectTimer) clearTimeout(reconnectTimer)
       socket?.close()
     }
-  }, [quizId, loadSnapshot, applyEvent])
+  }, [quizId, loadSnapshot, applyEvent, onNotice])
 
   // docs/06 + api/openapi extendQuiz: push ends_at EXTEND_STEP_MS later. The
   // server clamps each in-progress attempt's deadline to the new window, so no
@@ -424,8 +437,8 @@ export default function LiveMonitorPanel({
     <section className="panel live-monitor-panel">
       <div className="stats-panel-head">
         <span className="card-title">Live roster</span>
-        <span className={`save-badge ${connected ? 'save-badge-ok' : 'save-badge-bad'}`}>
-          {connected ? 'Live' : 'Reconnecting…'}
+        <span className={`save-badge ${socketState === 'live' ? 'save-badge-ok' : 'save-badge-bad'}`}>
+          {socketState === 'live' ? 'Live' : socketState === 'revoked' ? 'Access revoked' : 'Reconnecting…'}
         </span>
         <button
           className="button button-quiet button-small"

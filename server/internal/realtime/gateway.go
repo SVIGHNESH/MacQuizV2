@@ -2,7 +2,10 @@ package realtime
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -66,6 +69,20 @@ const (
 // so tests can shrink it rather than sleeping 25s real time.
 var heartbeatTimeout = 25 * time.Second
 
+// revalidateInterval is how often an open socket re-runs the authorization it
+// passed at subscribe time (docs/05 section 3). A REST request re-loads the
+// account on every call (authusers.RequireAuth), so disabling a user or
+// revoking their access to a quiz takes effect immediately there; a socket
+// held open for the length of an exam would otherwise keep streaming to an
+// account that has since been disabled. Its own ticker rather than pingInterval's,
+// so transport liveness and authorization stay independently tunable. A var,
+// not a const, so tests can shrink it.
+var revalidateInterval = 60 * time.Second
+
+// revalidateTimeout bounds one revalidation's database work, so a stalled
+// query can never wedge a pump goroutine (the same reasoning as writeTimeout).
+const revalidateTimeout = 5 * time.Second
+
 // QuizOwnerFunc resolves a quiz's owning teacher for the subscribe-time
 // authorization decision. found is false for an unknown quiz, which the
 // gateway answers as 404 - existence is never leaked to a non-owner (docs/04
@@ -92,6 +109,29 @@ const eventKicked = "attempt.kicked"
 // reconnect it otherwise always attempts on close - without it, each device's
 // reconnect would boot the other in an endless loop.
 const statusSessionReplaced websocket.StatusCode = 4001
+
+// statusAuthRevoked is the close code the gateway uses when a periodic
+// revalidation finds the socket's subscribe-time authorization no longer
+// holds: the account was disabled or deleted, or the resource is no longer
+// theirs to watch. Distinct from statusSessionReplaced so a client can tell
+// "you were booted by your own second device" from "you are no longer
+// allowed here" - the latter must not be retried, since the reconnect would
+// be refused anyway.
+const statusAuthRevoked websocket.StatusCode = 4003
+
+// errAuthRevoked marks a revalidation failure as a *decision* rather than an
+// outage: the account is gone or disabled, or the resource is no longer
+// theirs. Only this closes the socket. A bare error (a Postgres blip, a
+// timeout) leaves the socket open and re-checks on the next tick - a database
+// hiccup must not disconnect every teacher watching a live exam, and the
+// subscribe-time check plus at most one interval of staleness is the same
+// exposure the feature accepts by design.
+var errAuthRevoked = errors.New("authorization revoked")
+
+// UserLookupFunc reloads an account for periodic revalidation - in production
+// authusers.Service.UserByID, whose sql.ErrNoRows the gateway reads as "the
+// account was deleted".
+type UserLookupFunc func(ctx context.Context, id string) (authusers.User, error)
 
 // SessionInvalidatedFunc records that an attempt's stale socket was replaced
 // by a newer connection (docs/08 section 1: "...logged as an event the
@@ -121,6 +161,7 @@ type Gateway struct {
 	auth                *authusers.Service
 	owner               QuizOwnerFunc
 	attemptOwner        AttemptOwnerFunc
+	lookupUser          UserLookupFunc
 	sessionInvalidated  SessionInvalidatedFunc
 	attemptDisconnected AttemptDisconnectedFunc
 	attemptReconnected  AttemptReconnectedFunc
@@ -161,6 +202,17 @@ func (g *Gateway) SetAttemptOwner(f AttemptOwnerFunc) {
 	g.attemptOwner = f
 }
 
+// SetUserLookup overrides the account reload used by periodic revalidation.
+// NewGateway already wires authusers.Service.UserByID whenever it is handed a
+// non-nil auth service, so production needs no call; this exists for tests,
+// which construct the gateway with a nil auth service and need to flip an
+// account's status mid-socket. A Gateway with no lookup (nil auth, no
+// override) simply skips the account half of every revalidation - the
+// resource half (quiz ownership, attempt ownership) still runs.
+func (g *Gateway) SetUserLookup(f UserLookupFunc) {
+	g.lookupUser = f
+}
+
 // SetSessionInvalidated wires the single-active-session audit log (docs/08
 // section 1). Optional, a setter like SetMetrics: a Gateway with none set
 // still enforces one socket per attempt, it just does not log it, which is
@@ -192,10 +244,38 @@ func (g *Gateway) SetAttemptReconnected(f AttemptReconnectedFunc) {
 // WebSocket Origin patterns (coder/websocket rejects cross-origin by default);
 // an empty list means same-origin only.
 func NewGateway(ctx context.Context, sub Subscriber, auth *authusers.Service, owner QuizOwnerFunc, origins []string, log *slog.Logger) *Gateway {
-	return &Gateway{
+	g := &Gateway{
 		sub: sub, auth: auth, owner: owner, origins: origins, log: log, baseCtx: ctx,
 		activeAttempts: make(map[string]*websocket.Conn),
 	}
+	if auth != nil {
+		g.lookupUser = auth.UserByID
+	}
+	return g
+}
+
+// freshActor re-loads the socket's actor for a periodic revalidation, applying
+// exactly the checks authusers.RequireAuth applies to every REST request: the
+// account must still exist and still be active. It returns the *fresh* user so
+// the caller's resource check runs against the current role, not the one the
+// actor held at subscribe time. With no lookup wired it hands the
+// subscribe-time actor straight back, which reduces revalidation to its
+// resource half.
+func (g *Gateway) freshActor(ctx context.Context, actor authusers.User) (authusers.User, error) {
+	if g.lookupUser == nil {
+		return actor, nil
+	}
+	u, err := g.lookupUser(ctx, actor.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return authusers.User{}, fmt.Errorf("%w: account no longer exists", errAuthRevoked)
+	}
+	if err != nil {
+		return authusers.User{}, fmt.Errorf("reload account: %w", err)
+	}
+	if u.Status != "active" {
+		return authusers.User{}, fmt.Errorf("%w: account disabled", errAuthRevoked)
+	}
+	return u, nil
 }
 
 // Routes returns the /ws route group. Authentication rides the same
@@ -266,15 +346,40 @@ func (g *Gateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 	// write-only to the client) and returns a context canceled when the client
 	// goes away. Derived from connCtx, so the pump also ends on shutdown.
 	ctx := c.CloseRead(connCtx)
-	g.pump(ctx, c, sub.Messages())
+	g.pump(ctx, c, sub.Messages(), g.revalidateMonitor(actor, quizID))
 }
 
-// pump relays payloads to the socket and keeps it warm with periodic pings. It
-// returns - closing the socket via the caller's defer - on client disconnect,
-// process shutdown, a write error, or the subscription ending.
-func (g *Gateway) pump(ctx context.Context, c *websocket.Conn, msgs <-chan string) {
+// revalidateMonitor re-runs the whole subscribe-time decision above: the actor
+// must still be an active account, and Can() must still say yes about the
+// quiz's *current* owner, judged against the *fresh* user - so a teacher
+// demoted to student, an admin demoted to teacher, or a quiz transferred to
+// another owner all lose the socket, not just a disabled account.
+func (g *Gateway) revalidateMonitor(actor authusers.User, quizID string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		fresh, err := g.freshActor(ctx, actor)
+		if err != nil {
+			return err
+		}
+		ownerID, found, err := g.owner(ctx, quizID)
+		if err != nil {
+			return fmt.Errorf("resolve quiz owner: %w", err)
+		}
+		if !found || !authusers.Can(fresh, authusers.ActionQuizWatchLive, authusers.Resource{OwnerID: ownerID}) {
+			return fmt.Errorf("%w: no longer authorized to watch quiz %s", errAuthRevoked, quizID)
+		}
+		return nil
+	}
+}
+
+// pump relays payloads to the socket, keeps it warm with periodic pings, and
+// re-runs revalidate every revalidateInterval (nil skips it). It returns -
+// closing the socket via the caller's defer - on client disconnect, process
+// shutdown, a write error, the subscription ending, or revoked authorization.
+func (g *Gateway) pump(ctx context.Context, c *websocket.Conn, msgs <-chan string, revalidate func(context.Context) error) {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
+	reval := time.NewTicker(revalidateInterval)
+	defer reval.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -284,6 +389,10 @@ func (g *Gateway) pump(ctx context.Context, c *websocket.Conn, msgs <-chan strin
 			err := c.Ping(pctx)
 			cancel()
 			if err != nil {
+				return
+			}
+		case <-reval.C:
+			if g.revoked(ctx, c, revalidate) {
 				return
 			}
 		case payload, ok := <-msgs:
@@ -297,6 +406,32 @@ func (g *Gateway) pump(ctx context.Context, c *websocket.Conn, msgs <-chan strin
 				return
 			}
 		}
+	}
+}
+
+// revoked runs one revalidation and reports whether the caller's pump must
+// give up the socket. Only an errAuthRevoked decision closes it (with
+// statusAuthRevoked, so the client knows not to reconnect); an outage - a
+// Postgres blip, a timed-out query - is logged and retried on the next tick,
+// because dropping every live socket over a transient database error would
+// turn a hiccup into an exam-wide outage.
+func (g *Gateway) revoked(ctx context.Context, c *websocket.Conn, revalidate func(context.Context) error) bool {
+	if revalidate == nil {
+		return false
+	}
+	rctx, cancel := context.WithTimeout(ctx, revalidateTimeout)
+	err := revalidate(rctx)
+	cancel()
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, errAuthRevoked):
+		g.log.Info("closing socket, authorization revoked", "reason", err)
+		_ = c.Close(statusAuthRevoked, "authorization revoked")
+		return true
+	default:
+		g.log.Warn("revalidate socket authorization, keeping it open until the next check", "err", err)
+		return false
 	}
 }
 
@@ -361,7 +496,27 @@ func (g *Gateway) handleAttempt(w http.ResponseWriter, r *http.Request) {
 	// ping/pong handling alive, CloseRead's other job.
 	hb := make(chan struct{})
 	go g.readAttemptHeartbeats(connCtx, c, cancel, hb)
-	g.pumpAttempt(connCtx, c, sub.Messages(), attemptID, hb)
+	g.pumpAttempt(connCtx, c, sub.Messages(), attemptID, hb, g.revalidateAttempt(actor, attemptID))
+}
+
+// revalidateAttempt re-runs the subscribe-time decision: the student must
+// still be an active account, and the attempt must still be theirs. (The role
+// gate is implied - only a student ever owns an attempt.)
+func (g *Gateway) revalidateAttempt(actor authusers.User, attemptID string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		fresh, err := g.freshActor(ctx, actor)
+		if err != nil {
+			return err
+		}
+		studentID, _, found, err := g.attemptOwner(ctx, attemptID)
+		if err != nil {
+			return fmt.Errorf("resolve attempt owner: %w", err)
+		}
+		if !found || fresh.Role != "student" || fresh.ID != studentID {
+			return fmt.Errorf("%w: no longer the owner of attempt %s", errAuthRevoked, attemptID)
+		}
+		return nil
+	}
 }
 
 // readAttemptHeartbeats is the attempt:{id} socket's read loop. Any inbound
@@ -435,9 +590,11 @@ func (g *Gateway) clearActiveAttempt(attemptID string, c *websocket.Conn) {
 // AttemptDisconnectedFunc exactly once (disconnected latches until a
 // heartbeat resets it - no repeat firing on an already-flagged row); the next
 // heartbeat after that calls AttemptReconnectedFunc.
-func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-chan string, attemptID string, hb <-chan struct{}) {
+func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-chan string, attemptID string, hb <-chan struct{}, revalidate func(context.Context) error) {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
+	reval := time.NewTicker(revalidateInterval)
+	defer reval.Stop()
 	lastSeen := time.Now()
 	hbTimer := time.NewTimer(heartbeatTimeout)
 	defer hbTimer.Stop()
@@ -451,6 +608,10 @@ func (g *Gateway) pumpAttempt(ctx context.Context, c *websocket.Conn, msgs <-cha
 			err := c.Ping(pctx)
 			cancel()
 			if err != nil {
+				return
+			}
+		case <-reval.C:
+			if g.revoked(ctx, c, revalidate) {
 				return
 			}
 		case <-hb:
@@ -538,7 +699,13 @@ func (g *Gateway) handleNotify(w http.ResponseWriter, r *http.Request) {
 	defer g.metrics.DecWSConnections(g.baseCtx)
 
 	ctx := c.CloseRead(connCtx)
-	g.pump(ctx, c, sub.Messages())
+	// The channel's name IS its authorization (a user's own id never changes),
+	// so revalidation here reduces to the account half: still exists, still
+	// active.
+	g.pump(ctx, c, sub.Messages(), func(ctx context.Context) error {
+		_, err := g.freshActor(ctx, actor)
+		return err
+	})
 }
 
 // requireStaff is the coarse teacher-or-admin role gate on the monitor

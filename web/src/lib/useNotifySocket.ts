@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { AUTH_REVOKED_CLOSE_CODE } from './wsCloseCodes'
 
 /**
  * docs/05 section 3's user:{id}:notify envelope: the same shape as the
@@ -55,8 +56,13 @@ export function useNotifySocket(userId: string, onEvent: (event: NotifyEvent) =>
         }
         handler.current(msg)
       }
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (cancelled) return
+        // docs/05 section 3's revalidation closed us because the account is no
+        // longer active. A reconnect would fail the same check every 3s until
+        // the tab is closed; the next REST call the user makes will bounce them
+        // to the login screen anyway.
+        if (event.code === AUTH_REVOKED_CLOSE_CODE) return
         reconnectTimer = setTimeout(connect, RECONNECT_MS)
       }
       socket.onerror = () => {
