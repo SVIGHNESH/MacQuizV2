@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
+import Avatar from '../components/Avatar'
 
 type AssignedStudent = components['schemas']['AssignedStudent']
 type Group = components['schemas']['Group']
@@ -191,6 +192,12 @@ const AudienceEditor = forwardRef<
                 type="checkbox"
                 checked={checked.has(student.id)}
                 onChange={() => toggleStudent(student.id)}
+              />
+              <Avatar
+                userId={student.id}
+                fullName={student.full_name}
+                avatar={student.avatar}
+                size="small"
               />
               <span className="audience-name">{student.full_name}</span>
               <span className="audience-email">{student.email}</span>

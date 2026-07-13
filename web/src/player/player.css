@@ -1146,8 +1146,18 @@
 
 .leaderboard-name {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   font: 550 14px/1 var(--font-sans);
   color: #cbd5e1;
+}
+
+.leaderboard-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .leaderboard-score {

@@ -73,7 +73,7 @@ WITH best AS (
 	FROM best b
 )
 SELECT rank() OVER (ORDER BY s.accuracy DESC NULLS LAST, s.taken ASC NULLS LAST) AS rank,
-       s.student_id, u.full_name, s.accuracy
+       s.student_id, u.full_name, u.avatar, s.accuracy
 FROM scored s JOIN users u ON u.id = s.student_id
 ORDER BY rank, u.full_name`
 
@@ -125,7 +125,7 @@ func (s *Service) Leaderboard(ctx context.Context, actor authusers.User, id stri
 		var e LeaderboardEntry
 		var studentID uuid.UUID
 		var accuracy sql.NullFloat64
-		if err := rows.Scan(&e.Rank, &studentID, &e.FullName, &accuracy); err != nil {
+		if err := rows.Scan(&e.Rank, &studentID, &e.FullName, &e.Avatar, &accuracy); err != nil {
 			return Leaderboard{}, fmt.Errorf("scan leaderboard row: %w", err)
 		}
 		e.StudentId = studentID

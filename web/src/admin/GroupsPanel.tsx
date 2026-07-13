@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
+import Avatar from '../components/Avatar'
 
 type Group = components['schemas']['Group']
 type AssignedStudent = components['schemas']['AssignedStudent']
@@ -183,6 +184,12 @@ export default function GroupsPanel() {
                     type="checkbox"
                     checked={checked.has(student.id)}
                     onChange={() => toggleMember(student.id)}
+                  />
+                  <Avatar
+                    userId={student.id}
+                    fullName={student.full_name}
+                    avatar={student.avatar}
+                    size="small"
                   />
                   <span className="audience-name">{student.full_name}</span>
                   <span className="audience-email">{student.email}</span>

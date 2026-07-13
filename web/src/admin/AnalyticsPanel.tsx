@@ -4,6 +4,7 @@ import type { components } from '../api/schema'
 import { downloadCsv } from '../lib/csv'
 import TeacherStatsModal from './TeacherStatsModal'
 import StudentStatsModal from './StudentStatsModal'
+import Avatar from '../components/Avatar'
 
 type TeacherOverview = components['schemas']['TeacherOverview']
 type StudentOverview = components['schemas']['StudentOverview']
@@ -299,9 +300,12 @@ export default function AnalyticsPanel() {
                 className={`qt-row${t.status === 'disabled' ? ' admin-user-row-disabled' : ''}`}
                 role="row"
               >
-                <span className="admin-user-identity">
-                  <span className="admin-user-name" title={t.full_name}>{t.full_name}</span>
-                  <span className="admin-user-email" title={t.email}>{t.email}</span>
+                <span className="admin-user-cell">
+                  <Avatar userId={t.teacher_id} fullName={t.full_name} avatar={t.avatar} size="small" />
+                  <span className="admin-user-identity">
+                    <span className="admin-user-name" title={t.full_name}>{t.full_name}</span>
+                    <span className="admin-user-email" title={t.email}>{t.email}</span>
+                  </span>
                 </span>
                 <span className="qt-num tabular">{t.quizzes_created}</span>
                 <span className="qt-num tabular">{t.quizzes_conducted}</span>
@@ -339,9 +343,12 @@ export default function AnalyticsPanel() {
                 className={`qt-row${s.status === 'disabled' ? ' admin-user-row-disabled' : ''}`}
                 role="row"
               >
-                <span className="admin-user-identity">
-                  <span className="admin-user-name" title={s.full_name}>{s.full_name}</span>
-                  <span className="admin-user-email" title={s.email}>{s.email}</span>
+                <span className="admin-user-cell">
+                  <Avatar userId={s.student_id} fullName={s.full_name} avatar={s.avatar} size="small" />
+                  <span className="admin-user-identity">
+                    <span className="admin-user-name" title={s.full_name}>{s.full_name}</span>
+                    <span className="admin-user-email" title={s.email}>{s.email}</span>
+                  </span>
                 </span>
                 <span className="admin-analytics-cohorts">
                   {s.group_ids.length === 0 ? '—' : s.group_ids.map(groupName).join(', ')}

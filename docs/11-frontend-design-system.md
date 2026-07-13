@@ -115,7 +115,9 @@ States: In progress, Submitted, Disconnected (pulses), Kicked, Not started.
 ### Data tables (roster pattern)
 
 - CSS-grid rows, `#FAFBFC` caps header, `#F2F4F7` hairline dividers, no zebra striping.
-- Avatar-initial + name cells (for example "PN Priya Nair").
+- Avatar + name cells, rendered by the one shared `Avatar` component: uploaded photo, else the user's chosen preset sticker, else the initials chip (for example "PN Priya Nair").
+- Preset stickers are flat "laptop sticker" marks drawn only from token colors (tint pairs, chart tints, slate); danger red is excluded from the set because red means violation evidence on every roster surface.
+- On the leaderboard's dark island the initials chip flips to the slate ramp (`slate-800` well, `slate-400` text); tint-colored stickers and photos render unchanged.
 - Denominators render muted (the "10" in 8/10); inline 5px progress bars pair with a numeric label.
 
 ### Stat cards

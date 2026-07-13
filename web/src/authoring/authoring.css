@@ -1304,11 +1304,18 @@
 }
 
 .live-roster-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font: 600 13.5px/1.4 var(--font-sans);
+  color: var(--color-ink);
+}
+
+.live-roster-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 600 13.5px/1.4 var(--font-sans);
-  color: var(--color-ink);
 }
 
 /* Preview: the draft toolbar's student-view modal. Wider than the house

@@ -14,9 +14,10 @@ import (
 // enough to choose and recognize a person. Status, role, and credential
 // facts stay on the admin surface.
 type DirectoryStudent struct {
-	ID       string `json:"id"`
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
+	ID       string  `json:"id"`
+	FullName string  `json:"full_name"`
+	Email    string  `json:"email"`
+	Avatar   *string `json:"avatar,omitempty"`
 }
 
 // Directory is what a teacher sees when assigning a quiz: every active
@@ -32,7 +33,7 @@ type Directory struct {
 func (s *Service) ListDirectory(ctx context.Context) (Directory, error) {
 	dir := Directory{Students: []DirectoryStudent{}}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, full_name, email FROM users
+		`SELECT id, full_name, email, avatar FROM users
 		 WHERE role = 'student' AND status = 'active'
 		 ORDER BY full_name, id`)
 	if err != nil {
@@ -41,7 +42,7 @@ func (s *Service) ListDirectory(ctx context.Context) (Directory, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var st DirectoryStudent
-		if err := rows.Scan(&st.ID, &st.FullName, &st.Email); err != nil {
+		if err := rows.Scan(&st.ID, &st.FullName, &st.Email, &st.Avatar); err != nil {
 			return Directory{}, fmt.Errorf("scan directory student: %w", err)
 		}
 		dir.Students = append(dir.Students, st)

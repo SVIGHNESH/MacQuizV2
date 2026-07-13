@@ -354,9 +354,10 @@ var errNotStudents = errors.New("group members must be student accounts")
 // admin console's membership picker and a teacher's audience picker render
 // from the same fields.
 type GroupMember struct {
-	ID       string `json:"id"`
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
+	ID       string  `json:"id"`
+	FullName string  `json:"full_name"`
+	Email    string  `json:"email"`
+	Avatar   *string `json:"avatar,omitempty"`
 }
 
 // GroupMembers returns a cohort's current roster (docs/04-api.md: GET
@@ -375,7 +376,7 @@ func (s *Service) GroupMembers(ctx context.Context, groupID string) ([]GroupMemb
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email FROM group_members m
+		`SELECT u.id, u.full_name, u.email, u.avatar FROM group_members m
 		 JOIN users u ON u.id = m.student_id
 		 WHERE m.group_id = $1 ORDER BY u.full_name, u.id`, groupID)
 	if err != nil {
@@ -386,7 +387,7 @@ func (s *Service) GroupMembers(ctx context.Context, groupID string) ([]GroupMemb
 	members := []GroupMember{}
 	for rows.Next() {
 		var m GroupMember
-		if err := rows.Scan(&m.ID, &m.FullName, &m.Email); err != nil {
+		if err := rows.Scan(&m.ID, &m.FullName, &m.Email, &m.Avatar); err != nil {
 			return nil, fmt.Errorf("scan group member: %w", err)
 		}
 		members = append(members, m)

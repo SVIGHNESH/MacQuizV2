@@ -85,7 +85,7 @@ if ! curl -fsS http://localhost:5173/ >/dev/null 2>&1; then
 fi
 
 # auth/admin first: see the ordering note above.
-SUITES=(auth admin authoring import livemonitor player publish resultscsv analytics)
+SUITES=(auth admin authoring import livemonitor player publish resultscsv analytics profile)
 
 failures=()
 for suite in "${SUITES[@]}"; do

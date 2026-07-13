@@ -2916,6 +2916,10 @@ components:
           type: number
           nullable: true
           description: Mean of each rolled-up quiz's mean, in raw points (see TeacherStats).
+        avatar:
+          type: string
+          nullable: true
+          description: The teacher's User.avatar value; null renders as initials.
     StudentOverview:
       type: object
       description: >-
@@ -2956,6 +2960,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
     TeacherStudentPerformance:
       type: object
       description: >-
@@ -2995,6 +3003,10 @@ components:
           description: Per-quiz breakdown, title-ordered.
           items:
             $ref: "#/components/schemas/TeacherStudentQuizScore"
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
     TeacherStudentQuizScore:
       type: object
       description: One assigned quiz's outcome inside TeacherStudentPerformance.
@@ -3197,6 +3209,10 @@ components:
         email:
           type: string
           format: email
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
     AssignmentsResponse:
       type: object
       required: [students]
@@ -3454,6 +3470,10 @@ components:
         email:
           type: string
           format: email
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
         attempt_id:
           type: string
           format: uuid
@@ -3523,6 +3543,10 @@ components:
         email:
           type: string
           format: email
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
         state:
           type: string
           enum: [not_started, in_progress, disconnected, submitted, kicked]
@@ -3710,6 +3734,10 @@ components:
           format: uuid
         full_name:
           type: string
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
         accuracy:
           type: number
           nullable: true

@@ -76,7 +76,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 	// subqueries so a student mid-attempt scores against the snapshot they
 	// actually pinned, matching the results table's per-version accounting.
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email,
+		`SELECT u.id, u.full_name, u.email, u.avatar,
 		        a.id, a.attempt_no, a.status, a.submit_kind, a.started_at,
 		        a.deadline_at, a.violation_count, a.score,
 		        (SELECT count(*) FROM attempt_answers aa
@@ -137,7 +137,8 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 		// bytes rather than json.RawMessage (a nil *json.RawMessage is not a
 		// valid Scan destination for a NULL jsonb).
 		var tallies []byte
-		if err := rows.Scan(&studentID, &fullName, &email,
+		var avatar *string
+		if err := rows.Scan(&studentID, &fullName, &email, &avatar,
 			&attemptID, &attemptNo, &status, &submitKind, &startedAt,
 			&deadlineAt, &violationCount, &score, &answeredCount,
 			&currentQuestion, &questionCount, &maxScore, &lastConnEvent,
@@ -152,6 +153,7 @@ func (s *Service) LiveRoster(ctx context.Context, actor authusers.User, quizID s
 			StudentId:  studentUUID,
 			FullName:   fullName,
 			Email:      openapi_types.Email(email),
+			Avatar:     avatar,
 			Score:      liveFloat32(score),
 			MaxScore:   liveFloat32(maxScore),
 			Violations: []apischema.ViolationTally{},

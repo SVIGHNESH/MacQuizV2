@@ -1463,6 +1463,8 @@ export interface components {
             avg_participation?: number | null;
             /** @description Mean of each rolled-up quiz's mean, in raw points (see TeacherStats). */
             avg_class_score?: number | null;
+            /** @description The teacher's User.avatar value; null renders as initials. */
+            avatar?: string | null;
         };
         /** @description One admin-analytics row per student - identity, cohort memberships, and a summary of the student_stats rollup. Averages are null until the student's first terminal quiz rolls up. */
         StudentOverview: {
@@ -1481,6 +1483,8 @@ export interface components {
             avg_time_per_question?: number | null;
             /** Format: date-time */
             updated_at?: string | null;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
         };
         /** @description One student's performance on a single teacher's quizzes - the teacher-scoped view of docs/07 section 3, one row per assigned student with a per-quiz breakdown. */
         TeacherStudentPerformance: {
@@ -1499,6 +1503,8 @@ export interface components {
             last_submitted_at?: string | null;
             /** @description Per-quiz breakdown, title-ordered. */
             quizzes: components["schemas"]["TeacherStudentQuizScore"][];
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
         };
         /** @description One assigned quiz's outcome inside TeacherStudentPerformance. */
         TeacherStudentQuizScore: {
@@ -1595,6 +1601,8 @@ export interface components {
             full_name: string;
             /** Format: email */
             email: string;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
         };
         AssignmentsResponse: {
             students: components["schemas"]["AssignedStudent"][];
@@ -1727,6 +1735,8 @@ export interface components {
             full_name: string;
             /** Format: email */
             email: string;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
             /** Format: uuid */
             attempt_id: string | null;
             attempt_no: number | null;
@@ -1755,6 +1765,8 @@ export interface components {
             full_name: string;
             /** Format: email */
             email: string;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
             /** @enum {string} */
             state: "not_started" | "in_progress" | "disconnected" | "submitted" | "kicked";
             /** Format: uuid */
@@ -1837,6 +1849,8 @@ export interface components {
             /** Format: uuid */
             student_id: string;
             full_name: string;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar?: string | null;
             /** @description Share of the pinned snapshot's points earned, 0..1. Null when the snapshot the student saw carries no points at all; such students rank last. */
             accuracy: number | null;
             /** @description True on the reading student's own row. */

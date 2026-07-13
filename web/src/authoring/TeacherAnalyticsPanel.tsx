@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
 import { downloadCsv } from '../lib/csv'
+import Avatar from '../components/Avatar'
 
 type TeacherStats = components['schemas']['TeacherStats']
 type StudentPerformance = components['schemas']['TeacherStudentPerformance']
@@ -319,12 +320,20 @@ export default function TeacherAnalyticsPanel({ teacherId }: { teacherId: string
                 >
                   {i + 1}
                 </span>
-                <span className="admin-user-identity">
-                  <span className="admin-user-name" title={r.student.full_name}>
-                    {r.student.full_name}
-                  </span>
-                  <span className="admin-user-email" title={r.student.email}>
-                    {r.student.email}
+                <span className="admin-user-cell">
+                  <Avatar
+                    userId={r.student.student_id}
+                    fullName={r.student.full_name}
+                    avatar={r.student.avatar}
+                    size="small"
+                  />
+                  <span className="admin-user-identity">
+                    <span className="admin-user-name" title={r.student.full_name}>
+                      {r.student.full_name}
+                    </span>
+                    <span className="admin-user-email" title={r.student.email}>
+                      {r.student.email}
+                    </span>
                   </span>
                 </span>
                 <span className="qt-num tabular">{SCORE(r.entry.score_percent)}</span>

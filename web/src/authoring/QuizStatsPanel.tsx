@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
+import Avatar from '../components/Avatar'
 import type { components } from '../api/schema'
 import type { QuizStats, TeacherQuestion } from './model'
 
@@ -338,7 +339,15 @@ export default function QuizStatsPanel({
           </div>
           {(kicked ?? []).map((row) => (
             <div key={row.attempt_id} className="stats-item-row" role="row">
-              <span className="stats-item-question">{row.full_name}</span>
+              <span className="stats-item-question admin-user-cell">
+                <Avatar
+                  userId={row.student_id}
+                  fullName={row.full_name}
+                  avatar={row.avatar}
+                  size="small"
+                />
+                {row.full_name}
+              </span>
               <span className="qt-num tabular">
                 {row.score === null ? '—' : row.score}
               </span>

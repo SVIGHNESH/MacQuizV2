@@ -142,7 +142,7 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 	q.Status = effectiveStatus(q.Status, q.StartsAt, q.EndsAt, time.Now())
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email,
+		`SELECT u.id, u.full_name, u.email, u.avatar,
 		        a.id, a.attempt_no, a.status, a.submit_kind, a.started_at,
 		        a.submitted_at, a.score, a.score_overridden_at,
 		        (SELECT sum((q->>'points')::float8)
@@ -166,7 +166,8 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 		var startedAt, submittedAt sql.NullTime
 		var score, maxScore sql.NullFloat64
 		var overriddenAt *time.Time
-		if err := rows.Scan(&studentID, &fullName, &email, &attemptID,
+		var avatar *string
+		if err := rows.Scan(&studentID, &fullName, &email, &avatar, &attemptID,
 			&attemptNo, &status, &submitKind, &startedAt, &submittedAt,
 			&score, &overriddenAt, &maxScore); err != nil {
 			return Quiz{}, nil, fmt.Errorf("scan result row: %w", err)
@@ -179,6 +180,7 @@ func (s *Service) Results(ctx context.Context, actor authusers.User, quizID stri
 			StudentId:       studentUUID,
 			FullName:        fullName,
 			Email:           openapi_types.Email(email),
+			Avatar:          avatar,
 			Score:           resultFloat32(score),
 			MaxScore:        resultFloat32(maxScore),
 			ScoreOverridden: overriddenAt != nil,

@@ -38,8 +38,19 @@ Unassigned resources return 404, not 403, so existence is never leaked.
 |----------|---------|
 | `POST /users` | Provision a teacher or student; generates a first-login credential |
 | `POST /users/import` | Bulk-provision from a CSV/XLSX roster (`role,email,full_name`); all-or-nothing, credentials returned once |
-| `PATCH /users/:id` | Deactivate, reset password, edit profile, group membership |
+| `PATCH /users/:id` | Deactivate, reset password, edit profile, clear an avatar (moderation), group membership |
 | `POST /groups` / `PUT /groups/:id/members` | Manage cohorts |
+
+### Profile (any signed-in role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `PUT /auth/me/avatar` | Upload a photo (raw body, 2 MB max); decoded, center-cropped, re-encoded to a 256px JPEG - the original is never stored |
+| `POST /auth/me/avatar/preset` | Pick a built-in sticker from the server's allowlist |
+| `DELETE /auth/me/avatar` | Revert to the initials chip |
+| `GET /users/:id/avatar` | The stored photo; any active account may read it (it labels the same lists that already show names), strong content-hash ETag |
+
+Every avatar mutation writes a `profile.updated` audit row with the from/to diff in the same transaction.
 
 ### Quiz authoring (teacher)
 

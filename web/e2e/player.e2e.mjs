@@ -665,7 +665,7 @@ async function reviewFlow(page) {
     [...document.querySelectorAll('.leaderboard-row')].map((row) => ({
       rank: row.querySelector('.leaderboard-medal, .leaderboard-rank')
         ?.textContent,
-      name: row.querySelector('.leaderboard-name')?.textContent,
+      name: row.querySelector('.leaderboard-name-text')?.textContent,
       score: row.querySelector('.leaderboard-score')?.textContent,
       self: row.classList.contains('leaderboard-row-self'),
       lifted: row.classList.contains('leaderboard-row-lifted'),

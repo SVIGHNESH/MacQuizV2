@@ -27,9 +27,13 @@ users (
   full_name     text,
   status        enum('active','disabled'),
   created_by    uuid REFERENCES users(id),  -- the admin who provisioned this account
-  created_at    timestamptz
+  created_at    timestamptz,
+  avatar        text NULL                   -- 'preset:<slug>' | 'upload:<hash>'; NULL renders as initials
 )
 ```
+
+`avatar` is the profile feature's one column: a preset names a sticker bundled with the SPA, an upload points at a re-encoded 256px JPEG in the avatar blob store (the hash doubles as the serving ETag), and the encoding is CHECK-pinned.
+Every people-list read (roster, results, leaderboard, directory, analytics) carries it alongside `full_name`.
 
 ### groups and group_members
 

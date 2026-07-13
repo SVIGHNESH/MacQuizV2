@@ -42,7 +42,7 @@ func (s *Service) ListTeacherAnalytics(ctx context.Context, actor authusers.User
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email, u.status,
+		`SELECT u.id, u.full_name, u.email, u.status, u.avatar,
 		        (SELECT count(*) FROM quizzes WHERE owner_id = u.id),
 		        (SELECT count(*) FROM quizzes WHERE owner_id = u.id AND published_at IS NOT NULL),
 		        (SELECT count(*) FROM attempts a JOIN quizzes q ON q.id = a.quiz_id WHERE q.owner_id = u.id),
@@ -61,7 +61,7 @@ func (s *Service) ListTeacherAnalytics(ctx context.Context, actor authusers.User
 		var t TeacherOverview
 		var status string
 		var avgParticipation, avgClassScore sql.NullFloat64
-		if err := rows.Scan(&t.TeacherId, &t.FullName, &t.Email, &status,
+		if err := rows.Scan(&t.TeacherId, &t.FullName, &t.Email, &status, &t.Avatar,
 			&t.QuizzesCreated, &t.QuizzesConducted, &t.TotalAttempts,
 			&avgParticipation, &avgClassScore); err != nil {
 			return nil, fmt.Errorf("scan teacher overview: %w", err)
@@ -85,7 +85,7 @@ func (s *Service) ListStudentAnalytics(ctx context.Context, actor authusers.User
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email, u.status,
+		`SELECT u.id, u.full_name, u.email, u.status, u.avatar,
 		        coalesce((SELECT jsonb_agg(gm.group_id ORDER BY gm.group_id)
 		                  FROM group_members gm WHERE gm.student_id = u.id), '[]'::jsonb),
 		        coalesce(jsonb_array_length(ss.accuracy_trend), 0),
@@ -111,7 +111,7 @@ func (s *Service) ListStudentAnalytics(ctx context.Context, actor authusers.User
 		var groupsJSON []byte
 		var avgAccuracy, completionRate, avgTime sql.NullFloat64
 		var updatedAt sql.NullTime
-		if err := rows.Scan(&st.StudentId, &st.FullName, &st.Email, &status,
+		if err := rows.Scan(&st.StudentId, &st.FullName, &st.Email, &status, &st.Avatar,
 			&groupsJSON, &st.QuizzesTaken, &avgAccuracy, &completionRate,
 			&avgTime, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan student overview: %w", err)
@@ -160,7 +160,7 @@ func (s *Service) TeacherStudents(ctx context.Context, actor authusers.User, tea
 	// quizzes, not just the best one - integrity evidence must never vanish
 	// because a later attempt scored higher.
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email,
+		`SELECT u.id, u.full_name, u.email, u.avatar,
 		        q.id, q.title, q.status,
 		        b.score, b.max_score, b.submitted_at,
 		        coalesce(v.violations, 0)
@@ -208,11 +208,12 @@ func (s *Service) TeacherStudents(ctx context.Context, actor authusers.User, tea
 	for rows.Next() {
 		var studentID uuid.UUID
 		var fullName, email, quizTitle, quizStatus string
+		var avatar *string
 		var quizID uuid.UUID
 		var score, maxScore sql.NullFloat64
 		var submittedAt sql.NullTime
 		var violations int
-		if err := rows.Scan(&studentID, &fullName, &email,
+		if err := rows.Scan(&studentID, &fullName, &email, &avatar,
 			&quizID, &quizTitle, &quizStatus,
 			&score, &maxScore, &submittedAt, &violations); err != nil {
 			return nil, fmt.Errorf("scan teacher student row: %w", err)
@@ -224,6 +225,7 @@ func (s *Service) TeacherStudents(ctx context.Context, actor authusers.User, tea
 				StudentId:       studentID,
 				FullName:        fullName,
 				Email:           email,
+				Avatar:          avatar,
 				TotalViolations: violations,
 				Quizzes:         []apischema.TeacherStudentQuizScore{},
 			}

@@ -539,9 +539,10 @@ func (s *Service) Archive(ctx context.Context, actor authusers.User, id string) 
 // AssignedStudent is one member of a quiz's audience, as the authoring UI
 // lists it.
 type AssignedStudent struct {
-	ID       string `json:"id"`
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
+	ID       string  `json:"id"`
+	FullName string  `json:"full_name"`
+	Email    string  `json:"email"`
+	Avatar   *string `json:"avatar,omitempty"`
 }
 
 // SetAssignments replaces the quiz's audience (docs/04: PUT
@@ -858,7 +859,7 @@ type querier interface {
 
 func assignedStudents(ctx context.Context, db querier, quizID string) ([]AssignedStudent, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT u.id, u.full_name, u.email
+		`SELECT u.id, u.full_name, u.email, u.avatar
 		 FROM quiz_assignments a JOIN users u ON u.id = a.student_id
 		 WHERE a.quiz_id = $1 ORDER BY u.full_name, u.id`, quizID)
 	if err != nil {
@@ -868,7 +869,7 @@ func assignedStudents(ctx context.Context, db querier, quizID string) ([]Assigne
 	students := []AssignedStudent{}
 	for rows.Next() {
 		var s AssignedStudent
-		if err := rows.Scan(&s.ID, &s.FullName, &s.Email); err != nil {
+		if err := rows.Scan(&s.ID, &s.FullName, &s.Email, &s.Avatar); err != nil {
 			return nil, fmt.Errorf("scan assignment: %w", err)
 		}
 		students = append(students, s)

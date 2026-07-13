@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import { AUTH_REVOKED_CLOSE_CODE } from '../lib/wsCloseCodes'
 import { formatRemaining, formatWhen } from '../player/model'
 import DestructiveConfirmModal from '../components/DestructiveConfirmModal'
+import Avatar from '../components/Avatar'
 import AudienceEditor from './AudienceEditor'
 import { VIOLATION_LABEL, type ViolationTally } from './model'
 import type { components } from '../api/schema'
@@ -485,7 +486,13 @@ export default function LiveMonitorPanel({
             return (
               <div className="qt-row" role="row" key={row.student_id}>
                 <span className="live-roster-name" title={row.email}>
-                  {row.full_name}
+                  <Avatar
+                    userId={row.student_id}
+                    fullName={row.full_name}
+                    avatar={row.avatar}
+                    size="small"
+                  />
+                  <span className="live-roster-name-text">{row.full_name}</span>
                 </span>
                 <span className={`chip chip-roster-${row.state}`}>
                   {STATE_LABEL[row.state]}

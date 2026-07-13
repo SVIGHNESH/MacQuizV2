@@ -290,6 +290,8 @@ type AssignedQuizStatus string
 
 // AssignedStudent defines model for AssignedStudent.
 type AssignedStudent struct {
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar   *string             `json:"avatar"`
 	Email    openapi_types.Email `json:"email"`
 	FullName string              `json:"full_name"`
 	Id       openapi_types.UUID  `json:"id"`
@@ -598,7 +600,10 @@ type Leaderboard struct {
 type LeaderboardEntry struct {
 	// Accuracy Share of the pinned snapshot's points earned, 0..1. Null when the snapshot the student saw carries no points at all; such students rank last.
 	Accuracy *float32 `json:"accuracy"`
-	FullName string   `json:"full_name"`
+
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar   *string `json:"avatar"`
+	FullName string  `json:"full_name"`
 
 	// IsSelf True on the reading student's own row.
 	IsSelf bool `json:"is_self"`
@@ -623,6 +628,9 @@ type LiveRosterRow struct {
 	AnsweredCount *int                `json:"answered_count"`
 	AttemptId     *openapi_types.UUID `json:"attempt_id"`
 	AttemptNo     *int                `json:"attempt_no"`
+
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar *string `json:"avatar"`
 
 	// CurrentQuestion 1-based ordinal (within the pinned quiz_version's questions array) of the last question the student saved an answer for. Null until the first autosave.
 	CurrentQuestion *int                `json:"current_question"`
@@ -877,8 +885,11 @@ type ResultQuestionType string
 type ResultRow struct {
 	AttemptId *openapi_types.UUID `json:"attempt_id"`
 	AttemptNo *int                `json:"attempt_no"`
-	Email     openapi_types.Email `json:"email"`
-	FullName  string              `json:"full_name"`
+
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar   *string             `json:"avatar"`
+	Email    openapi_types.Email `json:"email"`
+	FullName string              `json:"full_name"`
 
 	// MaxScore Total points of the snapshot version this attempt pinned.
 	MaxScore *float32 `json:"max_score"`
@@ -935,6 +946,9 @@ type SetAssignmentsRequest struct {
 
 // StudentOverview One admin-analytics row per student - identity, cohort memberships, and a summary of the student_stats rollup. Averages are null until the student's first terminal quiz rolls up.
 type StudentOverview struct {
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar *string `json:"avatar"`
+
 	// AvgAccuracy Mean best-attempt accuracy across terminal quizzes, 0-1.
 	AvgAccuracy        *float32             `json:"avg_accuracy"`
 	AvgTimePerQuestion *float32             `json:"avg_time_per_question"`
@@ -972,6 +986,9 @@ type StudentStats struct {
 
 // TeacherOverview One admin-analytics row per teacher - identity plus the TeacherStats aggregates, computed live in one query across all teachers.
 type TeacherOverview struct {
+	// Avatar The teacher's User.avatar value; null renders as initials.
+	Avatar *string `json:"avatar"`
+
 	// AvgClassScore Mean of each rolled-up quiz's mean, in raw points (see TeacherStats).
 	AvgClassScore    *float32              `json:"avg_class_score"`
 	AvgParticipation *float32              `json:"avg_participation"`
@@ -1031,6 +1048,9 @@ type TeacherStats struct {
 // TeacherStudentPerformance One student's performance on a single teacher's quizzes - the teacher-scoped view of docs/07 section 3, one row per assigned student with a per-quiz breakdown.
 type TeacherStudentPerformance struct {
 	AssignedQuizzes int `json:"assigned_quizzes"`
+
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar *string `json:"avatar"`
 
 	// AvgScorePercent Mean over completed quizzes of the best graded attempt's score as a percentage of the pinned snapshot's points.
 	AvgScorePercent *float32 `json:"avg_score_percent"`

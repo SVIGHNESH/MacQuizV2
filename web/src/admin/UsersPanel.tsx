@@ -4,6 +4,7 @@ import type { components } from '../api/schema'
 import CredentialModal from './CredentialModal'
 import TeacherStatsModal from './TeacherStatsModal'
 import UserImportModal from './UserImportModal'
+import Avatar from '../components/Avatar'
 
 type User = components['schemas']['User']
 
@@ -11,15 +12,6 @@ const ROLE_LABEL: Record<User['role'], string> = {
   admin: 'Admin',
   teacher: 'Teacher',
   student: 'Student',
-}
-
-function initials(fullName: string): string {
-  return fullName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join('')
 }
 
 /**
@@ -129,6 +121,25 @@ export default function UsersPanel() {
     setBusyUserID(null)
     if (!result?.data) {
       setRowError(result?.error?.message ?? 'Could not update the account.')
+      return
+    }
+    setUsers((prev) => (prev ?? []).map((u) => (u.id === user.id ? result.data.user : u)))
+  }
+
+  // The moderation hammer for an inappropriate photo (docs/08: uploads are
+  // admin-clearable); the row falls back to the initials chip.
+  const clearAvatar = async (user: User) => {
+    setRowError(null)
+    setBusyUserID(user.id)
+    const result = await api
+      .PATCH('/api/v1/users/{id}', {
+        params: { path: { id: user.id } },
+        body: { clear_avatar: true },
+      })
+      .catch(() => null)
+    setBusyUserID(null)
+    if (!result?.data) {
+      setRowError(result?.error?.message ?? 'Could not remove the avatar.')
       return
     }
     setUsers((prev) => (prev ?? []).map((u) => (u.id === user.id ? result.data.user : u)))
@@ -323,9 +334,12 @@ export default function UsersPanel() {
                   role="row"
                 >
                   <span className="admin-user-cell">
-                    <span className="avatar avatar-small" aria-hidden="true">
-                      {initials(user.full_name)}
-                    </span>
+                    <Avatar
+                      userId={user.id}
+                      fullName={user.full_name}
+                      avatar={user.avatar}
+                      size="small"
+                    />
                     <span className="admin-user-identity">
                       <span className="admin-user-name" title={user.full_name}>
                         {user.full_name}
@@ -353,6 +367,17 @@ export default function UsersPanel() {
                     )}
                     {user.role !== 'admin' && (
                       <>
+                        {user.avatar != null && (
+                          <button
+                            className="button button-small button-quiet"
+                            type="button"
+                            disabled={busyUserID === user.id}
+                            onClick={() => void clearAvatar(user)}
+                            data-testid="admin-clear-avatar"
+                          >
+                            Remove avatar
+                          </button>
+                        )}
                         <button
                           className="button button-small button-quiet"
                           type="button"

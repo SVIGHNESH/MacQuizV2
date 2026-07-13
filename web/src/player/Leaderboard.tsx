@@ -1,4 +1,5 @@
 import type { LeaderboardEntry } from './model'
+import Avatar from '../components/Avatar'
 
 /**
  * The dark island (docs/11 section 4, design doc St5): the one sanctioned
@@ -55,7 +56,16 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
         {entry.rank}
       </span>
       <span className="leaderboard-name">
-        {entry.is_self ? `You - ${entry.full_name}` : entry.full_name}
+        <Avatar
+          userId={entry.student_id}
+          fullName={entry.full_name}
+          avatar={entry.avatar}
+          size="small"
+          dark
+        />
+        <span className="leaderboard-name-text">
+          {entry.is_self ? `You - ${entry.full_name}` : entry.full_name}
+        </span>
       </span>
       <span className="leaderboard-score tabular">
         {entry.accuracy === null
