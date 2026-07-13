@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"macquiz/server/internal/audit"
+	"macquiz/server/internal/blobstore"
 )
 
 // Sentinel errors the HTTP layer maps onto the docs/04-api.md vocabulary.
@@ -34,6 +35,9 @@ type User struct {
 	Status             string    `json:"status"`
 	MustChangePassword bool      `json:"must_change_password"`
 	CreatedAt          time.Time `json:"created_at"`
+	// Avatar is "preset:<slug>" or "upload:<hash>" (see avatar.go); nil
+	// renders as the initials chip.
+	Avatar *string `json:"avatar,omitempty"`
 }
 
 // Service owns accounts and sessions. All queries go through the shared
@@ -42,6 +46,9 @@ type Service struct {
 	db     *sql.DB
 	secret []byte
 	log    *slog.Logger
+	// avatars stores uploaded profile photos (see avatar.go); wired by
+	// SetAvatarStore in main, nil in tests that never touch avatars.
+	avatars blobstore.Store
 }
 
 // NewService wires the auth service. secret signs access tokens (HS256).
@@ -49,13 +56,13 @@ func NewService(db *sql.DB, secret string, log *slog.Logger) *Service {
 	return &Service{db: db, secret: []byte(secret), log: log}
 }
 
-const userColumns = `id, role, email, full_name, status, must_change_password, created_at`
+const userColumns = `id, role, email, full_name, status, must_change_password, created_at, avatar`
 
 func scanUser(row *sql.Row) (User, string, error) {
 	var u User
 	var hash string
 	err := row.Scan(&u.ID, &u.Role, &u.Email, &u.FullName, &u.Status,
-		&u.MustChangePassword, &u.CreatedAt, &hash)
+		&u.MustChangePassword, &u.CreatedAt, &u.Avatar, &hash)
 	return u, hash, err
 }
 

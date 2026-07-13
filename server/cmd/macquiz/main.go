@@ -27,6 +27,7 @@ import (
 	"macquiz/server/internal/analytics"
 	"macquiz/server/internal/attempt"
 	"macquiz/server/internal/authusers"
+	"macquiz/server/internal/blobstore"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/email"
@@ -191,6 +192,24 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
+	// Uploaded avatar photos ride the same backend selection as imports:
+	// the shared R2 bucket (under an avatars/ key prefix) when configured,
+	// local disk otherwise. Only serve reads avatars, so no shared volume.
+	authSvc.SetAvatarStore(blobstore.New(blobstore.Options{
+		LocalDir:          cfg.AvatarDir,
+		Ext:               ".jpg",
+		ContentType:       "image/jpeg",
+		R2Prefix:          "avatars/",
+		R2Bucket:          cfg.ImportR2Bucket,
+		R2Endpoint:        cfg.ImportR2Endpoint,
+		R2AccessKeyID:     cfg.ImportR2AccessKeyID,
+		R2SecretAccessKey: cfg.ImportR2SecretAccessKey,
+	}))
+	if cfg.ImportR2Bucket == "" {
+		if err := os.MkdirAll(cfg.AvatarDir, 0o755); err != nil {
+			return fmt.Errorf("create avatar dir: %w", err)
+		}
+	}
 	authHandler := authusers.NewHandler(authSvc, cfg.Env == "production")
 	quizSvc := quiz.NewService(sqlDB, log, importStore, publisher)
 	// The email leg of "Notifications on assignment changes" (docs/09

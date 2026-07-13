@@ -69,6 +69,12 @@ type Config struct {
 	ImportR2Endpoint        string
 	ImportR2AccessKeyID     string
 	ImportR2SecretAccessKey string
+	// AvatarDir is the local-disk directory uploaded avatar photos live in
+	// when ImportR2Bucket is unset. With the bucket set, avatars share it
+	// under an "avatars/" key prefix instead - one R2 credential set covers
+	// both blob kinds. Unlike ImportDir, only serve reads it back, so it
+	// needs no shared volume with the worker.
+	AvatarDir string
 	// OTelExporterEndpoint is the OTLP/HTTP endpoint (host:port, no scheme)
 	// metrics are exported to (docs/10-operations.md section 2's Grafana
 	// Cloud free tier). Empty (the dev/test default) disables telemetry
@@ -109,6 +115,7 @@ func Load() Config {
 		BootstrapAdminName:     getenv("MACQUIZ_BOOTSTRAP_ADMIN_NAME", "Administrator"),
 
 		ImportDir: getenv("MACQUIZ_IMPORT_DIR", "/tmp/macquiz-imports"),
+		AvatarDir: getenv("MACQUIZ_AVATAR_DIR", "/tmp/macquiz-avatars"),
 
 		ImportR2Bucket:          os.Getenv("MACQUIZ_IMPORT_R2_BUCKET"),
 		ImportR2Endpoint:        os.Getenv("MACQUIZ_IMPORT_R2_ENDPOINT"),

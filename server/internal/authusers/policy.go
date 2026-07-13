@@ -16,6 +16,13 @@ const (
 	ActionGroupsManage Action = "groups.manage" // cohorts and membership
 	ActionAuditRead    Action = "audit.read"
 
+	// Uploaded avatar photos (GET /users/:id/avatar). Readable by every
+	// active account regardless of role: the avatar is an identification
+	// aid on the same surfaces that already show full names to that
+	// audience (rosters, leaderboards, results), and it is strictly less
+	// sensitive than the name beside it.
+	ActionAvatarRead Action = "avatar.read"
+
 	// The minimal student-and-group directory teachers read to pick a
 	// quiz audience (docs/04-api.md: assignments take student and group
 	// ids). It exposes no account status, credentials, or teacher rows.
@@ -70,6 +77,8 @@ func Can(actor User, action Action, res Resource) bool {
 	switch action {
 	case ActionUsersManage, ActionGroupsManage, ActionAuditRead:
 		return actor.Role == "admin"
+	case ActionAvatarRead:
+		return true
 	case ActionDirectoryRead:
 		return actor.Role == "admin" || actor.Role == "teacher"
 	case ActionQuizCreate:

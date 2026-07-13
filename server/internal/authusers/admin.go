@@ -37,6 +37,7 @@ type UserPatch struct {
 	FullName      *string
 	Status        *string // active | disabled; disabling revokes every session
 	ResetPassword bool    // issue a fresh first-login credential
+	ClearAvatar   bool    // remove the avatar (moderation of an inappropriate upload)
 }
 
 // CreateUser provisions a teacher or student account with a generated
@@ -120,6 +121,12 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 		// Disabling must kill live sessions, not wait for token expiry.
 		revokeSessions = *patch.Status == "disabled"
 	}
+	var clearedAvatar *string
+	if patch.ClearAvatar && u.Avatar != nil {
+		changes["avatar"] = audit.Change{From: *u.Avatar, To: nil}
+		clearedAvatar = u.Avatar
+		u.Avatar = nil
+	}
 	password := ""
 	newHash := ""
 	if patch.ResetPassword {
@@ -143,15 +150,15 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 
 	if newHash != "" {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE users SET full_name = $1, status = $2, password_hash = $3,
-			        must_change_password = true WHERE id = $4`,
-			u.FullName, u.Status, newHash, id); err != nil {
+			`UPDATE users SET full_name = $1, status = $2, avatar = $3, password_hash = $4,
+			        must_change_password = true WHERE id = $5`,
+			u.FullName, u.Status, u.Avatar, newHash, id); err != nil {
 			return User{}, "", fmt.Errorf("update user: %w", err)
 		}
 	} else {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE users SET full_name = $1, status = $2 WHERE id = $3`,
-			u.FullName, u.Status, id); err != nil {
+			`UPDATE users SET full_name = $1, status = $2, avatar = $3 WHERE id = $4`,
+			u.FullName, u.Status, u.Avatar, id); err != nil {
 			return User{}, "", fmt.Errorf("update user: %w", err)
 		}
 	}
@@ -175,6 +182,8 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 	if err := tx.Commit(); err != nil {
 		return User{}, "", fmt.Errorf("commit update user: %w", err)
 	}
+	// After commit, so a rollback can never delete a still-referenced blob.
+	s.deleteAvatarBlob(ctx, clearedAvatar)
 	return u, password, nil
 }
 
@@ -195,7 +204,7 @@ func (s *Service) ListUsers(ctx context.Context, role, status string) ([]User, e
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Role, &u.Email, &u.FullName, &u.Status,
-			&u.MustChangePassword, &u.CreatedAt); err != nil {
+			&u.MustChangePassword, &u.CreatedAt, &u.Avatar); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, u)

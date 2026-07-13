@@ -12,16 +12,25 @@ import (
 	"macquiz/server/internal/httpapi"
 )
 
-// UserRoutes returns the admin /api/v1/users route group. Every route is
+// UserRoutes returns the /api/v1/users route group. Every route is
 // authenticated, gated on the forced first-login reset, and checked against
-// the central policy (docs/04-api.md section 1).
+// the central policy (docs/04-api.md section 1): the management routes are
+// admin-only, while the avatar image is readable by any active account
+// (ActionAvatarRead - it renders beside names on rosters and leaderboards
+// every role already sees).
 func (h *Handler) UserRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(h.svc.RequireAuth, RequirePasswordChanged, requireCan(ActionUsersManage))
-	r.Get("/", h.handleListUsers)
-	r.Post("/", h.handleCreateUser)
-	r.Post("/import", h.handleImportUsers)
-	r.Patch("/{id}", h.handleUpdateUser)
+	r.Group(func(r chi.Router) {
+		r.Use(h.svc.RequireAuth, RequirePasswordChanged, requireCan(ActionUsersManage))
+		r.Get("/", h.handleListUsers)
+		r.Post("/", h.handleCreateUser)
+		r.Post("/import", h.handleImportUsers)
+		r.Patch("/{id}", h.handleUpdateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(h.svc.RequireAuth, RequirePasswordChanged, requireCan(ActionAvatarRead))
+		r.Get("/{id}/avatar", h.handleGetUserAvatar)
+	})
 	return r
 }
 
@@ -174,6 +183,7 @@ type updateUserRequest struct {
 	FullName      *string `json:"full_name"`
 	Status        *string `json:"status"`
 	ResetPassword bool    `json:"reset_password"`
+	ClearAvatar   bool    `json:"clear_avatar"`
 }
 
 func (h *Handler) handleUpdateUser(w http.ResponseWriter, r *http.Request) {

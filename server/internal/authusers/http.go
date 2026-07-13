@@ -28,6 +28,7 @@ type Handler struct {
 	secureCookies bool
 	loginByIP     *ratelimit.Limiter
 	loginByEmail  *ratelimit.Limiter
+	avatarUploads *ratelimit.Limiter
 }
 
 // NewHandler wires the auth routes. secureCookies must be true in production
@@ -39,6 +40,9 @@ func NewHandler(svc *Service, secureCookies bool) *Handler {
 		// Login limits per IP and per account (docs/04-api.md section 5).
 		loginByIP:    ratelimit.New(20, time.Minute),
 		loginByEmail: ratelimit.New(5, time.Minute),
+		// Each upload runs a decode-and-re-encode; 10/min per account keeps
+		// a scripted client from turning that into a CPU sink.
+		avatarUploads: ratelimit.New(10, time.Minute),
 	}
 }
 
@@ -52,6 +56,14 @@ func (h *Handler) Routes() http.Handler {
 		r.Use(h.svc.RequireAuth)
 		r.Get("/me", h.handleMe)
 		r.Post("/password", h.handleChangePassword)
+		// Avatar edits are profile work, not account recovery, so unlike
+		// /me and /password they wait out the forced first-login reset.
+		r.Group(func(r chi.Router) {
+			r.Use(RequirePasswordChanged)
+			r.Put("/me/avatar", h.handleUploadAvatar)
+			r.Delete("/me/avatar", h.handleDeleteAvatar)
+			r.Post("/me/avatar/preset", h.handleSelectAvatarPreset)
+		})
 	})
 	return r
 }
