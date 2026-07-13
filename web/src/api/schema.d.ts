@@ -158,6 +158,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload the caller's avatar photo
+         * @description The request body is the raw image file - PNG, JPEG, WebP, or GIF, told apart by the file's own bytes, 2 MB max. The server never stores the original: it decodes, center-crops to a square, downscales to 256x256, and re-encodes as JPEG (an animated upload keeps only its first frame), so every stored avatar is a small sanitized image. Writes an audit row in the same transaction.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /**
+         * Remove the caller's avatar
+         * @description Reverts the account to the initials chip; an uploaded photo's stored image is deleted. Writes an audit row in the same transaction.
+         */
+        delete: operations["deleteAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/avatar/preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pick a built-in avatar sticker
+         * @description Sets the caller's avatar to one of the server's built-in sticker slugs (the SPA bundles the matching art). Writes an audit row in the same transaction.
+         */
+        post: operations["selectAvatarPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The stored avatar photo of an account
+         * @description Serves the re-encoded JPEG for an account whose avatar is an upload. Any active account may fetch it - the avatar is an identification aid on the same surfaces that already show names. Sends the content hash as a strong ETag and honors If-None-Match; 404 when the account does not exist or has no uploaded photo.
+         */
+        get: operations["getUserAvatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -1121,6 +1185,8 @@ export interface components {
             must_change_password: boolean;
             /** Format: date-time */
             created_at: string;
+            /** @description The chosen avatar: "preset:<slug>" names a built-in sticker the SPA bundles, "upload:<hash>" points at the photo served by GET /users/{id}/avatar (the hash doubles as its cache-buster). Null or absent renders as the initials chip. */
+            avatar?: string | null;
         };
         Session: {
             user: components["schemas"]["User"];
@@ -1133,6 +1199,10 @@ export interface components {
         ChangePasswordRequest: {
             current_password: string;
             new_password: string;
+        };
+        SelectAvatarPresetRequest: {
+            /** @description A slug from the server's built-in sticker allowlist. */
+            preset: string;
         };
         CreateUserRequest: {
             /** @enum {string} */
@@ -1147,6 +1217,8 @@ export interface components {
             status?: "active" | "disabled";
             /** @description Issue a fresh one-time credential and revoke all sessions. */
             reset_password?: boolean;
+            /** @description Remove the account's avatar (the moderation path for an inappropriate upload); the stored image is deleted. */
+            clear_avatar?: boolean;
         };
         ProvisionedUser: {
             user: components["schemas"]["User"];
@@ -2093,6 +2165,111 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description The account with its new avatar. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    deleteAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account, avatar cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    selectAvatarPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectAvatarPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description The account with its new avatar. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getUserAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The avatar image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Not modified; the client's cached copy is current. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listUsers: {

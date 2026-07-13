@@ -915,6 +915,12 @@ type SaveAnswerResponse struct {
 	Now        time.Time     `json:"now"`
 }
 
+// SelectAvatarPresetRequest defines model for SelectAvatarPresetRequest.
+type SelectAvatarPresetRequest struct {
+	// Preset A slug from the server's built-in sticker allowlist.
+	Preset string `json:"preset"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	User User `json:"user"`
@@ -1069,7 +1075,9 @@ type UpdateQuizRequest struct {
 
 // UpdateUserRequest defines model for UpdateUserRequest.
 type UpdateUserRequest struct {
-	FullName *string `json:"full_name,omitempty"`
+	// ClearAvatar Remove the account's avatar (the moderation path for an inappropriate upload); the stored image is deleted.
+	ClearAvatar *bool   `json:"clear_avatar,omitempty"`
+	FullName    *string `json:"full_name,omitempty"`
 
 	// ResetPassword Issue a fresh one-time credential and revoke all sessions.
 	ResetPassword *bool                    `json:"reset_password,omitempty"`
@@ -1081,6 +1089,8 @@ type UpdateUserRequestStatus string
 
 // User defines model for User.
 type User struct {
+	// Avatar The chosen avatar: "preset:<slug>" names a built-in sticker the SPA bundles, "upload:<hash>" points at the photo served by GET /users/{id}/avatar (the hash doubles as its cache-buster). Null or absent renders as the initials chip.
+	Avatar    *string             `json:"avatar"`
 	CreatedAt time.Time           `json:"created_at"`
 	Email     openapi_types.Email `json:"email"`
 	FullName  string              `json:"full_name"`
@@ -1284,6 +1294,9 @@ type ReadmitAttemptJSONRequestBody ReadmitAttemptJSONBody
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// SelectAvatarPresetJSONRequestBody defines body for SelectAvatarPreset for application/json ContentType.
+type SelectAvatarPresetJSONRequestBody = SelectAvatarPresetRequest
 
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest

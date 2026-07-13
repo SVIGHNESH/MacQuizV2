@@ -182,7 +182,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// writes uploaded files through importStore; the worker process reads
 	// them back through its own instance of the same backend. With
 	// ImportR2Bucket unset (the dev/single-VM default) that's a shared-volume
-	// LocalImportStorage (docs/09 section 4), so the directory must exist.
+	// local-disk blob store (docs/09 section 4), so the directory must exist.
 	importStore := quiz.NewImportFileStore(cfg.ImportDir, cfg.ImportR2Bucket, cfg.ImportR2Endpoint, cfg.ImportR2AccessKeyID, cfg.ImportR2SecretAccessKey)
 	if cfg.ImportR2Bucket == "" {
 		if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {

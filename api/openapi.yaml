@@ -175,6 +175,108 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+  /api/v1/auth/me/avatar:
+    put:
+      operationId: uploadAvatar
+      summary: Upload the caller's avatar photo
+      description: >-
+        The request body is the raw image file - PNG, JPEG, WebP, or GIF,
+        told apart by the file's own bytes, 2 MB max. The server never
+        stores the original: it decodes, center-crops to a square,
+        downscales to 256x256, and re-encodes as JPEG (an animated upload
+        keeps only its first frame), so every stored avatar is a small
+        sanitized image. Writes an audit row in the same transaction.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: The account with its new avatar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      operationId: deleteAvatar
+      summary: Remove the caller's avatar
+      description: >-
+        Reverts the account to the initials chip; an uploaded photo's stored
+        image is deleted. Writes an audit row in the same transaction.
+      responses:
+        "200":
+          description: The account, avatar cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/me/avatar/preset:
+    post:
+      operationId: selectAvatarPreset
+      summary: Pick a built-in avatar sticker
+      description: >-
+        Sets the caller's avatar to one of the server's built-in sticker
+        slugs (the SPA bundles the matching art). Writes an audit row in
+        the same transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectAvatarPresetRequest"
+      responses:
+        "200":
+          description: The account with its new avatar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /api/v1/users/{id}/avatar:
+    get:
+      operationId: getUserAvatar
+      summary: The stored avatar photo of an account
+      description: >-
+        Serves the re-encoded JPEG for an account whose avatar is an
+        upload. Any active account may fetch it - the avatar is an
+        identification aid on the same surfaces that already show names.
+        Sends the content hash as a strong ETag and honors If-None-Match;
+        404 when the account does not exist or has no uploaded photo.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The avatar image.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Not modified; the client's cached copy is current.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/users:
     get:
       operationId: listUsers
@@ -2178,6 +2280,14 @@ components:
         created_at:
           type: string
           format: date-time
+        avatar:
+          type: string
+          nullable: true
+          description: >-
+            The chosen avatar: "preset:<slug>" names a built-in sticker the
+            SPA bundles, "upload:<hash>" points at the photo served by
+            GET /users/{id}/avatar (the hash doubles as its cache-buster).
+            Null or absent renders as the initials chip.
     Session:
       type: object
       required: [user]
@@ -2202,6 +2312,13 @@ components:
         new_password:
           type: string
           minLength: 10
+    SelectAvatarPresetRequest:
+      type: object
+      required: [preset]
+      properties:
+        preset:
+          type: string
+          description: A slug from the server's built-in sticker allowlist.
     CreateUserRequest:
       type: object
       required: [role, email, full_name]
@@ -2225,6 +2342,11 @@ components:
         reset_password:
           type: boolean
           description: Issue a fresh one-time credential and revoke all sessions.
+        clear_avatar:
+          type: boolean
+          description: >-
+            Remove the account's avatar (the moderation path for an
+            inappropriate upload); the stored image is deleted.
     ProvisionedUser:
       type: object
       required: [user]

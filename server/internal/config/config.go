@@ -63,8 +63,8 @@ type Config struct {
 	// ImportR2SecretAccessKey configure the production object-storage
 	// backend for bulk-import files (docs/02 section 3.5, docs/09 section
 	// 4): a Cloudflare R2 bucket, addressed via its S3-compatible API.
-	// ImportR2Bucket empty (the dev/test default) falls back to
-	// LocalImportStorage against ImportDir instead - never a boot failure.
+	// ImportR2Bucket empty (the dev/test default) falls back to the
+	// local-disk blob store against ImportDir instead - never a boot failure.
 	ImportR2Bucket          string
 	ImportR2Endpoint        string
 	ImportR2AccessKeyID     string
