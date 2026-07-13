@@ -107,6 +107,32 @@
   min-width: 0;
 }
 
+/* The identity block doubles as the profile-page entry point. */
+.rail-identity-button {
+  width: 100%;
+  padding: 6px;
+  margin: -6px -6px 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-micro);
+}
+
+.rail-identity-button:hover {
+  background: var(--color-well);
+}
+
+.rail-identity-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.rail-identity-active {
+  background: var(--color-primary-selection-wash);
+}
+
 .avatar-small {
   width: 32px;
   height: 32px;

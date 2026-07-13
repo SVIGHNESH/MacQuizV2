@@ -5,6 +5,7 @@ import {
   AuthContext,
   type ApiError,
   type AuthState,
+  type SessionUser,
 } from './context'
 
 const NETWORK_ERROR: ApiError = {
@@ -100,9 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state],
   )
 
+  const updateUser = useCallback((user: SessionUser) => {
+    setState((prev) => (prev.phase === 'signed-in' ? { phase: 'signed-in', user } : prev))
+  }, [])
+
   const value = useMemo(
-    () => ({ state, login, logout, changePassword }),
-    [state, login, logout, changePassword],
+    () => ({ state, login, logout, changePassword, updateUser }),
+    [state, login, logout, changePassword, updateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

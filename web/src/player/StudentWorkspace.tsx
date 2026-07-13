@@ -6,6 +6,8 @@ import AttemptPlayer, { type PlayerEntry } from './AttemptPlayer'
 import ResultReview from './ResultReview'
 import MyAnalytics from './MyAnalytics'
 import SdcTeamPanel from '../components/SdcTeamPanel'
+import Avatar from '../components/Avatar'
+import ProfilePanel from '../components/ProfilePanel'
 import '../authoring/authoring.css'
 import './player.css'
 
@@ -15,19 +17,11 @@ type View =
   | { kind: 'result'; attemptId: string }
   | { kind: 'analytics' }
   | { kind: 'team' }
+  | { kind: 'profile' }
 
 interface Notice {
   id: number
   text: string
-}
-
-function initials(fullName: string): string {
-  return fullName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join('')
 }
 
 /**
@@ -96,9 +90,9 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className={`rail-item${view.kind !== 'analytics' && view.kind !== 'team' ? ' rail-item-active' : ''}`}
+            className={`rail-item${view.kind === 'list' || view.kind === 'result' ? ' rail-item-active' : ''}`}
             type="button"
-            aria-current={view.kind !== 'analytics' && view.kind !== 'team' ? 'page' : undefined}
+            aria-current={view.kind === 'list' || view.kind === 'result' ? 'page' : undefined}
             onClick={toList}
           >
             <span className="rail-dot" aria-hidden="true" />
@@ -125,15 +119,19 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
         </nav>
 
         <div className="rail-user">
-          <div className="rail-identity">
-            <span className="avatar avatar-small" aria-hidden="true">
-              {initials(user.full_name)}
-            </span>
+          <button
+            className={`rail-identity rail-identity-button${view.kind === 'profile' ? ' rail-identity-active' : ''}`}
+            type="button"
+            onClick={() => setView({ kind: 'profile' })}
+            aria-label="Your profile"
+            data-testid="rail-profile"
+          >
+            <Avatar userId={user.id} fullName={user.full_name} avatar={user.avatar} size="small" />
             <span className="rail-identity-text">
               <span className="rail-user-name">{user.full_name}</span>
               <span className="chip chip-role">Student</span>
             </span>
-          </div>
+          </button>
           <button
             className="button button-quiet rail-signout"
             type="button"
@@ -183,6 +181,7 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
         )}
         {view.kind === 'analytics' && <MyAnalytics studentId={user.id} />}
         {view.kind === 'team' && <SdcTeamPanel eyebrow="Student workspace" />}
+        {view.kind === 'profile' && <ProfilePanel user={user} />}
       </main>
     </div>
   )

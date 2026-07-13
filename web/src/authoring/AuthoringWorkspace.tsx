@@ -5,6 +5,8 @@ import QuizEditor from './QuizEditor'
 import QuizList from './QuizList'
 import TeacherAnalyticsPanel from './TeacherAnalyticsPanel'
 import SdcTeamPanel from '../components/SdcTeamPanel'
+import Avatar from '../components/Avatar'
+import ProfilePanel from '../components/ProfilePanel'
 import { VIOLATION_LABEL, type ViolationTally } from './model'
 import './authoring.css'
 
@@ -13,6 +15,7 @@ type View =
   | { kind: 'editor'; quizId: string }
   | { kind: 'analytics' }
   | { kind: 'team' }
+  | { kind: 'profile' }
 
 // The attempt.violation_alert payload (docs/05 section 3): the violation
 // ladder's notify action, addressed to this quiz's owner.
@@ -27,15 +30,6 @@ interface ViolationAlert {
 function alertText(a: ViolationAlert): string {
   const what = VIOLATION_LABEL[a.violation_type] ?? a.violation_type
   return `${a.student_name}: ${what.toLowerCase()} - violation ${a.violation_count} on "${a.quiz_title}".`
-}
-
-function initials(fullName: string): string {
-  return fullName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join('')
 }
 
 /**
@@ -81,7 +75,7 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
 
         <nav className="rail-nav" aria-label="Workspace">
           <button
-            className={`rail-item${view.kind !== 'analytics' && view.kind !== 'team' ? ' rail-item-active' : ''}`}
+            className={`rail-item${view.kind === 'list' || view.kind === 'editor' ? ' rail-item-active' : ''}`}
             type="button"
             onClick={() => setView({ kind: 'list' })}
           >
@@ -107,15 +101,19 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
         </nav>
 
         <div className="rail-user">
-          <div className="rail-identity">
-            <span className="avatar avatar-small" aria-hidden="true">
-              {initials(user.full_name)}
-            </span>
+          <button
+            className={`rail-identity rail-identity-button${view.kind === 'profile' ? ' rail-identity-active' : ''}`}
+            type="button"
+            onClick={() => setView({ kind: 'profile' })}
+            aria-label="Your profile"
+            data-testid="rail-profile"
+          >
+            <Avatar userId={user.id} fullName={user.full_name} avatar={user.avatar} size="small" />
             <span className="rail-identity-text">
               <span className="rail-user-name">{user.full_name}</span>
               <span className="chip chip-role">Teacher</span>
             </span>
-          </div>
+          </button>
           <button
             className="button button-quiet rail-signout"
             type="button"
@@ -154,6 +152,8 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
           <TeacherAnalyticsPanel teacherId={user.id} />
         ) : view.kind === 'team' ? (
           <SdcTeamPanel eyebrow="Teacher workspace" />
+        ) : view.kind === 'profile' ? (
+          <ProfilePanel user={user} />
         ) : (
           <QuizEditor
             quizId={view.quizId}

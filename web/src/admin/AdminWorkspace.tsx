@@ -6,19 +6,12 @@ import OrgStatsPanel from './OrgStatsPanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import AuditPanel from './AuditPanel'
 import SdcTeamPanel from '../components/SdcTeamPanel'
+import Avatar from '../components/Avatar'
+import ProfilePanel from '../components/ProfilePanel'
 import '../authoring/authoring.css'
 import './admin.css'
 
-type View = 'overview' | 'users' | 'groups' | 'analytics' | 'audit' | 'team'
-
-function initials(fullName: string): string {
-  return fullName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join('')
-}
+type View = 'overview' | 'users' | 'groups' | 'analytics' | 'audit' | 'team' | 'profile'
 
 /**
  * The signed-in admin shell: a fixed sidebar rail matching the teacher and
@@ -93,15 +86,19 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
         </nav>
 
         <div className="rail-user">
-          <div className="rail-identity">
-            <span className="avatar avatar-small" aria-hidden="true">
-              {initials(user.full_name)}
-            </span>
+          <button
+            className={`rail-identity rail-identity-button${view === 'profile' ? ' rail-identity-active' : ''}`}
+            type="button"
+            onClick={() => setView('profile')}
+            aria-label="Your profile"
+            data-testid="rail-profile"
+          >
+            <Avatar userId={user.id} fullName={user.full_name} avatar={user.avatar} size="small" />
             <span className="rail-identity-text">
               <span className="rail-user-name">{user.full_name}</span>
               <span className="chip chip-role">Admin</span>
             </span>
-          </div>
+          </button>
           <button
             className="button button-quiet rail-signout"
             type="button"
@@ -127,6 +124,8 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
           <AnalyticsPanel />
         ) : view === 'team' ? (
           <SdcTeamPanel eyebrow="Admin console" />
+        ) : view === 'profile' ? (
+          <ProfilePanel user={user} />
         ) : (
           <AuditPanel />
         )}

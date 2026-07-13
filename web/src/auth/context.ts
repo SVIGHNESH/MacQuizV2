@@ -28,6 +28,12 @@ export interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  /**
+   * Replaces the signed-in user with the fresh copy a mutation response
+   * carried (avatar changes return the updated Session), so the rail and
+   * every other consumer re-render without a /me round trip.
+   */
+  updateUser: (user: SessionUser) => void
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
