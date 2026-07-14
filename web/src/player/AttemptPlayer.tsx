@@ -34,6 +34,15 @@ const QUESTION_TYPE_LABEL: Record<AttemptQuestion['type'], string> = {
   short: 'Short answer',
 }
 
+// The chip alone can't carry this: a student scanning for the next answer looks
+// at the options, not the header. State the rule where the decision is made.
+const ANSWER_HINT: Record<AttemptQuestion['type'], string> = {
+  single: 'Select one answer.',
+  multi: 'Select all that apply - more than one option can be correct.',
+  truefalse: 'Select one answer.',
+  short: 'Type your answer.',
+}
+
 // docs/06 section 3: a warn-class report (a guardrail set to warn, or the
 // clipboard guardrail, which is always logged-not-counted) still needs
 // student-facing copy even though it never touches violation_count.
@@ -177,6 +186,17 @@ export default function AttemptPlayer({
     // The entry is fixed for the lifetime of one player mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Escape backs out of the submit confirm, so opening it by mistake is never a
+  // trap. It is inert once the POST is away - by then there is nothing to undo.
+  useEffect(() => {
+    if (!confirming || phase.kind === 'submitting') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirming(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirming, phase.kind])
 
   // The countdown tick. At zero the player locks and submits once; within
   // the server's grace the manual leg lands, past it the deadline job has
@@ -760,6 +780,21 @@ export default function AttemptPlayer({
               Answered
             </span>
           </div>
+
+          {/* Submit lives with the whole-paper view, never beside Next: in the
+              footer it sat one button away from the control a student hammers
+              to move on, and the confirm used to replace that same footer in
+              place - so a second hurried click landed on the commit. */}
+          <div className="player-nav-submit">
+            <button
+              className="button button-commit player-submit-button"
+              type="button"
+              disabled={phase.kind === 'submitting'}
+              onClick={() => setConfirming(true)}
+            >
+              Review and submit
+            </button>
+          </div>
         </nav>
 
         <section className="player-pane">
@@ -780,7 +815,9 @@ export default function AttemptPlayer({
                   {currentQuestion.body.text}
                 </h2>
               </div>
-              <span className="chip chip-type">
+              <span
+                className={`chip chip-type chip-type-${currentQuestion.type}`}
+              >
                 {QUESTION_TYPE_LABEL[currentQuestion.type]}
               </span>
             </div>
@@ -792,76 +829,96 @@ export default function AttemptPlayer({
             />
           </div>
 
+          {/* Navigation only. Nothing in this row commits the attempt. */}
           <footer className="player-footer">
-            {confirming ? (
-              <>
-                <p className="player-footer-note">
-                  {unansweredCount > 0
-                    ? `${unansweredCount} question${unansweredCount === 1 ? ' is' : 's are'} unanswered. Submit anyway?`
-                    : 'All questions answered. Submit now?'}
-                </p>
-                <div className="player-footer-actions">
-                  <button
-                    className="button button-quiet"
-                    type="button"
-                    disabled={phase.kind === 'submitting'}
-                    onClick={() => setConfirming(false)}
-                  >
-                    Keep working
-                  </button>
-                  <button
-                    className="button button-commit"
-                    type="button"
-                    disabled={phase.kind === 'submitting'}
-                    onClick={() => {
-                      submitted.current = true
-                      void submitNow('manual')
-                    }}
-                  >
-                    {phase.kind === 'submitting' ? 'Submitting…' : 'Submit now'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <button
-                  className="button button-quiet"
-                  type="button"
-                  disabled={safeIndex === 0}
-                  onClick={() => setCurrentIndex(safeIndex - 1)}
-                >
-                  ← Previous
-                </button>
-                <div className="player-footer-actions">
-                  <button
-                    className={`button button-flag${currentFlagged ? ' button-flag-on' : ''}`}
-                    type="button"
-                    aria-pressed={currentFlagged}
-                    onClick={toggleFlag}
-                  >
-                    ⚑ {currentFlagged ? 'Flagged' : 'Flag'}
-                  </button>
-                  <button
-                    className="button button-primary"
-                    type="button"
-                    disabled={safeIndex === questionCount - 1}
-                    onClick={() => setCurrentIndex(safeIndex + 1)}
-                  >
-                    Next →
-                  </button>
-                  <button
-                    className="button button-commit"
-                    type="button"
-                    onClick={() => setConfirming(true)}
-                  >
-                    Review and submit
-                  </button>
-                </div>
-              </>
-            )}
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={safeIndex === 0}
+              onClick={() => setCurrentIndex(safeIndex - 1)}
+            >
+              ← Previous
+            </button>
+            <div className="player-footer-actions">
+              <button
+                className={`button button-flag${currentFlagged ? ' button-flag-on' : ''}`}
+                type="button"
+                aria-pressed={currentFlagged}
+                onClick={toggleFlag}
+              >
+                ⚑ {currentFlagged ? 'Flagged' : 'Flag'}
+              </button>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={safeIndex === questionCount - 1}
+                onClick={() => setCurrentIndex(safeIndex + 1)}
+              >
+                Next →
+              </button>
+            </div>
           </footer>
         </section>
       </div>
+
+      {confirming && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={() => {
+            if (phase.kind !== 'submitting') setConfirming(false)
+          }}
+        >
+          <div
+            className="modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Submit attempt"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="modal-title">Submit this attempt?</h2>
+            <p className="modal-subtitle">
+              {unansweredCount > 0
+                ? `${unansweredCount} question${unansweredCount === 1 ? ' is' : 's are'} still unanswered.`
+                : 'All questions answered.'}
+            </p>
+            <div className="form">
+              {/* Not .modal-consequence: that card is danger-tinted, and red is
+                  reserved for destructive actions. Submitting is the expected
+                  end of every attempt - final, but not a mistake. */}
+              <p className="player-submit-consequence">
+                Once you submit you cannot return to this attempt or change your
+                answers.
+              </p>
+              <div className="modal-actions">
+                {/* Focus rests on the safe action: a student who opened this by
+                    mistake and is still hammering Enter dismisses it, never
+                    commits through it. */}
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  autoFocus
+                  disabled={phase.kind === 'submitting'}
+                  onClick={() => setConfirming(false)}
+                >
+                  Keep working
+                </button>
+                <button
+                  className="button button-commit"
+                  type="button"
+                  disabled={phase.kind === 'submitting'}
+                  onClick={() => {
+                    submitted.current = true
+                    void submitNow('manual')
+                  }}
+                >
+                  {phase.kind === 'submitting' ? 'Submitting…' : 'Submit now'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -880,6 +937,12 @@ function PlayerQuestion({
   return (
     <fieldset className="player-fieldset" disabled={disabled}>
       <legend className="visually-hidden">{question.body.text}</legend>
+
+      <p
+        className={`player-answer-hint${question.type === 'multi' ? ' player-answer-hint-multi' : ''}`}
+      >
+        {ANSWER_HINT[question.type]}
+      </p>
 
       {question.type === 'single' && (
         <div className="option-list">

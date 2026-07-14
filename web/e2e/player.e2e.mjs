@@ -476,9 +476,65 @@ async function playerFlow(browser) {
   )
   await shot(page, '32-player-resumed.png')
 
-  // Submit through the inline confirm, then back to the list: the attempt
-  // is terminal and its score withheld until release.
+  // A tester lost an attempt to a hurried click: submit used to sit next to
+  // Next, and its confirm replaced the footer in place, so a second click at
+  // the same coordinates landed on "Submit now". Nothing in the nav row may
+  // commit the attempt, and the confirm must move the commit away from the
+  // pointer that opened it.
+  check(
+    await page.$$eval('.player-footer button', (els) =>
+      els.every((el) => !/submit/i.test(el.textContent ?? '')),
+    ),
+    'no control in the question-nav footer can submit the attempt',
+  )
+  const submitGap = await page.evaluate(() => {
+    const byText = (t) =>
+      [...document.querySelectorAll('button')].find((el) =>
+        (el.textContent ?? '').includes(t),
+      )
+    const a = byText('Next').getBoundingClientRect()
+    const b = byText('Review and submit').getBoundingClientRect()
+    const dx = Math.max(0, a.left - b.right, b.left - a.right)
+    const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom)
+    return Math.hypot(dx, dy)
+  })
+  check(submitGap > 200, `submit sits well clear of Next (got ${Math.round(submitGap)}px)`)
+
+  // The type chip is the only thing telling a student how many answers they may
+  // pick. It was #98a2b3 on #f2f4f7 (~2.0:1) and easy to miss entirely.
+  await goToQuestion(page, 2)
+  const chip = await page.evaluate(() => {
+    const el = document.querySelector('.player-question-head .chip-type')
+    const rgb = (s) => s.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number)
+    const lum = (c) =>
+      c
+        .map((v) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4))
+        .reduce((a, v, i) => a + [0.2126, 0.7152, 0.0722][i] * v, 0)
+    const cs = getComputedStyle(el)
+    const [hi, lo] = [lum(rgb(cs.color)), lum(rgb(cs.backgroundColor))].sort((a, b) => b - a)
+    return { text: el.textContent.trim(), ratio: (hi + 0.05) / (lo + 0.05) }
+  })
+  check(
+    chip.text === 'Multiple choice' && chip.ratio >= 4.5,
+    `the multi-select chip is legible, not decorative (got ${chip.text} at ${chip.ratio.toFixed(2)}:1)`,
+  )
+  check(
+    await waitForText(page, '.player-answer-hint', 'Select all that apply'),
+    'the multi-select question states the rule where the answering happens',
+  )
+
+  // Submit through the confirm, then back to the list: the attempt is terminal
+  // and its score withheld until release.
   await clickButtonWithText(page, 'Review and submit')
+  check(
+    (await page.$('.modal-panel[role=dialog]')) !== null,
+    'the submit confirm is an overlay, not an in-place swap of the footer',
+  )
+  check(
+    (await page.evaluate(() => document.activeElement?.textContent?.trim())) ===
+      'Keep working',
+    'the confirm opens focused on the safe action, so a reflex Enter cannot submit',
+  )
   await clickButtonWithText(page, 'Submit now')
   check(
     await waitForText(page, '.player-done', 'Attempt submitted', 8000),

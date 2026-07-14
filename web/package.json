@@ -17,7 +17,8 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",

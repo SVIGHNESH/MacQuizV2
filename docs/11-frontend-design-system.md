@@ -94,12 +94,21 @@ Variants: Primary, Secondary, Commit/final, Tonal, Kick, Disabled.
 - Ink (`#131A26`) marks point-of-no-return actions (review and submit, confirm steps).
 - Destructive buttons start as quiet outlines and only turn solid red at the final confirmation.
 - Disabled is a gray fill, never reduced opacity.
+- An irreversible control never sits adjacent to a control the user clicks repeatedly.
+  Colour alone does not protect it: a student paging through questions is aiming at Next, at speed, and a commit one button away will eventually catch a stray click.
+  Put the commit in the surface that matches its scope instead (the player submits from the question navigator, which is the whole-paper view, not from the per-question footer).
 
 ### Status chips and badges
 
 - Lifecycle chips (Live, Scheduled, Closed, Draft): tint background + dark text, 10.5px caps.
 - Integrity badge (for example `▲ 2`): tint border plus a count; hover reveals detail.
 - The pulsing-dot LIVE marker is bare text, reserved for truly realtime contexts.
+- A chip that carries a rule the user must act on is never quiet.
+  The player's question-type chip clears 4.5:1 and is restated as a full sentence above the options ("Select all that apply"), because a student scanning for the next answer looks at the options, not the header.
+  Muted (`--color-text-muted`) is for text whose absence costs the reader nothing.
+- Where a chip's variants differ in consequence, colour marks the one that breaks the reader's default assumption, not each variant in turn.
+  Multi-select takes the loud primary fill; single, true/false and short stay quiet, because "pick one" is the expectation a student already brings.
+  This keeps the palette semantic rather than spending it on type-coding.
 
 ### Status dot + label (for table rows, lighter than chips)
 
@@ -136,6 +145,14 @@ States: In progress, Submitted, Disconnected (pulses), Kicked, Not started.
 - Overlay `rgba(13,18,28,.52)` + `blur(2px)`, 16px-radius panel, floating shadow.
 - Destructive actions are two-step: required reason first, red button only on the confirm step, consequences restated in a danger-tint card.
 - This is the kick flow: "Confirm removal / student · quiz / Reason / [Back] [Remove student]".
+
+### Modal (commit flow)
+
+- A confirm for an irreversible but *expected* action (submitting an attempt) is an overlay, never an in-place swap of the row that opened it.
+  A swap re-renders the commit under the pointer that just clicked, so a second hurried click sails straight through the guard.
+- The consequence card is neutral (`--color-well`), not danger-tinted: red is reserved for destructive actions, and every student submits.
+- Focus opens on the safe action ("Keep working"), so a reflex Enter backs out rather than commits.
+  Escape backs out too, and goes inert once the request is away.
 
 ### Sidebar navigation
 

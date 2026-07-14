@@ -447,6 +447,20 @@
   background: var(--color-surface);
 }
 
+/* Submit sits with the whole-paper view - the answered count and the grid of
+   every question - because that is the scope of the decision. In the footer it
+   was one button from Next, which is the control a student clicks fastest. */
+.player-nav-submit {
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.player-submit-button {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
 /* --- Question pane ------------------------------------------------------- */
 
 .player-pane {
@@ -494,11 +508,40 @@
   text-wrap: pretty;
 }
 
+/* The type chip is the only thing telling a student how many answers they may
+   pick, so it is never decoration. It used to be --color-text-muted on
+   --color-well: #98a2b3 on #f2f4f7, ~2.0:1, under the 4.5:1 floor and easy to
+   miss entirely.
+
+   Colour here means "this question does not behave the way you expect", not
+   "type N" - the palette stays semantic (docs/11). Single, true/false and short
+   all take one answer, which is the assumption a student already brings, so
+   they read quiet-but-legible. Multi is the one that breaks the assumption, and
+   the one whose misread silently costs marks, so it alone is loud. */
 .player-question-head .chip-type {
   padding: 6px 10px;
   letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  background: var(--color-well);
+  color: var(--color-text-strong); /* #344054 on #f2f4f7 - 8.9:1 */
   white-space: nowrap;
+}
+
+.player-question-head .chip-type-multi {
+  background: var(--color-primary);
+  color: var(--color-surface); /* #ffffff on #2563eb - 5.2:1 */
+  box-shadow: var(--shadow-primary-lift);
+}
+
+/* Stated where the answering happens - the header chip is easy to scan past. */
+.player-answer-hint {
+  margin: 0 0 2px;
+  font: 500 13px/1.4 var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.player-answer-hint-multi {
+  font-weight: 650;
+  color: var(--color-primary-on-tint); /* #1849a9 on white - 8.0:1 */
 }
 
 .player-fieldset {
@@ -571,10 +614,18 @@
   gap: 10px;
 }
 
-.player-footer-note {
+/* The submit confirm is a real modal, not an in-place swap of the footer. The
+   old inline confirm rendered "Submit now" at the very coordinates the button
+   that opened it had just occupied, so a hurried double-click sailed straight
+   through the guard it was supposed to hit. An overlay moves the commit away
+   from the pointer and dims what is behind it. */
+.player-submit-consequence {
   margin: 0;
+  padding: 12px 14px;
   font: var(--text-secondary);
-  color: var(--color-text-secondary);
+  color: var(--color-text-strong);
+  background: var(--color-well);
+  border-radius: var(--radius-option-row);
 }
 
 .button-flag {
