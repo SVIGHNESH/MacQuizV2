@@ -211,12 +211,15 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 	defer pub.Close()
 
-	if cfg.ImportR2Bucket == "" {
+	if cfg.Blobs.Bucket == "" {
 		if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
 			return fmt.Errorf("create import dir: %w", err)
 		}
 	}
-	importStore := quiz.NewImportFileStore(cfg.ImportDir, cfg.ImportR2Bucket, cfg.ImportR2Endpoint, cfg.ImportR2AccessKeyID, cfg.ImportR2SecretAccessKey)
+	importStore, err := quiz.NewImportFileStore(ctx, cfg.ImportDir, cfg.Blobs)
+	if err != nil {
+		return err
+	}
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &openQuizWorker{db: sqlDB, log: log, pub: pub, metrics: tel.Metrics})

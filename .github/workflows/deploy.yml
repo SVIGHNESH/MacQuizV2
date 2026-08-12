@@ -1,7 +1,7 @@
-# CD per docs/09-deployment.md section 5: on merge to main, build the ARM64
-# image, push it to GHCR, then roll it out on the VM over SSH - refusing to
-# deploy while any quiz is live (docs/10-operations.md section 4) by checking
-# the app's own GET /deploy-check endpoint before pulling new containers.
+# CD per docs/09-deployment.md section 5: on merge to main, build the image,
+# push it to GHCR, then roll it out on the VM over SSH - refusing to deploy
+# while any quiz is live (docs/10-operations.md section 4) by checking the
+# app's own GET /deploy-check endpoint before shipping anything.
 #
 # Gated behind the `DEPLOY_ENABLED` repository variable so this workflow stays
 # green (skipped) rather than red on every push until the target VM exists and
@@ -11,7 +11,7 @@ name: Deploy
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 concurrency:
   group: deploy-production
@@ -30,13 +30,18 @@ jobs:
       - uses: actions/checkout@v4
       - id: tag
         run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # linux/arm64: the production host is an AWS Graviton instance
+      # (t4g, docs/09-deployment.md section 8). The Dockerfile builds
+      # CGO_ENABLED=0 static Go onto distroless, so this cross-compiles from
+      # the x86 runner with no QEMU and nothing else in the stack changes;
+      # switching to an x86 instance type means switching this to
+      # linux/amd64 and nothing more.
       - uses: docker/build-push-action@v5
         with:
           context: ./server
@@ -52,6 +57,51 @@ jobs:
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The SPA ships with the API, on one origin (see the Caddyfile header).
+      - name: Build the SPA
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      # The deploy freeze (docs/README.md invariant 7). This runs before
+      # anything is shipped, so a live quiz blocks the SPA upload and the
+      # container swap alike - a half-deployed frontend against the old API
+      # would be worse than either. /deploy-check is reachable here because
+      # docker-compose.prod.yml binds app to 127.0.0.1:8080 on the host.
+      - name: Refuse to deploy while a quiz is live
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/deploy-check)
+            if [ "$status" != "200" ]; then
+              echo "deploy-check returned $status - a quiz is live or the check failed; refusing to deploy." >&2
+              exit 1
+            fi
+
+      - name: Upload the SPA build
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: web/dist/*
+          target: /opt/macquiz/www
+          strip_components: 2
+          overwrite: true
+
       - name: Pull and restart app + worker over SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -60,12 +110,6 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -euo pipefail
-
-            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/deploy-check)
-            if [ "$status" != "200" ]; then
-              echo "deploy-check returned $status - a quiz is live or the check failed; refusing to deploy." >&2
-              exit 1
-            fi
 
             cd /opt/macquiz
             export TAG=${{ needs.build.outputs.tag }}

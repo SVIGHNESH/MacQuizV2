@@ -37,7 +37,7 @@ Application modules (one Go process in the default deployment)
 Data layer
   PostgreSQL 16   : source of truth (users, quizzes, attempts, answers)
   Redis 7         : sessions, live presence, pub/sub, snapshot cache, queue backend
-  Object storage  : bulk-upload files, question images, exports (S3-compatible, R2)
+  Object storage  : bulk-upload files, question images, exports (S3)
   Job queue       : River on PostgreSQL (imports, grading, scheduled open/close, rollups)
 ```
 
@@ -93,7 +93,7 @@ The defining pattern is the synchronized start: hundreds of students hit "start"
 | Database | PostgreSQL 16 | Transactions for imports/attempts, JSONB for question bodies, read replica for reporting when needed |
 | Cache / bus | Redis 7 | Sessions, snapshot cache, pub/sub between API and gateway |
 | Queue | River (Postgres-backed) | Jobs enqueue transactionally with the writes that cause them; delayed jobs for open/close and deadline timers; no extra infrastructure |
-| Object storage | S3-compatible (Cloudflare R2) | Bulk-upload files, question images, exports; zero egress fees |
+| Object storage | S3, same region as the host | Bulk-upload files, avatar photos, question images, exports; in-region traffic to EC2 is free |
 | Observability | OpenTelemetry + Grafana stack | The live-quiz minute is when traces and dashboards matter most |
 
 Go is chosen for footprint and concurrency: tens of megabytes of resident memory, true parallelism across the VM's four cores, and one static binary that runs as both app and worker in a single container image (see 09-deployment.md).

@@ -5,3 +5,6 @@ web/dist/
 .env.*
 !.env.example
 !.env.production.example
+
+# Local staging dir for the prod compose SPA mount (the VM has /opt/macquiz/www)
+/www/

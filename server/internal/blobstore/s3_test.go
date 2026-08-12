@@ -12,7 +12,7 @@ import (
 )
 
 // fakeS3 is an in-memory s3API double keyed by object key, used to test the
-// R2 store's logic without a real R2/S3 endpoint.
+// S3 store's logic without a real bucket.
 type fakeS3 struct {
 	objects map[string][]byte
 }
@@ -46,9 +46,9 @@ func (f *fakeS3) DeleteObject(_ context.Context, params *s3.DeleteObjectInput, _
 	return &s3.DeleteObjectOutput{}, nil
 }
 
-func TestR2SaveAndOpenRoundTrip(t *testing.T) {
+func TestS3SaveAndOpenRoundTrip(t *testing.T) {
 	fake := newFakeS3()
-	store := &R2{Client: fake, Bucket: "test-blobs", Ext: ".csv", ContentType: "text/csv"}
+	store := &S3{Client: fake, Bucket: "test-blobs", Ext: ".csv", ContentType: "text/csv"}
 
 	ref, err := store.Save(context.Background(), strings.NewReader("type,question\nmcq,2+2?\n"))
 	if err != nil {
@@ -72,9 +72,9 @@ func TestR2SaveAndOpenRoundTrip(t *testing.T) {
 	}
 }
 
-func TestR2PutAppliesPrefixAndOverwrites(t *testing.T) {
+func TestS3PutAppliesPrefixAndOverwrites(t *testing.T) {
 	fake := newFakeS3()
-	store := &R2{Client: fake, Bucket: "test-blobs", Prefix: "avatars/", ContentType: "image/jpeg"}
+	store := &S3{Client: fake, Bucket: "test-blobs", Prefix: "avatars/", ContentType: "image/jpeg"}
 
 	if err := store.Put(context.Background(), "abcd1234.jpg", strings.NewReader("v1")); err != nil {
 		t.Fatalf("Put: %v", err)
@@ -107,8 +107,8 @@ func TestR2PutAppliesPrefixAndOverwrites(t *testing.T) {
 	}
 }
 
-func TestR2RejectsPathTraversal(t *testing.T) {
-	store := &R2{Client: newFakeS3(), Bucket: "test-blobs"}
+func TestS3RejectsPathTraversal(t *testing.T) {
+	store := &S3{Client: newFakeS3(), Bucket: "test-blobs"}
 
 	for _, bad := range []string{"", "../secret.csv", "sub/dir.csv", "."} {
 		if _, err := store.Open(context.Background(), bad); err == nil {
@@ -123,9 +123,72 @@ func TestR2RejectsPathTraversal(t *testing.T) {
 	}
 }
 
-func TestR2OpenMissingKey(t *testing.T) {
-	store := &R2{Client: newFakeS3(), Bucket: "test-blobs"}
+func TestS3OpenMissingKey(t *testing.T) {
+	store := &S3{Client: newFakeS3(), Bucket: "test-blobs"}
 	if _, err := store.Open(context.Background(), "does-not-exist.csv"); err == nil {
 		t.Fatal("expected error for missing object")
+	}
+}
+
+// The AWS-vs-S3-compatible split lives entirely in NewS3's client options,
+// and getting it wrong fails only against a real bucket (path-style
+// addressing against S3 returns a redirect; region "auto" fails SigV4), so
+// it is worth pinning here rather than discovering on the first deploy.
+func TestNewS3AddressingStyleFollowsEndpoint(t *testing.T) {
+	t.Run("aws bucket uses the regional endpoint and virtual-host style", func(t *testing.T) {
+		store, err := NewS3(context.Background(), ObjectStore{
+			Bucket:          "macquiz-blobs",
+			Region:          "ap-south-1",
+			AccessKeyID:     "AKIAEXAMPLE",
+			SecretAccessKey: "secret",
+		}, "avatars/", ".jpg", "image/jpeg")
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+		opts := store.Client.(*s3.Client).Options()
+		if opts.Region != "ap-south-1" {
+			t.Errorf("Region = %q, want ap-south-1", opts.Region)
+		}
+		if opts.BaseEndpoint != nil {
+			t.Errorf("BaseEndpoint = %q, want the SDK's regional default", *opts.BaseEndpoint)
+		}
+		if opts.UsePathStyle {
+			t.Error("UsePathStyle = true, want virtual-host addressing against S3")
+		}
+		if store.Prefix != "avatars/" || store.Ext != ".jpg" || store.ContentType != "image/jpeg" {
+			t.Errorf("key/content options not carried through: %+v", store)
+		}
+	})
+
+	t.Run("s3-compatible endpoint switches to path style", func(t *testing.T) {
+		store, err := NewS3(context.Background(), ObjectStore{
+			Bucket:          "macquiz-blobs",
+			Region:          "auto",
+			Endpoint:        "https://account.r2.cloudflarestorage.com",
+			AccessKeyID:     "key",
+			SecretAccessKey: "secret",
+		}, "", ".csv", "text/csv")
+		if err != nil {
+			t.Fatalf("NewS3: %v", err)
+		}
+		opts := store.Client.(*s3.Client).Options()
+		if opts.BaseEndpoint == nil || *opts.BaseEndpoint != "https://account.r2.cloudflarestorage.com" {
+			t.Errorf("BaseEndpoint = %v, want the configured endpoint", opts.BaseEndpoint)
+		}
+		if !opts.UsePathStyle {
+			t.Error("UsePathStyle = false, want path addressing against an S3-compatible service")
+		}
+	})
+}
+
+// An unset bucket must degrade to local disk rather than fail boot - the
+// dev stack and every DB-backed test depend on it.
+func TestNewSelectsLocalDiskWithoutABucket(t *testing.T) {
+	store, err := New(context.Background(), Options{LocalDir: t.TempDir(), Ext: ".csv"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, ok := store.(Local); !ok {
+		t.Fatalf("New returned %T, want Local", store)
 	}
 }

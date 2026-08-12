@@ -2,6 +2,7 @@ package quiz
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"macquiz/server/internal/blobstore"
@@ -24,7 +25,7 @@ type ImportStorage interface {
 // ImportStorage.Open. It stands in for the docs/07 pre-signed-upload flow
 // (the teacher's browser would otherwise PUT straight to object storage) on
 // the single-VM deployment, same as the blobstore's local-disk backend
-// stands in for R2.
+// stands in for the bucket.
 type ImportUploadStore interface {
 	Save(ctx context.Context, r io.Reader) (fileRef string, err error)
 }
@@ -46,18 +47,19 @@ type ImportFileStore interface {
 // blobstore.Local (or NewImportFileStore) instead.
 type LocalImportStorage = blobstore.Local
 
-// NewImportFileStore builds the bulk-import blob store: an R2 bucket when
-// r2Bucket is set (docs/02 section 3.5, docs/09 section 4), otherwise local
+// NewImportFileStore builds the bulk-import blob store: the bucket when
+// obj.Bucket is set (docs/02 section 3.5, docs/09 section 4), otherwise local
 // disk under dir (the dev/single-VM default). Backend selection and the
 // degrade-not-fail contract live in blobstore.New.
-func NewImportFileStore(dir, r2Bucket, r2Endpoint, r2AccessKeyID, r2SecretAccessKey string) ImportFileStore {
-	return blobstore.New(blobstore.Options{
-		LocalDir:          dir,
-		Ext:               ".csv",
-		ContentType:       "text/csv",
-		R2Bucket:          r2Bucket,
-		R2Endpoint:        r2Endpoint,
-		R2AccessKeyID:     r2AccessKeyID,
-		R2SecretAccessKey: r2SecretAccessKey,
+func NewImportFileStore(ctx context.Context, dir string, obj blobstore.ObjectStore) (ImportFileStore, error) {
+	store, err := blobstore.New(ctx, blobstore.Options{
+		LocalDir:    dir,
+		Ext:         ".csv",
+		ContentType: "text/csv",
+		Object:      obj,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("bulk-import blob store: %w", err)
+	}
+	return store, nil
 }

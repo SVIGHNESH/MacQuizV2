@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"macquiz/server/internal/authusers"
+	"macquiz/server/internal/blobstore"
 	"macquiz/server/internal/config"
 	"macquiz/server/internal/db"
 	"macquiz/server/internal/quiz"
@@ -71,7 +72,13 @@ func loadtestSeed(ctx context.Context, cfg config.Config, log *slog.Logger) erro
 	if err != nil {
 		return fmt.Errorf("scratch import dir: %w", err)
 	}
-	qsvc := quiz.NewService(sqlDB, log, quiz.NewImportFileStore(importDir, "", "", "", ""))
+	// No bucket: the seeder only ever needs the local-disk backend, which
+	// blobstore.New cannot fail to build.
+	importStore, err := quiz.NewImportFileStore(ctx, importDir, blobstore.ObjectStore{})
+	if err != nil {
+		return err
+	}
+	qsvc := quiz.NewService(sqlDB, log, importStore)
 	teacher := authusers.User{ID: teacherID, Role: "teacher", Email: teacherEmail, FullName: "Load Test Teacher", Status: "active"}
 
 	quizID, err := findOrCreateLoadtestQuiz(ctx, sqlDB, qsvc, teacher, quizTitle)

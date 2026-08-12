@@ -182,10 +182,13 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// The register-import endpoint (docs/04-api.md: POST /quizzes/:id/imports)
 	// writes uploaded files through importStore; the worker process reads
 	// them back through its own instance of the same backend. With
-	// ImportR2Bucket unset (the dev/single-VM default) that's a shared-volume
+	// Blobs.Bucket unset (the dev/single-VM default) that's a shared-volume
 	// local-disk blob store (docs/09 section 4), so the directory must exist.
-	importStore := quiz.NewImportFileStore(cfg.ImportDir, cfg.ImportR2Bucket, cfg.ImportR2Endpoint, cfg.ImportR2AccessKeyID, cfg.ImportR2SecretAccessKey)
-	if cfg.ImportR2Bucket == "" {
+	importStore, err := quiz.NewImportFileStore(ctx, cfg.ImportDir, cfg.Blobs)
+	if err != nil {
+		return err
+	}
+	if cfg.Blobs.Bucket == "" {
 		if err := os.MkdirAll(cfg.ImportDir, 0o755); err != nil {
 			return fmt.Errorf("create import dir: %w", err)
 		}
@@ -193,19 +196,20 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	authSvc := authusers.NewService(sqlDB, cfg.AuthSecret, log)
 	// Uploaded avatar photos ride the same backend selection as imports:
-	// the shared R2 bucket (under an avatars/ key prefix) when configured,
+	// the shared bucket (under an avatars/ key prefix) when configured,
 	// local disk otherwise. Only serve reads avatars, so no shared volume.
-	authSvc.SetAvatarStore(blobstore.New(blobstore.Options{
-		LocalDir:          cfg.AvatarDir,
-		Ext:               ".jpg",
-		ContentType:       "image/jpeg",
-		R2Prefix:          "avatars/",
-		R2Bucket:          cfg.ImportR2Bucket,
-		R2Endpoint:        cfg.ImportR2Endpoint,
-		R2AccessKeyID:     cfg.ImportR2AccessKeyID,
-		R2SecretAccessKey: cfg.ImportR2SecretAccessKey,
-	}))
-	if cfg.ImportR2Bucket == "" {
+	avatarStore, err := blobstore.New(ctx, blobstore.Options{
+		LocalDir:    cfg.AvatarDir,
+		Ext:         ".jpg",
+		ContentType: "image/jpeg",
+		Prefix:      "avatars/",
+		Object:      cfg.Blobs,
+	})
+	if err != nil {
+		return fmt.Errorf("avatar blob store: %w", err)
+	}
+	authSvc.SetAvatarStore(avatarStore)
+	if cfg.Blobs.Bucket == "" {
 		if err := os.MkdirAll(cfg.AvatarDir, 0o755); err != nil {
 			return fmt.Errorf("create avatar dir: %w", err)
 		}

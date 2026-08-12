@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"macquiz/server/internal/blobstore"
 )
 
 // Config holds the runtime configuration shared by the API server and
@@ -55,23 +57,21 @@ type Config struct {
 	BootstrapAdminName     string
 	// ImportDir is the local-disk directory bulk-upload files are written to
 	// by the register-import endpoint and read back from by the import
-	// validation worker (docs/07 section 2), used only when ImportR2Bucket
+	// validation worker (docs/07 section 2), used only when Blobs.Bucket
 	// is unset. serve and worker run as separate containers, so this
 	// directory must be a shared volume (docker-compose.yml) in that mode.
 	ImportDir string
-	// ImportR2Bucket, ImportR2Endpoint, ImportR2AccessKeyID, and
-	// ImportR2SecretAccessKey configure the production object-storage
-	// backend for bulk-import files (docs/02 section 3.5, docs/09 section
-	// 4): a Cloudflare R2 bucket, addressed via its S3-compatible API.
-	// ImportR2Bucket empty (the dev/test default) falls back to the
-	// local-disk blob store against ImportDir instead - never a boot failure.
-	ImportR2Bucket          string
-	ImportR2Endpoint        string
-	ImportR2AccessKeyID     string
-	ImportR2SecretAccessKey string
+	// Blobs configures the production object-storage backend for bulk-import
+	// files and avatar photos alike (docs/02 section 3.5, docs/09 section 4):
+	// an S3 bucket. An empty Blobs.Bucket (the dev/test default) falls back to
+	// the local-disk blob store against ImportDir/AvatarDir instead - never a
+	// boot failure. Empty access keys mean the EC2 instance role supplies
+	// credentials, which is how the AWS deployment is meant to run; the key
+	// pair exists for S3-compatible services that have no role equivalent.
+	Blobs blobstore.ObjectStore
 	// AvatarDir is the local-disk directory uploaded avatar photos live in
-	// when ImportR2Bucket is unset. With the bucket set, avatars share it
-	// under an "avatars/" key prefix instead - one R2 credential set covers
+	// when Blobs.Bucket is unset. With the bucket set, avatars share it
+	// under an "avatars/" key prefix instead - one credential set covers
 	// both blob kinds. Unlike ImportDir, only serve reads it back, so it
 	// needs no shared volume with the worker.
 	AvatarDir string
@@ -117,10 +117,16 @@ func Load() Config {
 		ImportDir: getenv("MACQUIZ_IMPORT_DIR", "/tmp/macquiz-imports"),
 		AvatarDir: getenv("MACQUIZ_AVATAR_DIR", "/tmp/macquiz-avatars"),
 
-		ImportR2Bucket:          os.Getenv("MACQUIZ_IMPORT_R2_BUCKET"),
-		ImportR2Endpoint:        os.Getenv("MACQUIZ_IMPORT_R2_ENDPOINT"),
-		ImportR2AccessKeyID:     os.Getenv("MACQUIZ_IMPORT_R2_ACCESS_KEY_ID"),
-		ImportR2SecretAccessKey: os.Getenv("MACQUIZ_IMPORT_R2_SECRET_ACCESS_KEY"),
+		Blobs: blobstore.ObjectStore{
+			Bucket: os.Getenv("MACQUIZ_BLOB_BUCKET"),
+			// Not a dev default in the usual sense - dev never sets a bucket,
+			// so this is unread there. It names the production region
+			// (docs/09 section 9) so the common case needs one less var set.
+			Region:          getenv("MACQUIZ_BLOB_REGION", "ap-south-1"),
+			Endpoint:        os.Getenv("MACQUIZ_BLOB_ENDPOINT"),
+			AccessKeyID:     os.Getenv("MACQUIZ_BLOB_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("MACQUIZ_BLOB_SECRET_ACCESS_KEY"),
+		},
 
 		OTelExporterEndpoint: os.Getenv("MACQUIZ_OTEL_EXPORTER_ENDPOINT"),
 		OTelExporterHeaders:  os.Getenv("MACQUIZ_OTEL_EXPORTER_HEADERS"),

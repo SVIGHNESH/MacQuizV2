@@ -5,18 +5,18 @@ Status: implementation baseline.
 
 ## 1. Backups (the non-negotiable part of self-hosted Postgres)
 
-- Nightly `pg_dump` (custom format, compressed) from a cron container, uploaded to a versioned R2 bucket.
+- Nightly `pg_dump` (custom format, compressed) from a cron container, uploaded to a versioned S3 bucket.
   A full academic year of attempt data fits in single-digit GB, well under the free 10 GB.
-  Implemented as `scripts/backup` (Dockerfile + `backup.sh` + crontab), run as the `backup` service in `docker-compose.prod.yml`; configured via the `BACKUP_R2_*`/`AWS_*` vars in `.env.production.example`.
+  Implemented as `scripts/backup` (Dockerfile + `backup.sh` + crontab), run as the `backup` service in `docker-compose.prod.yml`; configured via the `BACKUP_S3_BUCKET`/`AWS_REGION` vars in `.env.production.example` (credentials come from the EC2 instance role, docs/09 section 9.4).
 - Retention: 7 daily + 8 weekly dumps, pruned by the same job.
-  R2 object versioning protects against a bad prune (enabled once on the bucket at provisioning time, not by the script).
+  Bucket versioning protects against a bad prune (enabled once on the bucket at provisioning time, not by the script).
 - Restore drill once per term: pull the latest dump into a scratch container and run the smoke tests against it.
   An untested backup is a hope, not a backup.
-  Implemented as `scripts/backup/restore-drill.sh`: fetches the latest `daily/` dump from R2 (or drills a dump already on disk via `--dump-file`), restores it into a throwaway `postgres:16-alpine` container on an isolated Docker network, runs the app image's `migrate` command against it as a schema-compatibility check, then queries row counts on the core tables to prove the restored data is actually queryable. Exits non-zero and leaves nothing running on any failure. Run by hand (`MACQUIZ_IMAGE=... TAG=... scripts/backup/restore-drill.sh`); not on a cron.
+  Implemented as `scripts/backup/restore-drill.sh`: fetches the latest `daily/` dump from S3 (or drills a dump already on disk via `--dump-file`), restores it into a throwaway `postgres:16-alpine` container on an isolated Docker network, runs the app image's `migrate` command against it as a schema-compatibility check, then queries row counts on the core tables to prove the restored data is actually queryable. Exits non-zero and leaves nothing running on any failure. Run by hand (`MACQUIZ_IMAGE=... TAG=... scripts/backup/restore-drill.sh`); not on a cron.
 - Exam-day belt: a pre-quiz-window dump is triggered automatically by the scheduler when any quiz enters `scheduled` for the same day.
   Implemented via a `backup_triggers` table: `quiz.Service.Publish` upserts a same-UTC-day row when a quiz's `starts_at` is today, and the `backup` container's tighter `*/5 * * * *` cron (`check-trigger.sh`) polls it, runs the same dump/upload/prune as the nightly job, and marks the row fulfilled so later polls that day are no-ops.
 - Current RPO: 24 h (nightly) improving to near-zero on exam days via the pre-window dump.
-  When 24 h stops being acceptable, add WAL archiving to R2 with pgBackRest for point-in-time recovery (effort, not money).
+  When 24 h stops being acceptable, add WAL archiving to S3 with pgBackRest for point-in-time recovery (effort, not money).
 - Dead-man's-switch alerting for a missing or failed dump (section 3's "Backup job" threshold): `backup.sh` optionally pings a Healthchecks.io-style URL (`BACKUP_HEALTHCHECK_URL` in `.env.production.example`, unset by default) on start/success/failure, so a night the cron job never runs or exits non-zero pages someone the same way an app-emitted metric threshold would - this is the one section 3 threshold with no OTel metric behind it, since it's a cron script rather than a request path `server/internal/telemetry` instruments.
 
 ## 2. Monitoring on $0
@@ -60,7 +60,7 @@ Status: implementation baseline.
 | Autosaves slow or failing | Postgres pressure or disk | Check pg volume, active connections, autosave p95 dashboard |
 | Teacher dashboard frozen but students fine | Gateway or pub/sub issue | Dashboard falls back to 10 s polling automatically; restart app container after the window if needed |
 | Kick not reflected on student screen | Socket lost | By design the next autosave returns 409 ATTEMPT_KICKED; no action needed, verify the attempt row status |
-| VM unreachable | Host outage | Restore path: new VM, `docker compose up`, restore latest R2 dump; DNS via Cloudflare |
+| VM unreachable | Host outage | Restore path: new EC2 instance from `scripts/aws/provision.sh`, reassociate the Elastic IP, `docker compose up`, restore the latest S3 dump |
 
 ## 6. Boot recovery invariants
 

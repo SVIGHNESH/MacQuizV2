@@ -5,10 +5,10 @@
 # a backup. Meant to be run by hand once per term (or on demand before/
 # after a provisioning change); it never runs on a schedule like backup.sh.
 #
-# By default fetches the latest daily dump from the same R2 bucket
+# By default fetches the latest daily dump from the same S3 bucket
 # backup.sh writes to. Pass --dump-file <path> to drill against a dump
 # already on disk instead (e.g. one fetched by hand, or for testing this
-# script itself without R2 credentials).
+# script itself without bucket credentials).
 set -euo pipefail
 
 dump_file=""
@@ -52,27 +52,32 @@ trap cleanup EXIT
 cleanup
 
 if [ -z "$dump_file" ]; then
-  : "${BACKUP_R2_BUCKET:?BACKUP_R2_BUCKET is required when --dump-file is not given}"
-  : "${BACKUP_R2_ENDPOINT:?BACKUP_R2_ENDPOINT is required when --dump-file is not given}"
-  : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required when --dump-file is not given}"
-  : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required when --dump-file is not given}"
+  : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET is required when --dump-file is not given}"
+  : "${AWS_REGION:?AWS_REGION is required when --dump-file is not given}"
 
-  s3() { aws --endpoint-url "$BACKUP_R2_ENDPOINT" s3 "$@"; }
-  s3api() { aws --endpoint-url "$BACKUP_R2_ENDPOINT" s3api "$@"; }
+  # Same credential and endpoint posture as backup.sh: the instance role by
+  # default, static keys or a BACKUP_S3_ENDPOINT override when set.
+  aws_args=(--region "$AWS_REGION")
+  if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
+    aws_args+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+  fi
+
+  s3() { aws "${aws_args[@]}" s3 "$@"; }
+  s3api() { aws "${aws_args[@]}" s3api "$@"; }
 
   if [ -z "$dump_key" ]; then
-    echo "[restore-drill] locating latest daily dump in s3://${BACKUP_R2_BUCKET}/daily/"
-    dump_key=$(s3api list-objects-v2 --bucket "$BACKUP_R2_BUCKET" --prefix "daily/" \
+    echo "[restore-drill] locating latest daily dump in s3://${BACKUP_S3_BUCKET}/daily/"
+    dump_key=$(s3api list-objects-v2 --bucket "$BACKUP_S3_BUCKET" --prefix "daily/" \
       --query 'sort_by(Contents, &Key)[-1].Key' --output text 2>/dev/null || true)
     if [ -z "$dump_key" ] || [ "$dump_key" = "None" ]; then
-      echo "[restore-drill] no daily dump found in s3://${BACKUP_R2_BUCKET}/daily/" >&2
+      echo "[restore-drill] no daily dump found in s3://${BACKUP_S3_BUCKET}/daily/" >&2
       exit 1
     fi
   fi
 
   downloaded="/tmp/macquiz-restore-drill-$$.dump"
-  echo "[restore-drill] downloading s3://${BACKUP_R2_BUCKET}/${dump_key}"
-  s3 cp "s3://${BACKUP_R2_BUCKET}/${dump_key}" "$downloaded"
+  echo "[restore-drill] downloading s3://${BACKUP_S3_BUCKET}/${dump_key}"
+  s3 cp "s3://${BACKUP_S3_BUCKET}/${dump_key}" "$downloaded"
   dump_file="$downloaded"
 fi
 

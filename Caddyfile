@@ -1,17 +1,48 @@
 # MacQuiz v2 production reverse proxy (docs/09-deployment.md section 4).
 #
-# The React frontend is a static build on Cloudflare Pages (docs/09 section
-# 3), so this VM only ever serves the API + realtime gateway; Caddy's only
-# job is edge TLS (Let's Encrypt at origin, behind Cloudflare) and proxying
-# every path - including the /ws upgrade - to the app container.
+# Caddy serves the React SPA and proxies the API + realtime gateway, both on
+# one origin. That single origin is load-bearing, not a convenience: the auth
+# cookies are SameSite=Lax/Strict (server/internal/authusers/http.go) and the
+# server has no CORS middleware, so a browser on any other origin would never
+# send them. web/src/api/client.ts encodes the same assumption with
+# baseUrl: '/'. Splitting the SPA onto its own host (the Cloudflare Pages
+# topology docs/09 section 3 sketches) breaks authentication outright.
 #
-# DOMAIN comes from .env.production, e.g. DOMAIN=quiz-api.example.edu.
+# DOMAIN comes from .env.production, e.g. DOMAIN=quiz.example.edu.
+#
+# DOMAIN can also be a bare port - ":80" - which is a Caddy site address
+# rather than a hostname: it serves plain HTTP on 80 for any Host and turns
+# automatic HTTPS off. That is the no-domain-yet posture, and it requires
+# MACQUIZ_ENV to be something other than "production", because production is
+# the only thing that sets Secure on the auth cookies and a Secure cookie
+# never survives a plain-HTTP origin. Both move together: real hostname and
+# MACQUIZ_ENV=production, or ":80" and not.
 {$DOMAIN} {
 	encode zstd gzip
 
 	# reverse_proxy upgrades WebSocket connections (Connection: Upgrade)
-	# transparently; no separate config is needed for the /ws path.
-	reverse_proxy app:8080
+	# transparently; the /ws path needs no separate config.
+	handle /api/* {
+		reverse_proxy app:8080
+	}
+	handle /ws {
+		reverse_proxy app:8080
+	}
+	# Liveness for the uptime monitor (docs/10-operations.md section 2).
+	# /readyz and /deploy-check stay unproxied - deploy.yml reaches
+	# /deploy-check over the app's loopback-only host port instead.
+	handle /healthz {
+		reverse_proxy app:8080
+	}
+
+	# The SPA build, uploaded to /opt/macquiz/www by deploy.yml and mounted
+	# read-only into this container. try_files sends unknown paths to
+	# index.html so client-side routes survive a hard refresh.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 
 	log {
 		output stdout

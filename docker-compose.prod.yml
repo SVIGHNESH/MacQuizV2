@@ -1,8 +1,8 @@
 # MacQuiz v2 production stack (docs/09-deployment.md section 4).
 #
-# This file (plus ./Caddyfile and ./scripts/backup) is copied to the VM's
-# /opt/macquiz as a one-time provisioning step and becomes that host's
-# docker-compose.yml.
+# This file (plus ./Caddyfile and ./scripts/backup) is copied to the host's
+# /opt/macquiz by scripts/aws/provision.sh as a one-time provisioning step
+# and becomes that host's docker-compose.yml.
 # .github/workflows/deploy.yml never manages this file - on every deploy it
 # only runs `docker compose pull app worker && docker compose up -d app
 # worker` against whatever is already at /opt/macquiz, so postgres/redis/
@@ -25,6 +25,15 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The SPA build. deploy.yml uploads the *contents* of web/dist here on
+      # every deploy; Caddy serves them on the same origin as the API (see the
+      # Caddyfile header - the SameSite cookies do not survive a second
+      # origin). Deliberately "www", not "web": this path is the VM's
+      # /opt/macquiz/www, and naming it web/ would make an accidental
+      # `docker compose -f docker-compose.prod.yml up` from a repo checkout
+      # serve the Vite source tree (web/index.html is the dev template that
+      # references /src/main.tsx, and web/ also holds node_modules).
+      - ./www:/srv:ro
       - caddy_data:/data
       - caddy_config:/config
     env_file: .env.production
@@ -36,6 +45,12 @@ services:
     image: ${MACQUIZ_IMAGE:-ghcr.io/ORG/macquiz-app}:${TAG:-latest}
     command: ["serve"]
     env_file: .env.production
+    # Loopback only - never published to the internet (public traffic arrives
+    # through caddy). deploy.yml's pre-deploy guard curls /deploy-check here
+    # over SSH; without a host port it hits nothing, and the guard's "did not
+    # return 200" branch would refuse every deploy.
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - import_data:/var/lib/macquiz/imports
     depends_on:
@@ -104,12 +119,12 @@ services:
       - import_data:/var/lib/macquiz/imports
     restart: "no"
 
-  # Nightly pg_dump -> R2, 7 daily + 8 weekly retention, plus a tighter
+  # Nightly pg_dump -> S3, 7 daily + 8 weekly retention, plus a tighter
   # exam-day poll that fires an extra pre-window dump when a quiz is
   # published to start today (docs/10-operations.md section 1). Built from
   # ./scripts/backup, which must be copied to the VM alongside this file and
   # .env.production for `docker compose up` to build it. See
-  # .env.production.example for the required BACKUP_R2_*/AWS_* vars.
+  # .env.production.example for the required BACKUP_S3_*/AWS_REGION vars.
   backup:
     build: ./scripts/backup
     env_file: .env.production

@@ -69,7 +69,7 @@ Exit: E2E: student leaves fullscreen 3 times and is flagged; teacher kicks with 
 
 ## Milestone 7 - Bulk import (FR-3)
 
-- Pre-signed upload to R2, import worker validation with per-row/column errors, review UI, transactional commit.
+- Pre-signed upload to object storage, import worker validation with per-row/column errors, review UI, transactional commit.
 
 Exit: 500-row CSV imports cleanly; a bad file produces a row-level error report and writes nothing.
 
@@ -82,7 +82,7 @@ Exit: closing a quiz produces dashboards without heavy live queries.
 
 ## Milestone 9 - Production hardening and launch
 
-- Deploy per 09-deployment.md: VM, Compose, Caddy, Cloudflare (DNS/Pages/R2), GitHub Actions deploy, live-quiz deploy freeze.
+- Deploy per 09-deployment.md: EC2, Compose, Caddy, S3, GitHub Actions deploy, live-quiz deploy freeze.
 - Backups + restore drill, UptimeRobot, Grafana Cloud dashboards and alert thresholds per 10-operations.md.
 - Load test the go-live herd: 1,000 simulated starts in 60 s, 2,000 sockets, autosave p95 < 300 ms verified.
 

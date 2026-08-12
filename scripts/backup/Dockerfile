@@ -1,4 +1,4 @@
-# Nightly pg_dump -> R2 cron container (docs/10-operations.md section 1).
+# Nightly pg_dump -> S3 cron container (docs/10-operations.md section 1).
 # Based on the same postgres:16 major version as docker-compose.prod.yml's
 # postgres service so pg_dump's format matches the server it dumps.
 FROM postgres:16-alpine
