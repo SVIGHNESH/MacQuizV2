@@ -75,6 +75,15 @@
   user-select: all;
 }
 
+/* Shown only when both copy paths fail (an insecure origin whose browser also
+   refuses execCommand). Instructional, not evidence, so it stays in the
+   neutral ramp rather than borrowing the amber below. */
+.credential-copy-hint {
+  margin: 0;
+  font: var(--text-secondary);
+  color: var(--color-text-secondary);
+}
+
 /* Amber is evidence: the credential's expiry is a fact, not a warning
    about the admin's behaviour. */
 .credential-notice {
@@ -298,7 +307,18 @@
 
 .admin-user-table .qt-head,
 .admin-user-table .qt-row {
-  grid-template-columns: minmax(0, 2fr) 92px 128px 156px;
+  /* The action column is sized to the widest label ("Reset password") so the
+     stacked buttons below never wrap mid-word. */
+  grid-template-columns: minmax(0, 2fr) 92px 128px 172px;
+}
+
+/* A user row carries two stacked buttons and a two-line identity, so the
+   56px default from .qt-row leaves it wall-to-wall. Give it real vertical
+   padding instead of relying on min-height alone: rows with three actions
+   (a teacher with an avatar) then grow instead of cramming. */
+.admin-user-table .qt-row {
+  min-height: 76px;
+  padding-block: 14px;
 }
 
 .admin-user-table .qt-head > *,
@@ -345,6 +365,9 @@
   color: var(--color-text-secondary);
 }
 
+/* Stacked, and every button stretched to the column: a two-button stack with
+   a ragged right edge reads as a bug, not a layout. Stretch is what keeps
+   "Reset password" and the shorter "Disable"/"Re-enable" the same width. */
 .admin-user-table .qt-actions {
   flex-direction: column;
   align-items: stretch;
@@ -353,6 +376,10 @@
 
 .admin-user-table .qt-actions .button {
   width: 100%;
+  /* The column is sized for the longest label; nowrap makes a too-narrow
+     column show up as overflow in review rather than as a silently
+     two-line button. */
+  white-space: nowrap;
 }
 
 /* --- SDC Team ------------------------------------------------------------ */

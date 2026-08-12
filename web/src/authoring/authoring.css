@@ -622,17 +622,6 @@
   font-size: 12.5px;
 }
 
-.button-quiet-danger {
-  background: var(--color-surface);
-  border-color: var(--color-border-input);
-  color: var(--color-danger);
-}
-
-.button-quiet-danger:hover:not(:disabled) {
-  background: var(--color-danger-tint);
-  border-color: var(--color-danger);
-}
-
 .button-danger {
   background: var(--color-danger);
   color: var(--color-surface);

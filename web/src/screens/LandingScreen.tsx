@@ -66,7 +66,19 @@ const LIFECYCLE: { q: string; title: string; body: string; marks: string }[] = [
   },
 ]
 
-const ROLES: { no: string; title: string; tagline: string; items: string[] }[] = [
+/**
+ * `guide` links the role to its standalone walkthrough in `web/public/guides`.
+ * Those pages are plain HTML outside the SPA bundle, so the anchors below are
+ * real document navigations, not router links. Admins have no walkthrough yet,
+ * hence the optional field rather than one entry per role.
+ */
+const ROLES: {
+  no: string
+  title: string
+  tagline: string
+  items: string[]
+  guide?: { href: string; label: string }
+}[] = [
   {
     no: '01',
     title: 'Admins',
@@ -88,6 +100,7 @@ const ROLES: { no: string; title: string; tagline: string; items: string[] }[] =
       'Negative marking, global or per question',
       'Live invigilation with guardrail evidence',
     ],
+    guide: { href: '/guides/teacher.html', label: "Read the invigilator's walkthrough" },
   },
   {
     no: '03',
@@ -99,6 +112,7 @@ const ROLES: { no: string; title: string; tagline: string; items: string[] }[] =
       'Released scores with answer key',
       'Personal accuracy & topic trends',
     ],
+    guide: { href: '/guides/student.html', label: "Read the candidate's walkthrough" },
   },
 ]
 
@@ -247,6 +261,7 @@ export default function LandingScreen() {
         <nav className="landing-nav-links" aria-label="Landing sections">
           <a href="#lifecycle">Paper pattern</a>
           <a href="#roles">Roles</a>
+          <a href="#guides">Guides</a>
           <a href="#team">Team</a>
         </nav>
         <a className="landing-btn landing-btn-nav" href="#signin">
@@ -381,8 +396,57 @@ export default function LandingScreen() {
                     </li>
                   ))}
                 </ul>
+                {role.guide ? (
+                  <a className="landing-role-guide" href={role.guide.href}>
+                    {role.guide.label}
+                    <span aria-hidden="true">→</span>
+                  </a>
+                ) : null}
               </article>
             ))}
+          </div>
+        </section>
+
+        {/*
+          The two walkthroughs live in web/public/guides as standalone HTML in
+          the same "question paper" dialect, so these are document navigations
+          rather than router links - deliberately, since a guide should still
+          open for someone who is not signed in.
+        */}
+        <section id="guides" className="landing-section">
+          <SectionHead
+            section="Appendix — Walkthroughs"
+            title={
+              <>
+                Read the paper{' '}
+                <em className="landing-title-accent">before you sit it.</em>
+              </>
+            }
+            sub="Two short walkthroughs, one per side of the desk. No sign-in needed, and both print cleanly."
+          />
+          <div className="landing-guides">
+            <a className="landing-guide" href="/guides/teacher.html">
+              <span className="landing-guide-no">MQ-T1</span>
+              <h3 className="landing-guide-title">The invigilator's walkthrough</h3>
+              <p className="landing-guide-sub">
+                Setting the paper, choosing the hall, invigilating live, and settling the
+                marks afterwards.
+              </p>
+              <span className="landing-guide-cta">
+                For teachers<span aria-hidden="true">→</span>
+              </span>
+            </a>
+            <a className="landing-guide" href="/guides/student.html">
+              <span className="landing-guide-no">MQ-S1</span>
+              <h3 className="landing-guide-title">The candidate's walkthrough</h3>
+              <p className="landing-guide-sub">
+                Signing in, what the timer really means, what happens when the WiFi drops,
+                and where your result appears.
+              </p>
+              <span className="landing-guide-cta">
+                For students<span aria-hidden="true">→</span>
+              </span>
+            </a>
           </div>
         </section>
 
@@ -476,6 +540,8 @@ export default function LandingScreen() {
         <nav className="landing-foot-links" aria-label="Footer">
           <a href="#lifecycle">Paper pattern</a>
           <a href="#roles">Roles</a>
+          <a href="/guides/teacher.html">Teacher guide</a>
+          <a href="/guides/student.html">Student guide</a>
           <a href="#team">Team</a>
           <a href="#signin">Sign in</a>
         </nav>

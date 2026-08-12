@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacQuiz - The Invigilator's Walkthrough</title>
+<meta name="description" content="How a teacher runs a paper on MacQuiz: set the questions, choose the hall, invigilate live, settle the results.">
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<div class="topline">
+  <span>RBMI &middot; Software Development Cell</span>
+  <span>One clock. No disputes.</span>
+  <span><strong>For teachers</strong></span>
+</div>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <span class="brand-mark">M</span>
+    <span>
+      <span class="brand-name">MacQuiz</span>
+      <span class="brand-sub">Invigilator's walkthrough</span>
+    </span>
+  </a>
+  <nav class="nav-links">
+    <a href="#set">Set the paper</a>
+    <a href="#hall">Choose the hall</a>
+    <a href="#invigilate">Invigilate</a>
+    <a href="#settle">Settle</a>
+    <a href="student.html">Student guide</a>
+  </nav>
+  <a class="btn-nav" href="/">Open MacQuiz</a>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-meta rise">
+        <span>Walkthrough &#8470; MQ-T1</span>
+        <span class="rule"></span>
+        <span>For the teacher</span>
+      </div>
+      <h1 class="hero-title rise">From a blank sheet to a <em class="accent">settled result.</em></h1>
+      <p class="hero-lead rise">
+        Everything you do on MacQuiz is one of four moves: set the paper, choose who sits it,
+        invigilate the hall while it runs, and settle the marks afterwards. This walkthrough goes
+        through all four in the order you will actually meet them.
+      </p>
+      <dl class="meta-strip rise">
+        <div><dt>Your role</dt><dd>Teacher</dd></div>
+        <div><dt>Owns</dt><dd>The full lifecycle</dd></div>
+        <div><dt>Clock</dt><dd>Server-enforced</dd></div>
+        <div><dt>Sections</dt><dd>Four</dd></div>
+        <div><dt>Reading time</dt><dd>~8 minutes</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ================= SECTION A ================= -->
+  <section class="section" id="set">
+    <div class="wrap">
+      <header class="section-head">
+        <span class="section-tag">Section A - Setting the paper</span>
+        <h2 class="section-title">First you write the questions, <em class="accent">one way or the other.</em></h2>
+        <p class="section-sub">
+          A new quiz starts as a Draft. Nothing about a Draft is visible to a single student, so
+          you can leave one half-written for a week without consequence.
+        </p>
+      </header>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-no">Q1<span class="step-marks">Sign in</span></span>
+          <h3 class="step-title">Sign in with the account you were given</h3>
+          <p class="step-body">
+            There is no sign-up page anywhere in MacQuiz, by design. Your admin creates every teacher
+            and student account. On your first sign-in you will be asked to replace the temporary
+            password before you can go anywhere else.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q2<span class="step-marks">Author</span></span>
+          <h3 class="step-title">Create the quiz and add questions</h3>
+          <p class="step-body">
+            Write questions one at a time in the editor. It autosaves as you type, so a half-written
+            question is never lost. Each question needs its correct answer present among the options
+            and points above zero; choice questions take two to eight options. Drag to reorder.
+          </p>
+          <p class="step-body">
+            Optionally tag a question with a <strong>topic</strong>. Tags are what later turn into each
+            student's strength-and-weakness breakdown, so a little discipline here pays off at
+            analytics time.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q3<span class="step-marks">Or bulk import</span></span>
+          <h3 class="step-title">Or upload the whole paper as a file</h3>
+          <p class="step-body">
+            Download the CSV template, fill in one row per question
+            (<code>type, question, option_a&hellip;option_f, correct, points</code>, plus an optional
+            <code>topic</code> column), and upload it. Up to 500 rows and 10 MB.
+          </p>
+          <ul class="checks">
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span>The file is validated before a single question is written.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span>Errors come back per row and column, with a downloadable report.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span>Fix and re-upload as many times as you like; nothing is committed until it is clean.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span>A clean file commits all-or-nothing. Imported questions are ordinary questions afterwards.</span></li>
+          </ul>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q4<span class="step-marks">Guardrails</span></span>
+          <h3 class="step-title">Decide how tightly the hall is watched</h3>
+          <p class="step-body">
+            Guardrails are set per quiz, before you publish, and are frozen into the paper at that
+            moment. Each one can be off, warn-only, or counted toward the violation ladder.
+          </p>
+          <div class="grid-2" style="margin-top:22px">
+            <article class="card">
+              <div class="card-head"><h4 class="card-title">Fullscreen lock</h4><span class="card-index">Off / warn / count</span></div>
+              <p class="step-body" style="margin:0">The player goes fullscreen at start; leaving raises a violation and overlays a blocker until they return.</p>
+            </article>
+            <article class="card">
+              <div class="card-head"><h4 class="card-title">Focus tracking</h4><span class="card-index">Off / warn / count</span></div>
+              <p class="step-body" style="margin:0">Tab switches and window blur are reported with their duration, so you see "left the tab for 40 s" rather than a bare flag.</p>
+            </article>
+            <article class="card">
+              <div class="card-head"><h4 class="card-title">Clipboard &amp; right-click</h4><span class="card-index">Off / on</span></div>
+              <p class="step-body" style="margin:0">Copy, cut, paste and the context menu are disabled in the player, and attempts to use them are logged.</p>
+            </article>
+            <article class="card">
+              <div class="card-head"><h4 class="card-title">Single active session</h4><span class="card-index">Always on</span></div>
+              <p class="step-body" style="margin:0">Starting on a second device invalidates the first. Not configurable, and always recorded.</p>
+            </article>
+          </div>
+          <div class="note">
+            <span class="note-title">The violation ladder</span>
+            After the threshold you set (three counted violations by default) one action fires:
+            <strong>flag</strong> just marks the roster row, <strong>notify</strong> alerts you and lets the
+            student carry on, and <strong>auto-submit</strong> ends the attempt. Flag is the default on
+            purpose - browser guardrails deter and document, they do not prove intent, so the
+            decision to act stays with you.
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= SECTION B ================= -->
+  <section class="section" id="hall">
+    <div class="wrap">
+      <header class="section-head">
+        <span class="section-tag">Section B - Choosing the hall</span>
+        <h2 class="section-title">Then you decide who sits it, <em class="accent">and exactly when.</em></h2>
+        <p class="section-sub">
+          Publishing is the moment a Draft becomes real: the questions and guardrails are snapshotted
+          into a version, and the quiz appears on the dashboards of the students you picked.
+        </p>
+      </header>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-no">Q5<span class="step-marks">Audience</span></span>
+          <h3 class="step-title">Assign the students</h3>
+          <p class="step-body">
+            Pick students individually or by group. This is not a filter on a list everyone can see -
+            a student who is not assigned cannot see the quiz at all, and an attempt to reach it
+            directly returns a plain "not found".
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q6<span class="step-marks">Window</span></span>
+          <h3 class="step-title">Set the window and the duration</h3>
+          <p class="step-body">
+            Three separate controls, and the difference matters:
+          </p>
+          <ul class="checks">
+            <li><span class="dot">1</span><span><strong>Start time</strong> - the earliest anyone can begin. Before it, students see a countdown.</span></li>
+            <li><span class="dot">2</span><span><strong>End time</strong> - the hard close. No new starts, and every attempt still open is submitted.</span></li>
+            <li><span class="dot">3</span><span><strong>Duration</strong> - each student's personal budget, which starts when <em>they</em> start.</span></li>
+          </ul>
+          <p class="step-body">
+            A student who starts late gets whichever is smaller: their full duration, or the time left
+            until the window closes. That deadline is computed once, on the server, at the moment they
+            begin.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q7<span class="step-marks">Publish</span></span>
+          <h3 class="step-title">Publish, and know what you can still change</h3>
+          <p class="step-body">
+            Publishing needs at least one question, at least one assigned student, and a valid future
+            window. The quiz becomes <strong>Scheduled</strong> and opens by itself at the start time -
+            you do not need to be online for it.
+          </p>
+          <p class="step-body">
+            While it is still Scheduled you can reschedule it, or cancel it back to Draft to keep
+            editing. Once the start time passes, cancelling is refused; from then on the way out is to
+            close it.
+          </p>
+        </li>
+      </ol>
+
+      <div style="margin-top:56px">
+        <div class="hero-meta"><span>The state of a paper</span><span class="rule"></span></div>
+        <div class="states">
+          <div class="state"><div class="state-name">Draft</div><p class="state-when">Yours alone. Invisible to students, freely editable.</p></div>
+          <div class="state"><div class="state-name">Scheduled</div><p class="state-when">Published and waiting. Reschedule or cancel until the start time.</p></div>
+          <div class="state state-live"><div class="state-name">Live</div><p class="state-when">Students can sit it. Extend, close early, kick, or invite late.</p></div>
+          <div class="state"><div class="state-name">Closed</div><p class="state-when">Open attempts force-submitted, grading runs, results settle.</p></div>
+          <div class="state"><div class="state-name">Archived</div><p class="state-when">Read-only. The analytics stay.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SECTION C ================= -->
+  <section class="section" id="invigilate">
+    <div class="wrap">
+      <header class="section-head">
+        <span class="section-tag">Section C - Invigilating</span>
+        <h2 class="section-title">While it runs, you are <em class="accent">standing in the hall.</em></h2>
+        <p class="section-sub">
+          The live monitor is the closest thing MacQuiz has to walking between desks. It updates as
+          things happen, not on a refresh.
+        </p>
+      </header>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-no">Q8<span class="step-marks">Watch</span></span>
+          <h3 class="step-title">Read the live roster <span class="live"><span class="live-dot"></span>Live</span></h3>
+          <p class="step-body">
+            One row per assigned student, showing who has started, which question they are on, how many
+            answers are in, who has submitted, and who has dropped off the network. Amber badges carry
+            violation counts; hover for the breakdown.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q9<span class="step-marks">Intervene</span></span>
+          <h3 class="step-title">Extend, invite, close early</h3>
+          <ul class="checks">
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Extend the end time</strong> when the hall lost ten minutes to a power cut.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Add a student late</strong> - they get whatever time is left.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Force-close</strong> to end the paper early for everyone at once.</span></li>
+          </ul>
+          <p class="step-body">
+            Removing a student from the audience is refused while they have an attempt in progress.
+            Interrupting someone mid-paper has exactly one sanctioned route, and it is the next step.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q10<span class="step-marks">Remove</span></span>
+          <h3 class="step-title">Kick a candidate, on the record</h3>
+          <p class="step-body">
+            Two deliberate steps: pick a reason from the list or write your own, then confirm. The
+            attempt ends on the server the instant you confirm - not when the student's browser
+            notices - and the student sees a screen carrying your reason.
+          </p>
+          <div class="note note-danger">
+            <span class="note-title">What a kick does not do</span>
+            It does not discard their work. Whatever was autosaved is still graded, flagged as
+            kicked wherever the score appears, and you can override that score to zero. If it was a
+            mistake, re-admit them: they get one fresh attempt with the time that remains, and the
+            kicked attempt stays in the record. Nothing here is ever quietly erased.
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= SECTION D ================= -->
+  <section class="section" id="settle">
+    <div class="wrap">
+      <header class="section-head">
+        <span class="section-tag">Section D - Settling the marks</span>
+        <h2 class="section-title">Afterwards, the paper <em class="accent">tells you what it found.</em></h2>
+        <p class="section-sub">
+          Grading starts the moment the quiz closes. You see scores as they land; students see nothing
+          until you release them.
+        </p>
+      </header>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-no">Q11<span class="step-marks">Release</span></span>
+          <h3 class="step-title">Release the results when you are ready</h3>
+          <p class="step-body">
+            If you chose automatic release at publish time, scores and the answer key reach students as
+            soon as grading finishes. If you chose manual, they wait - useful when you want to
+            moderate a few scores or hold a re-sit first. Releasing is one button, and it is recorded.
+          </p>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q12<span class="step-marks">Read</span></span>
+          <h3 class="step-title">Read the item analysis, not just the average</h3>
+          <p class="step-body">
+            Per quiz you get the score distribution, mean and median, participation, and an integrity
+            summary. The useful part is per question:
+          </p>
+          <ul class="checks">
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Difficulty</strong> - what share of the class got it right.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Discrimination</strong> - whether it separated strong students from weak ones. A near-zero value on a hard question usually means the question is broken, not the class.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Option-pick rates</strong> - which wrong answer was tempting, and why.</span></li>
+            <li><span class="dot"><svg class="tick" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 4.8 8.5 9.5 3.6"/></svg></span><span><strong>Average time</strong> spent on the question.</span></li>
+          </ul>
+        </li>
+
+        <li class="step">
+          <span class="step-no">Q13<span class="step-marks">Follow up</span></span>
+          <h3 class="step-title">Look along a student, not just across a paper</h3>
+          <p class="step-body">
+            Per student you get their score and percentile, their accuracy trend across every quiz you
+            have set them, average time per question, how often they actually sat what they were
+            assigned, and - if you tagged your questions - their accuracy per topic. Export any
+            of it as CSV.
+          </p>
+          <p class="step-body">
+            Topic accuracy only counts questions the student actually answered, so a skipped question
+            is never held against them as a weakness.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="island">
+    <div class="island-inner">
+      <span class="island-tag">Three things worth remembering</span>
+      <h2 class="island-title">The rules that settle every argument.</h2>
+      <dl class="island-list">
+        <div>
+          <dt>The clock is ours</dt>
+          <dd>Every deadline is the server's. A student's laptop clock, a paused tab, or a dead battery changes nothing about when their time ran out.</dd>
+        </div>
+        <div>
+          <dt>Answers are saved as they are typed</dt>
+          <dd>Not at submit. A student whose browser dies mid-paper has lost seconds of work, not the paper - and their attempt is auto-submitted at the deadline regardless.</dd>
+        </div>
+        <div>
+          <dt>Nothing is quietly deleted</dt>
+          <dd>Kicks, re-admissions, releases, extensions and edits are all recorded with who did them and when. The audit log is append-only.</dd>
+        </div>
+      </dl>
+      <a class="btn-primary" href="/">Open MacQuiz</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span>MacQuiz &middot; Invigilator's walkthrough</span>
+  <span><a href="student.html">The candidate's walkthrough &rarr;</a></span>
+  <span>RBMI &middot; Software Development Cell</span>
+</footer>
+
+</body>
+</html>

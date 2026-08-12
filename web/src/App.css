@@ -489,6 +489,22 @@
   background: var(--color-well);
 }
 
+/* Lives here, next to .button-quiet, rather than in authoring.css: it is a
+   sibling variant of the same single-class specificity as .button, so the
+   cascade is decided purely by source order. Defined in a stylesheet that
+   loads earlier, its border-color lost to .button's `1px solid transparent`
+   and every destructive quiet button in the app rendered borderless. */
+.button-quiet-danger {
+  background: var(--color-surface);
+  border-color: var(--color-border-input);
+  color: var(--color-danger);
+}
+
+.button-quiet-danger:hover:not(:disabled) {
+  background: var(--color-danger-tint);
+  border-color: var(--color-danger);
+}
+
 /* Signed-in identity */
 
 .identity-row {
@@ -1491,6 +1507,91 @@ html:has(.landing) {
   color: var(--color-text-secondary);
 }
 
+/* The walkthrough link on a role card: a mono footnote under the tick list,
+   separated by the same dashed perforation the card head uses. */
+.landing-role-guide {
+  margin-top: 4px;
+  padding-top: 13px;
+  border-top: 1px dashed var(--color-border-input);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: gap var(--motion-micro), color var(--motion-micro);
+}
+
+.landing-role-guide:hover {
+  color: var(--color-primary-hover);
+  gap: 11px;
+}
+
+/* Appendix: the two standalone walkthroughs. Two cards, never three - the
+   set is one per side of the desk and is not expected to grow. */
+.landing-guides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.landing-guide {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 28px 26px 30px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-resting);
+  text-decoration: none;
+  transition: transform var(--motion-micro), box-shadow var(--motion-micro);
+}
+
+.landing-guide:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -14px rgba(16, 24, 40, 0.28);
+}
+
+.landing-guide-no {
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--color-text-muted);
+}
+
+.landing-guide-title {
+  margin: 0;
+  font: 550 25px/1.15 var(--font-display);
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+}
+
+.landing-guide-sub {
+  margin: 0;
+  font: 450 13.5px/1.6 var(--font-sans);
+  color: var(--color-text-secondary);
+  max-width: 46ch;
+}
+
+.landing-guide-cta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  transition: gap var(--motion-micro);
+}
+
+.landing-guide:hover .landing-guide-cta {
+  gap: 11px;
+}
+
 .landing-check-list {
   margin: 3px 0 0;
   padding: 0;
@@ -1841,6 +1942,10 @@ html:has(.landing) {
   }
 
   .landing-roles {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-guides {
     grid-template-columns: 1fr;
   }
 
