@@ -94,6 +94,11 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u, access, refresh, err := h.svc.Login(r.Context(), req.Email, req.Password)
+	if errors.Is(err, ErrAccountDisabled) {
+		httpapi.WriteError(w, http.StatusUnauthorized, httpapi.CodeAccountDisabled,
+			"this account has been disabled by an administrator")
+		return
+	}
 	if errors.Is(err, ErrInvalidCredentials) {
 		httpapi.WriteError(w, http.StatusUnauthorized, httpapi.CodeInvalidCredentials, "email or password is incorrect")
 		return

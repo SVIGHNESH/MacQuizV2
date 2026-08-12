@@ -5,6 +5,10 @@ function loginErrorMessage(err: AuthActionError): string {
   switch (err.code) {
     case 'INVALID_CREDENTIALS':
       return 'That email and password combination is not right. Check both and try again.'
+    // Only ever returned once the password verified, so this is safe to name
+    // outright - the credential was correct, the account is the problem.
+    case 'ACCOUNT_DISABLED':
+      return 'This account has been disabled by an administrator. Contact them to have it re-enabled.'
     case 'RATE_LIMITED':
       return 'Too many attempts. Wait a minute, then try again.'
     case 'VALIDATION_FAILED':

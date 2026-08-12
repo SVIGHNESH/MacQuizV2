@@ -17,9 +17,14 @@ import (
 
 // Sentinel errors the HTTP layer maps onto the docs/04-api.md vocabulary.
 var (
-	// ErrInvalidCredentials covers unknown email, wrong password, and
-	// disabled accounts alike, so responses never reveal which it was.
+	// ErrInvalidCredentials covers unknown email and wrong password alike,
+	// so responses never reveal which it was.
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrAccountDisabled is returned only once the password has verified:
+	// whoever holds the correct credential has already proved the account
+	// exists, so naming the real reason leaks nothing to an enumerator and
+	// saves them guessing at a password that is not the problem.
+	ErrAccountDisabled = errors.New("account disabled")
 	// ErrSessionInvalid covers unknown, expired, reused, and revoked
 	// refresh tokens; the client's only recovery is a fresh login.
 	ErrSessionInvalid = errors.New("session invalid")
@@ -91,8 +96,11 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, stri
 	if err != nil {
 		return User{}, "", "", fmt.Errorf("verify password: %w", err)
 	}
-	if !ok || u.Status != "active" {
+	if !ok {
 		return User{}, "", "", ErrInvalidCredentials
+	}
+	if u.Status != "active" {
+		return User{}, "", "", ErrAccountDisabled
 	}
 
 	now := time.Now().UTC()

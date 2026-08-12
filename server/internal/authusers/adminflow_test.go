@@ -165,10 +165,19 @@ func TestAdminProvisioningE2E(t *testing.T) {
 		if status != 401 {
 			t.Fatalf("disabled teacher /me = %d, want 401", status)
 		}
-		status, _, _ = call(t, server, "POST", "/api/v1/auth/login",
+		// The right password on a disabled account names the real reason:
+		// the caller already proved the credential, so ACCOUNT_DISABLED
+		// tells them something they can act on and leaks nothing.
+		status, body, _ = call(t, server, "POST", "/api/v1/auth/login",
 			map[string]string{"email": "teach@school.test", "password": "terry-owns-this-1"}, nil)
-		if status != 401 {
-			t.Fatalf("disabled teacher login = %d, want 401", status)
+		if status != 401 || body["code"] != "ACCOUNT_DISABLED" {
+			t.Fatalf("disabled teacher login = %d %v, want 401 ACCOUNT_DISABLED", status, body)
+		}
+		// A wrong password on the same account still says nothing.
+		status, body, _ = call(t, server, "POST", "/api/v1/auth/login",
+			map[string]string{"email": "teach@school.test", "password": "not-the-password"}, nil)
+		if status != 401 || body["code"] != "INVALID_CREDENTIALS" {
+			t.Fatalf("disabled teacher wrong password = %d %v, want 401 INVALID_CREDENTIALS", status, body)
 		}
 
 		// Credential reset issues a fresh one-time password.

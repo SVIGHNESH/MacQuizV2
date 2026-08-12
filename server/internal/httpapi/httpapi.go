@@ -17,6 +17,7 @@ const (
 	CodeValidationFailed        = "VALIDATION_FAILED"
 	CodeRateLimited             = "RATE_LIMITED"
 	CodeInvalidCredentials      = "INVALID_CREDENTIALS"
+	CodeAccountDisabled         = "ACCOUNT_DISABLED"
 	CodeUnauthenticated         = "UNAUTHENTICATED"
 	CodeForbidden               = "FORBIDDEN"
 	CodePasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"

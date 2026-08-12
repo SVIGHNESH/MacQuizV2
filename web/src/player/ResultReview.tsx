@@ -180,14 +180,6 @@ export default function ResultReview({
             <span className="stat-card-label">Rank · of {board.total}</span>
           </div>
         )}
-        {result.percentile !== null && (
-          <div className="stat-card">
-            <span className="stat-card-value tabular">
-              {formatOrdinal(result.percentile)}
-            </span>
-            <span className="stat-card-label">Percentile · in this quiz</span>
-          </div>
-        )}
       </div>
 
       {board && board.entries.length > 1 && (
@@ -216,7 +208,7 @@ export default function ResultReview({
   )
 }
 
-/** Renders a percentile or a rank as an ordinal, e.g. 92 -> "92nd". */
+/** Renders a rank as an ordinal, e.g. 92 -> "92nd". */
 function formatOrdinal(value: number): string {
   const rounded = Math.round(value)
   const mod100 = rounded % 100

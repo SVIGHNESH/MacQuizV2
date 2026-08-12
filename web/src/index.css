@@ -132,11 +132,21 @@ body {
   inset: 0;
   z-index: 200;
   display: flex;
-  align-items: center;
+  /* Top-aligned, not centred: on a long roster the centred panel landed in the
+     middle of the scrolled list and was easy to miss. Anchoring it near the top
+     of the viewport puts it where the eye already is. */
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--overlay-modal);
   backdrop-filter: blur(2px);
+}
+
+.modal-overlay > * {
+  margin-top: clamp(24px, 8vh, 96px);
+  margin-bottom: 24px;
 }
 
 .modal-panel {
