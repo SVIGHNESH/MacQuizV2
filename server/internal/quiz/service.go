@@ -147,7 +147,7 @@ func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore, publisher
 }
 
 // SetEmailSender wires the email leg of assignment-change notifications
-// (email.NewResendSender in production). Mirrors the SetSnapshotCache setter
+// (email.NewBrevoSender in production). Mirrors the SetSnapshotCache setter
 // convention elsewhere in the codebase: optional, called once at boot,
 // nil-safe to omit entirely (the service keeps the no-op default and every
 // assignment change still delivers over the in-app channel).

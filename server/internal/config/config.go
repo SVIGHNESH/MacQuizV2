@@ -85,7 +85,7 @@ type Config struct {
 	// every export, formatted as "key=value,key2=value2" (Grafana Cloud's
 	// OTLP gateway takes an "Authorization=Basic <token>" pair here).
 	OTelExporterHeaders string
-	// EmailAPIKey authenticates against Resend (docs/09-deployment.md
+	// EmailAPIKey authenticates against Brevo (docs/09-deployment.md
 	// section 3) for the email leg of assignment-change notifications. Empty
 	// (the dev/test default) disables email delivery entirely - it degrades
 	// to a no-op, never a boot failure, since the in-app user:{id}:notify

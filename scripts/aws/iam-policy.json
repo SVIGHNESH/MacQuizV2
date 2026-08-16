@@ -1,0 +1,24 @@
+{
+  "//": "Permission policy for MacQuizHostRole, the instance profile attached to the EC2 host (docs/09-deployment.md section 8). Replace macquiz-blobs / macquiz-backups with the real bucket names. Scoped to exactly the two buckets and exactly the verbs the code calls: blobstore does Get/Put/Delete on objects, backup.sh additionally lists a prefix to prune it. Nothing here grants a bucket delete, so a compromised host cannot erase the backup history - and bucket versioning is the second belt.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ImportAndAvatarBlobs",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::macquiz-blobs/*"
+    },
+    {
+      "Sid": "BackupObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::macquiz-backups/*"
+    },
+    {
+      "Sid": "BackupPruneNeedsToList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::macquiz-backups"
+    }
+  ]
+}

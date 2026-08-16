@@ -15,7 +15,7 @@ const emailSendTimeout = 10 * time.Second
 // half of "Notifications on assignment changes (in-app/email)" - the
 // user:{id}:notify channel (events.go) covers the in-app half; this covers
 // the email leg docs/09-deployment.md's cost table names ("Email | Brevo
-// free or Resend | Credential mail is low-volume"). email.ResendSender
+// free or Brevo | Credential mail is low-volume"). email.BrevoSender
 // (server/internal/email) is the concrete implementation; the interface
 // lives here so this package never imports net/http or a specific provider,
 // matching the EventPublisher/SnapshotCache decoupling pattern already used
