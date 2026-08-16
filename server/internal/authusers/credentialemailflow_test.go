@@ -151,6 +151,43 @@ func TestCredentialEmailsE2E(t *testing.T) {
 		}
 	})
 
+	t.Run("a roster import mails every created account", func(t *testing.T) {
+		roster := []byte("role,email,full_name\n" +
+			"student,row1@school.test,Rae One\n" +
+			"teacher,row2@school.test,Rob Two\n")
+		status, body := uploadRoster(t, server, roster, admin)
+		if status != 201 {
+			t.Fatalf("import roster = %d %v, want 201", status, body)
+		}
+		passwords := map[string]string{}
+		for _, raw := range body["users"].([]any) {
+			entry := raw.(map[string]any)
+			u := entry["user"].(map[string]any)
+			passwords[u["email"].(string)] = entry["initial_password"].(string)
+		}
+		if len(passwords) != 2 {
+			t.Fatalf("imported users = %d, want 2", len(passwords))
+		}
+
+		mails := waitForCredentialEmails(t, sender, 4)[2:]
+		for _, m := range mails {
+			if m.subject != "Your MacQuiz account" {
+				t.Fatalf("roster mail subject = %q, want the new-account wording", m.subject)
+			}
+			password, ok := passwords[m.to]
+			if !ok {
+				t.Fatalf("roster mail went to unexpected recipient %q", m.to)
+			}
+			if !strings.Contains(m.body, password) {
+				t.Fatalf("roster mail to %q does not carry its one-time password", m.to)
+			}
+			delete(passwords, m.to)
+		}
+		if len(passwords) != 0 {
+			t.Fatalf("accounts that never got a mail: %v", passwords)
+		}
+	})
+
 	t.Run("a rename patch sends no email", func(t *testing.T) {
 		status, body, _ := call(t, server, "PATCH", "/api/v1/users/"+studentID,
 			map[string]any{"full_name": "Pat Q. Pupil"}, admin)
@@ -160,8 +197,8 @@ func TestCredentialEmailsE2E(t *testing.T) {
 		// The send goroutine is fired before the handler responds, so a short
 		// settle is enough to catch a stray third mail.
 		time.Sleep(100 * time.Millisecond)
-		if got := sender.snapshot(); len(got) != 2 {
-			t.Fatalf("email sends after rename = %d, want 2 (no new mail)", len(got))
+		if got := sender.snapshot(); len(got) != 4 {
+			t.Fatalf("email sends after rename = %d, want 4 (no new mail)", len(got))
 		}
 	})
 }

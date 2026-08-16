@@ -239,5 +239,8 @@ func (s *Service) ImportUsers(ctx context.Context, actor User, rows []UserImport
 	if err := tx.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("commit import users: %w", err)
 	}
+	// After commit, best-effort: every roster account gets the same
+	// credential mail single-account provisioning sends.
+	s.sendRosterCredentialEmails(ctx, created)
 	return created, nil, nil
 }

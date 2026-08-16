@@ -49,6 +49,39 @@ func (s *Service) sendCredentialEmail(ctx context.Context, u User, password stri
 	if u.Email == "" || password == "" {
 		return
 	}
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emailSendTimeout)
+		defer cancel()
+		s.deliverCredentialEmail(sendCtx, u, password, reset)
+	}()
+}
+
+// sendRosterCredentialEmails mails every account a roster import created its
+// one-time credential, from one detached goroutine that works through the
+// batch sequentially - a 500-row import must not burst 500 concurrent
+// requests at the provider. Each send keeps its own timeout, so one hung
+// call skips forward rather than starving the rest of the roster.
+func (s *Service) sendRosterCredentialEmails(ctx context.Context, created []ImportedUser) {
+	if len(created) == 0 {
+		return
+	}
+	go func() {
+		batchCtx := context.WithoutCancel(ctx)
+		for _, iu := range created {
+			if iu.User.Email == "" || iu.InitialPassword == "" {
+				continue
+			}
+			sendCtx, cancel := context.WithTimeout(batchCtx, emailSendTimeout)
+			s.deliverCredentialEmail(sendCtx, iu.User, iu.InitialPassword, false)
+			cancel()
+		}
+	}()
+}
+
+// deliverCredentialEmail composes and sends one credential mail, logging
+// (never propagating) a provider failure. Callers own goroutine placement
+// and the context deadline.
+func (s *Service) deliverCredentialEmail(ctx context.Context, u User, password string, reset bool) {
 	subject := "Your MacQuiz account"
 	intro := "An account has been created for you on MacQuiz."
 	if reset {
@@ -63,11 +96,7 @@ func (s *Service) sendCredentialEmail(ctx context.Context, u User, password stri
 		"Hi %s,\n\n%s\n\n%s\n\n  Email: %s\n  One-time password: %s\n\n"+
 			"This password works exactly once - you will be asked to choose your own the first time you sign in.\n",
 		u.FullName, intro, signIn, u.Email, password)
-	go func() {
-		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emailSendTimeout)
-		defer cancel()
-		if err := s.email.Send(sendCtx, u.Email, u.FullName, subject, body); err != nil {
-			s.log.Warn("send credential email", "user_id", u.ID, "reset", reset, "err", err)
-		}
-	}()
+	if err := s.email.Send(ctx, u.Email, u.FullName, subject, body); err != nil {
+		s.log.Warn("send credential email", "user_id", u.ID, "reset", reset, "err", err)
+	}
 }
