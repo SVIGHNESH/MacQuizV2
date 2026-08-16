@@ -108,6 +108,9 @@ export default function AttemptPlayer({
   // not state the grader cares about - the server has no field for them, so
   // they live and die with this mount.
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set())
+  // A nav cell only turns green once the student moves past the question via
+  // Next with an option selected - selecting alone doesn't mark it.
+  const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set())
   const [saveError, setSaveError] = useState<string | null>(null)
   // Autosave bookkeeping lives in refs (timers must survive renders);
   // bump forces a render so the indicator reads the current counts.
@@ -141,45 +144,52 @@ export default function AttemptPlayer({
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      const result =
-        entry.kind === 'start'
-          ? await api
+      ; (async () => {
+        const result =
+          entry.kind === 'start'
+            ? await api
               .POST('/api/v1/quizzes/{id}/attempts', {
                 params: { path: { id: entry.quizId } },
               })
               .catch(() => null)
-          : await api
+            : await api
               .GET('/api/v1/attempts/{id}', {
                 params: { path: { id: entry.attemptId } },
               })
               .catch(() => null)
-      if (cancelled) return
-      if (!result?.data) {
-        setPhase({
-          kind: 'load-error',
-          message:
-            result?.error?.message ??
-            'Could not open the attempt. Go back and retry.',
-        })
-        return
-      }
-      const loaded = result.data
-      clockOffset.current = Date.parse(loaded.now) - Date.now()
-      const initial: Record<string, ResponseValue> = {}
-      for (const answer of loaded.answers) {
-        const question = loaded.questions.find(
-          (q) => q.id === answer.question_id,
+        if (cancelled) return
+        if (!result?.data) {
+          setPhase({
+            kind: 'load-error',
+            message:
+              result?.error?.message ??
+              'Could not open the attempt. Go back and retry.',
+          })
+          return
+        }
+        const loaded = result.data
+        clockOffset.current = Date.parse(loaded.now) - Date.now()
+        const initial: Record<string, ResponseValue> = {}
+        for (const answer of loaded.answers) {
+          const question = loaded.questions.find(
+            (q) => q.id === answer.question_id,
+          )
+          const value = question
+            ? coerceResponse(question.type, answer.response)
+            : undefined
+          if (value !== undefined) initial[answer.question_id] = value
+        }
+        setAnswers(initial)
+        // Answers autosaved in an earlier session were already committed, so
+        // a resume seeds them as confirmed - the grid stays green.
+        setConfirmed(
+          new Set(
+            Object.keys(initial).filter((id) => isAnswered(initial[id])),
+          ),
         )
-        const value = question
-          ? coerceResponse(question.type, answer.response)
-          : undefined
-        if (value !== undefined) initial[answer.question_id] = value
-      }
-      setAnswers(initial)
-      setDetail(loaded)
-      setPhase({ kind: 'playing' })
-    })()
+        setDetail(loaded)
+        setPhase({ kind: 'playing' })
+      })()
     return () => {
       cancelled = true
     }
@@ -404,7 +414,7 @@ export default function AttemptPlayer({
                 clockOffset.current = Date.parse(result.data.now) - Date.now()
                 setDetail(result.data)
               })
-              .catch(() => {})
+              .catch(() => { })
             break
           }
           case 'quiz.closed': {
@@ -483,7 +493,7 @@ export default function AttemptPlayer({
     dirty.current.add(questionId)
     setSaveError(
       result?.error?.message ??
-        'Could not save your answer. It will retry on your next change.',
+      'Could not save your answer. It will retry on your next change.',
     )
     bump()
     return false
@@ -748,7 +758,8 @@ export default function AttemptPlayer({
           </div>
           <ol className="nav-grid">
             {detail.questions.map((question, index) => {
-              const answered = isAnswered(answers[question.id])
+              const answered =
+                confirmed.has(question.id) && isAnswered(answers[question.id])
               const current = index === safeIndex
               const flag = flagged.has(question.id)
               // Answered-ness and current-ness are independent facts; the
@@ -852,7 +863,12 @@ export default function AttemptPlayer({
                 className="button button-primary"
                 type="button"
                 disabled={safeIndex === questionCount - 1}
-                onClick={() => setCurrentIndex(safeIndex + 1)}
+                onClick={() => {
+                  if (isAnswered(answers[currentQuestion.id])) {
+                    setConfirmed((prev) => new Set(prev).add(currentQuestion.id))
+                  }
+                  setCurrentIndex(safeIndex + 1)
+                }}
               >
                 Next →
               </button>

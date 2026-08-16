@@ -415,18 +415,23 @@ async function playerFlow(browser) {
 
   // Answer: single and truefalse and short correct, the multi wrong (only
   // one of the two primes), so the released score is a deterministic 4/6.
+  // Grid cells only turn green when the student leaves a question via Next
+  // with an option picked, so advance with the footer button; Q4 is answered
+  // but never confirmed and must stay uncolored until the reload below.
   await pickOption(page, 1, 'Mars')
+  await clickButtonWithText(page, 'Next', '.player-footer')
   await pickOption(page, 2, '2')
+  await clickButtonWithText(page, 'Next', '.player-footer')
   await pickOption(page, 3, 'True')
-  await goToQuestion(page, 4)
+  await clickButtonWithText(page, 'Next', '.player-footer')
   await type(page, '.player-short-input', 'mitochondria')
   check(
     await waitForText(page, '.player-nav-count', '4 of 4 answered'),
     'the navigator counts every question as answered',
   )
   check(
-    (await page.$$('.nav-cell-answered')).length === 4,
-    'the sidebar grid marks every question answered',
+    (await page.$$('.nav-cell-answered')).length === 3,
+    'only questions confirmed via Next are marked answered in the grid',
   )
   check(
     await waitForText(page, '.save-state', 'All changes saved', 8000),
