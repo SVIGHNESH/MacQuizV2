@@ -27,7 +27,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Registries require a lowercase repository path, but
       # github.repository_owner preserves the account's casing (SVIGHNESH),
       # so the image name is derived here with the shell's ,, lowercasing.
@@ -47,7 +47,7 @@ jobs:
       # the x86 runner with no QEMU and nothing else in the stack changes;
       # switching to an x86 instance type means switching this to
       # linux/amd64 and nothing more.
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: ./server
           platforms: linux/arm64
@@ -62,9 +62,9 @@ jobs:
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
