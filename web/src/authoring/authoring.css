@@ -1369,3 +1369,166 @@
 .preview-actions .button-quiet:first-child {
   margin-right: auto;
 }
+
+/* ---- Narrow-screen tier. 820px collapses the shell (rail becomes a top
+   bar), 640px is the phone breakpoint for form grids and padding. All
+   rules below are additive overrides; nothing above is restructured. ---- */
+
+.workspace {
+  min-height: 100dvh;
+}
+
+.rail {
+  height: 100dvh;
+}
+
+@media (max-width: 820px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .rail {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-hairline);
+    overflow-x: auto;
+  }
+
+  .rail-nav {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .rail-item {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .rail-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 0;
+    border-top: 0;
+    margin-left: auto;
+  }
+
+  .rail-identity-button {
+    width: auto;
+    margin: 0;
+  }
+
+  .rail-identity-text {
+    display: none;
+  }
+
+  .rail-signout {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .workspace-main {
+    padding: 20px 16px 48px;
+    max-width: none;
+  }
+
+  .page-head,
+  .create-actions,
+  .qt-actions,
+  .editor-tabs {
+    flex-wrap: wrap;
+  }
+
+  /* Fixed-column tables scroll sideways instead of clipping. */
+  .table-panel {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .quiz-table {
+    min-width: 730px;
+  }
+
+  .teacher-analytics-table {
+    min-width: 860px;
+  }
+
+  .teacher-quiz-rank-table {
+    min-width: 560px;
+  }
+
+  .live-roster-table {
+    min-width: 760px;
+  }
+
+  .stats-item-table {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .stats-item-table:not(.kicked-attempts-table) .stats-item-head,
+  .stats-item-table:not(.kicked-attempts-table) .stats-item-row {
+    min-width: 700px;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-main {
+    padding: 16px 12px 40px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .schedule-grid,
+  .guardrail-grid,
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-settings {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .editor-topline,
+  .editor-topline-actions {
+    flex-wrap: wrap;
+  }
+
+  /* The editor's implicit grid column otherwise sizes to the widest
+     child's min-content and pushes past the viewport. */
+  .editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wizard-steps {
+    overflow-x: auto;
+  }
+
+  .question-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .teacher-analytics-breakdown-row {
+    grid-template-columns: minmax(0, 1.6fr) 60px 52px 96px;
+    gap: 8px;
+  }
+
+  .stats-distribution {
+    gap: 3px;
+  }
+
+  .stats-bar-label {
+    font-size: 9px;
+  }
+}

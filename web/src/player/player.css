@@ -1290,3 +1290,58 @@
 .topic-bar-fill-weakest {
   background: var(--color-chart-tint-1);
 }
+
+/* ---- Narrow-screen tier (640px phone breakpoint; the 900px collapse
+   above already stacks the nav). Additive overrides only. ---- */
+
+.player {
+  height: 100dvh;
+}
+
+.player-done-screen,
+.lockout {
+  min-height: 100dvh;
+}
+
+@media (max-width: 640px) {
+  .player-topbar {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px 14px;
+  }
+
+  .player-timer-value {
+    font-size: 20px;
+  }
+
+  .player-nav {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  /* Full-width rail below 900px: smaller cells, more per row, so the
+     navigator stays a strip instead of a wall of large squares. */
+  .nav-grid {
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 6px;
+  }
+
+  .player-question-area {
+    padding: 18px 14px;
+    gap: 16px;
+  }
+
+  .player-question-head {
+    flex-wrap: wrap;
+  }
+
+  .player-footer {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .assigned-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

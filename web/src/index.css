@@ -195,3 +195,23 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---- Narrow-screen tier: modal chrome breathes on phones. ---- */
+
+body {
+  min-height: 100dvh;
+}
+
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-overlay > * {
+    margin-top: clamp(12px, 5vh, 48px);
+  }
+
+  .modal-panel {
+    padding: 18px 16px;
+  }
+}

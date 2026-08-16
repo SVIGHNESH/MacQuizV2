@@ -943,3 +943,70 @@
 .admin-members-panel .card-title {
   margin: 0;
 }
+
+/* ---- Narrow-screen tier (820px scroll-wraps the fixed-column tables,
+   640px is the phone breakpoint). Additive overrides only. ---- */
+
+@media (max-width: 820px) {
+  .admin-user-table {
+    min-width: 650px;
+  }
+
+  .admin-analytics-teacher-table {
+    min-width: 820px;
+  }
+
+  .admin-analytics-student-table {
+    min-width: 780px;
+  }
+
+  .admin-cohort-table {
+    min-width: 580px;
+  }
+
+  .admin-audit-panel {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .audit-head,
+  .audit-row {
+    min-width: 560px;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-user-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-filter-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-filter-row .input,
+  .admin-search {
+    width: 100%;
+    flex: 1 1 160px;
+  }
+
+  .sdc-team-grid,
+  .sdc-stack-grid,
+  .sdc-arch-row,
+  .admin-group-table {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sdc-intro {
+    flex-wrap: wrap;
+  }
+
+  .audit-change {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .teacher-stat-row {
+    flex-wrap: wrap;
+  }
+}

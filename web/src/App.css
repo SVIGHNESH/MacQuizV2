@@ -2020,3 +2020,42 @@ html:has(.landing) {
     gap: 14px;
   }
 }
+
+/* ---- Narrow-screen tier (640px phone breakpoint; the landing keeps its
+   own 1020/560 ladder above). Additive overrides only. ---- */
+
+.shell {
+  min-height: 100dvh;
+}
+
+.landing {
+  min-height: 100dvh;
+  /* Rotated decorations (stamp, console) may bleed a pixel past the
+     viewport on phones; clip instead of growing the scroll range. */
+  overflow-x: clip;
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 24px 20px;
+  }
+
+  .profile-upload-preview {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .landing-section {
+    padding-inline: 20px;
+  }
+
+  .landing-hero {
+    padding-inline: 20px;
+  }
+
+  .landing-console-row {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+}
