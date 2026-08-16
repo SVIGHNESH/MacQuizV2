@@ -221,7 +221,11 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// "degrade rather than fail boot" contract as Redis above - the in-app
 	// user:{id}:notify channel already delivers the same event either way.
 	if cfg.EmailAPIKey != "" {
-		quizSvc.SetEmailSender(email.NewBrevoSender(cfg.EmailAPIKey, cfg.EmailFrom, cfg.EmailFromName))
+		sender := email.NewBrevoSender(cfg.EmailAPIKey, cfg.EmailFrom, cfg.EmailFromName)
+		quizSvc.SetEmailSender(sender)
+		// The credential leg of admin provisioning: a created or
+		// password-reset account gets its one-time credential mailed.
+		authSvc.SetEmailSender(sender, cfg.PublicURL)
 	}
 	quizHandler := quiz.NewHandler(quizSvc, authSvc)
 	// Coalesce serve-side attempt.progress to at most one relay per 2 s per

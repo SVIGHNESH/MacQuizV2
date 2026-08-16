@@ -94,6 +94,10 @@ type Config struct {
 	// EmailFrom/EmailFromName set the From header on outgoing mail.
 	EmailFrom     string
 	EmailFromName string
+	// PublicURL is the origin students reach the app at (e.g.
+	// "https://macquiz.example.edu"), used only to put a sign-in link in
+	// outgoing mail. Empty (the dev/test default) just omits the link.
+	PublicURL string
 }
 
 // Load reads configuration from the environment, applying development defaults.
@@ -135,6 +139,7 @@ func Load() Config {
 		EmailAPIKey:   os.Getenv("MACQUIZ_EMAIL_API_KEY"),
 		EmailFrom:     getenv("MACQUIZ_EMAIL_FROM", "notify@macquiz.example.edu"),
 		EmailFromName: getenv("MACQUIZ_EMAIL_FROM_NAME", "MacQuiz"),
+		PublicURL:     os.Getenv("MACQUIZ_PUBLIC_URL"),
 	}
 }
 

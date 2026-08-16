@@ -54,11 +54,16 @@ type Service struct {
 	// avatars stores uploaded profile photos (see avatar.go); wired by
 	// SetAvatarStore in main, nil in tests that never touch avatars.
 	avatars blobstore.Store
+	// email delivers first-login credentials on provision/reset (email.go);
+	// wired by SetEmailSender in main, a silent no-op by default. publicURL,
+	// when set, puts a sign-in link in those mails.
+	email     EmailSender
+	publicURL string
 }
 
 // NewService wires the auth service. secret signs access tokens (HS256).
 func NewService(db *sql.DB, secret string, log *slog.Logger) *Service {
-	return &Service{db: db, secret: []byte(secret), log: log}
+	return &Service{db: db, secret: []byte(secret), log: log, email: noopEmailSender{}}
 }
 
 const userColumns = `id, role, email, full_name, status, must_change_password, created_at, avatar`

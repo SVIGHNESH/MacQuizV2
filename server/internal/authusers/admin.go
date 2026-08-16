@@ -79,6 +79,7 @@ func (s *Service) CreateUser(ctx context.Context, actor User, role, email, fullN
 	if err := tx.Commit(); err != nil {
 		return User{}, "", fmt.Errorf("commit create user: %w", err)
 	}
+	s.sendCredentialEmail(ctx, u, password, false)
 	return u, password, nil
 }
 
@@ -184,6 +185,9 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, patch U
 	}
 	// After commit, so a rollback can never delete a still-referenced blob.
 	s.deleteAvatarBlob(ctx, clearedAvatar)
+	if patch.ResetPassword {
+		s.sendCredentialEmail(ctx, u, password, true)
+	}
 	return u, password, nil
 }
 
