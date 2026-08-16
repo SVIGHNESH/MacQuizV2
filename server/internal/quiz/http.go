@@ -412,6 +412,9 @@ func (h *Handler) writeQuizError(w http.ResponseWriter, op string, err error, no
 	case errors.Is(err, ErrNotEditable):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotEditable,
 			"this quiz has been published and can no longer be edited")
+	case errors.Is(err, ErrHasVersionHistory):
+		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotEditable,
+			"this quiz has been published before and cannot be deleted; archive it instead")
 	case errors.Is(err, ErrNotClosable):
 		httpapi.WriteError(w, http.StatusConflict, httpapi.CodeQuizNotLive,
 			"only a live or scheduled quiz can be force-closed")

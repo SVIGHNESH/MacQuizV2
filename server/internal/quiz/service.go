@@ -39,6 +39,11 @@ var (
 	// already terminal (docs/06 section 1: force-close is a Live/Scheduled
 	// action).
 	ErrNotClosable = errors.New("only a live or scheduled quiz can be force-closed")
+	// ErrHasVersionHistory marks a delete of a draft that has been published
+	// before (a cancel returned it to draft): its quiz_versions snapshots are
+	// append-only and attempts may reference them, so the quiz can only be
+	// retired via archive, never deleted.
+	ErrHasVersionHistory = errors.New("quiz has published version history")
 	// ErrNotCancellable marks a cancel of a quiz that is not still-scheduled:
 	// once a quiz has opened (or its window has passed) the students may have
 	// seen it, so calling it off is a force-close, not a cancel (docs/06
@@ -372,6 +377,17 @@ func (s *Service) DeleteQuiz(ctx context.Context, actor authusers.User, id strin
 	q, err := s.draftForUpdate(ctx, tx, actor, id)
 	if err != nil {
 		return err
+	}
+	// A cancelled quiz is a draft again but its published snapshots remain:
+	// quiz_versions is append-only (the DB trigger would abort the cascade
+	// with a raw 500), so refuse up front and steer callers to archive.
+	var hasVersions bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM quiz_versions WHERE quiz_id = $1)`, id).Scan(&hasVersions); err != nil {
+		return fmt.Errorf("check quiz versions: %w", err)
+	}
+	if hasVersions {
+		return ErrHasVersionHistory
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM quizzes WHERE id = $1`, id); err != nil {
 		return fmt.Errorf("delete quiz: %w", err)

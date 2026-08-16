@@ -273,6 +273,20 @@ func TestCancelE2E(t *testing.T) {
 		}
 	})
 
+	t.Run("the cancelled draft cannot be deleted, only archived", func(t *testing.T) {
+		// The quiz is a draft again, but its append-only quiz_versions snapshot
+		// survives cancel - a DELETE would cascade into it and trip the
+		// forbid_update_delete trigger as a raw 500. The service must refuse
+		// cleanly before touching the row.
+		status, body, _ := itest.Call(t, server, "DELETE", "/api/v1/quizzes/"+quizID, nil, owner)
+		if status != 409 || body["code"] != "QUIZ_NOT_EDITABLE" {
+			t.Fatalf("delete cancelled draft = %d %v, want 409 QUIZ_NOT_EDITABLE", status, body)
+		}
+		if got := storedStatus(t, ctx, sqlDB, quizID); got != "draft" {
+			t.Fatalf("stored status after refused delete = %q, want draft (untouched)", got)
+		}
+	})
+
 	t.Run("the scheduler leaves the cancelled draft alone", func(t *testing.T) {
 		// The open_quiz/close_quiz jobs publish enqueued are still queued at the
 		// original window; they all run SweepDueQuizzes, whose predicate needs
