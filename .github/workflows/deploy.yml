@@ -118,5 +118,13 @@ jobs:
 
             cd /opt/macquiz
             export TAG=${{ needs.build.outputs.tag }}
+            # Persist the shipped tag so a later manual `docker compose up -d`
+            # (say, after an .env.production edit) reuses this exact image
+            # instead of whatever stale TAG the substitution .env last held.
+            if grep -q '^TAG=' .env 2>/dev/null; then
+              sed -i "s|^TAG=.*|TAG=${TAG}|" .env
+            else
+              echo "TAG=${TAG}" >> .env
+            fi
             docker compose pull app worker
             docker compose up -d app worker
