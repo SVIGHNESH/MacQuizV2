@@ -136,6 +136,9 @@ type Service struct {
 	// provider configured - the in-app user:{id}:notify channel already
 	// covers the same event and never depends on this.
 	email EmailSender
+	// publicURL, when set (cfg.PublicURL via SetEmailSender), puts a sign-in
+	// link in assignment mails.
+	publicURL string
 }
 
 // NewService wires the quiz authoring service. An optional EventPublisher
@@ -156,10 +159,11 @@ func NewService(db *sql.DB, log *slog.Logger, uploads ImportFileStore, publisher
 // convention elsewhere in the codebase: optional, called once at boot,
 // nil-safe to omit entirely (the service keeps the no-op default and every
 // assignment change still delivers over the in-app channel).
-func (s *Service) SetEmailSender(e EmailSender) {
+func (s *Service) SetEmailSender(e EmailSender, publicURL string) {
 	if e != nil {
 		s.email = e
 	}
+	s.publicURL = publicURL
 }
 
 const quizColumns = `id, owner_id, title, status, starts_at, ends_at, duration_sec,

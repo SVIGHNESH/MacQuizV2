@@ -222,7 +222,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// user:{id}:notify channel already delivers the same event either way.
 	if cfg.EmailAPIKey != "" {
 		sender := email.NewBrevoSender(cfg.EmailAPIKey, cfg.EmailFrom, cfg.EmailFromName)
-		quizSvc.SetEmailSender(sender)
+		quizSvc.SetEmailSender(sender, cfg.PublicURL)
 		// The credential leg of admin provisioning: a created or
 		// password-reset account gets its one-time credential mailed.
 		authSvc.SetEmailSender(sender, cfg.PublicURL)

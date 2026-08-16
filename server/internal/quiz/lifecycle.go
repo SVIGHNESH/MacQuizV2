@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"macquiz/server/internal/apischema"
@@ -753,7 +754,7 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 	for _, id := range newlyDropped {
 		s.events.PublishNotify(ctx, id, eventUnassigned, assignmentPayload{QuizID: quizID, Title: q.Title})
 	}
-	s.emailAssignmentChanges(ctx, quizID, q.Title, students, newlyAssigned, newlyDropped)
+	s.emailAssignmentChanges(ctx, q, students, newlyAssigned, newlyDropped)
 	return students, nil
 }
 
@@ -767,7 +768,7 @@ func (s *Service) SetAssignments(ctx context.Context, actor authusers.User, quiz
 // request goroutine" contract, budgeted for a slower transport than Redis -
 // a request assigning a large group must not serialize N provider round
 // trips before it can respond).
-func (s *Service) emailAssignmentChanges(ctx context.Context, quizID, title string, students []AssignedStudent, newlyAssigned, newlyDropped []string) {
+func (s *Service) emailAssignmentChanges(ctx context.Context, q Quiz, students []AssignedStudent, newlyAssigned, newlyDropped []string) {
 	if len(newlyAssigned) == 0 && len(newlyDropped) == 0 {
 		return
 	}
@@ -778,7 +779,7 @@ func (s *Service) emailAssignmentChanges(ctx context.Context, quizID, title stri
 	if len(newlyDropped) > 0 {
 		dropped, err := usersByID(ctx, s.db, newlyDropped)
 		if err != nil {
-			s.log.Warn("load dropped-assignment email recipients", "quiz_id", quizID, "err", err)
+			s.log.Warn("load dropped-assignment email recipients", "quiz_id", q.Id, "err", err)
 		} else {
 			for _, u := range dropped {
 				byID[u.ID] = u
@@ -786,25 +787,66 @@ func (s *Service) emailAssignmentChanges(ctx context.Context, quizID, title stri
 		}
 	}
 	for _, id := range newlyAssigned {
-		s.sendAssignmentEmail(ctx, byID[id], title, true)
+		s.sendAssignmentEmail(ctx, byID[id], q, true)
 	}
 	for _, id := range newlyDropped {
-		s.sendAssignmentEmail(ctx, byID[id], title, false)
+		s.sendAssignmentEmail(ctx, byID[id], q, false)
 	}
+}
+
+// emailTimeLayout renders schedule timestamps in mail bodies. Times are
+// shown in UTC with the zone named - the server has no notion of a
+// student's local timezone, and an unlabeled local-looking time would be
+// worse than a labeled UTC one.
+const emailTimeLayout = "Mon, 02 Jan 2006 15:04 MST"
+
+// assignedEmailBody renders the "you have been assigned" mail: title first,
+// then whatever schedule facts the quiz has at assignment time. A draft has
+// no window yet (assignment before publish is normal), so those lines simply
+// drop out rather than showing placeholders.
+func (s *Service) assignedEmailBody(student AssignedStudent, q Quiz) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Hi %s,\n\nYou have been assigned the quiz %q.\n", student.FullName, q.Title)
+	var details []string
+	if q.StartsAt != nil {
+		details = append(details, fmt.Sprintf("  Opens:  %s", q.StartsAt.UTC().Format(emailTimeLayout)))
+	}
+	if q.EndsAt != nil {
+		details = append(details, fmt.Sprintf("  Closes: %s", q.EndsAt.UTC().Format(emailTimeLayout)))
+	}
+	if q.DurationSec != nil && *q.DurationSec > 0 {
+		details = append(details, fmt.Sprintf("  Time limit: %d minutes", *q.DurationSec/60))
+	}
+	if q.MaxAttempts > 0 {
+		noun := "attempts"
+		if q.MaxAttempts == 1 {
+			noun = "attempt"
+		}
+		details = append(details, fmt.Sprintf("  Allowed: %d %s", q.MaxAttempts, noun))
+	}
+	if len(details) > 0 {
+		fmt.Fprintf(&b, "\n%s\n", strings.Join(details, "\n"))
+	}
+	if s.publicURL != "" {
+		fmt.Fprintf(&b, "\nSign in at %s to see it.\n", s.publicURL)
+	} else {
+		b.WriteString("\nSign in to MacQuiz to see it.\n")
+	}
+	return b.String()
 }
 
 // sendAssignmentEmail fires one best-effort notification email in its own
 // goroutine. A student with no id (byID miss) or no email on file is
 // silently skipped.
-func (s *Service) sendAssignmentEmail(ctx context.Context, student AssignedStudent, quizTitle string, assigned bool) {
+func (s *Service) sendAssignmentEmail(ctx context.Context, student AssignedStudent, q Quiz, assigned bool) {
 	if student.ID == "" || student.Email == "" {
 		return
 	}
-	subject := fmt.Sprintf("Assigned: %s", quizTitle)
-	body := fmt.Sprintf("Hi %s,\n\nYou have been assigned the quiz %q. Sign in to MacQuiz to see it.\n", student.FullName, quizTitle)
+	subject := fmt.Sprintf("Assigned: %s", q.Title)
+	body := s.assignedEmailBody(student, q)
 	if !assigned {
-		subject = fmt.Sprintf("Removed: %s", quizTitle)
-		body = fmt.Sprintf("Hi %s,\n\nYou have been removed from the quiz %q. No action is needed.\n", student.FullName, quizTitle)
+		subject = fmt.Sprintf("Removed: %s", q.Title)
+		body = fmt.Sprintf("Hi %s,\n\nYou have been removed from the quiz %q. No action is needed.\n", student.FullName, q.Title)
 	}
 	go func() {
 		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emailSendTimeout)

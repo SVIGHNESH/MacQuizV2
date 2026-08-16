@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func TestQuizAssignmentEmailsE2E(t *testing.T) {
 	authSvc := authusers.NewService(sqlDB, "test-secret", log)
 	quizSvc := quiz.NewService(sqlDB, log, quiz.LocalImportStorage{Dir: t.TempDir()})
 	sender := &captureEmailSender{}
-	quizSvc.SetEmailSender(sender)
+	quizSvc.SetEmailSender(sender, "https://macquiz.example.edu")
 	router := httpserver.New(httpserver.BuildInfo{Version: "test"}, httpserver.Deps{
 		DB:   sqlDB,
 		Auth: authusers.NewHandler(authSvc, false),
@@ -118,6 +119,14 @@ func TestQuizAssignmentEmailsE2E(t *testing.T) {
 		}
 		if got[0].subject != "Assigned: Assignment Emails" {
 			t.Fatalf("email subject = %q, want assignment subject", got[0].subject)
+		}
+		if !strings.Contains(got[0].body, "https://macquiz.example.edu") {
+			t.Fatalf("email body does not carry the sign-in link:\n%s", got[0].body)
+		}
+		// A draft quiz has no window yet, so no schedule lines appear - the
+		// details block is additive, never placeholder-filled.
+		if strings.Contains(got[0].body, "Opens:") || strings.Contains(got[0].body, "Closes:") {
+			t.Fatalf("draft-assignment email carries schedule lines:\n%s", got[0].body)
 		}
 	})
 
