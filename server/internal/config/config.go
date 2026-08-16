@@ -75,7 +75,8 @@ type Config struct {
 	// both blob kinds. Unlike ImportDir, only serve reads it back, so it
 	// needs no shared volume with the worker.
 	AvatarDir string
-	// OTelExporterEndpoint is the OTLP/HTTP endpoint (host:port, no scheme)
+	// OTelExporterEndpoint is the OTLP/HTTP endpoint (host with optional
+	// path prefix, no scheme — e.g. otlp-gateway-prod-x.grafana.net/otlp)
 	// metrics are exported to (docs/10-operations.md section 2's Grafana
 	// Cloud free tier). Empty (the dev/test default) disables telemetry
 	// entirely - every instrument becomes a no-op rather than dialing out.

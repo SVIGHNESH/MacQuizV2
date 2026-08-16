@@ -118,7 +118,12 @@ func Setup(ctx context.Context, cfg config.Config, serviceName string) (*Provide
 		return &Provider{Metrics: metrics, meter: meter}, nil
 	}
 
-	opts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(cfg.OTelExporterEndpoint)}
+	// WithEndpointURL rather than WithEndpoint: gateways like Grafana Cloud's
+	// live under a path prefix (host/otlp), which WithEndpoint would reject
+	// as part of the host.
+	opts := []otlpmetrichttp.Option{
+		otlpmetrichttp.WithEndpointURL("https://" + cfg.OTelExporterEndpoint + "/v1/metrics"),
+	}
 	if headers := parseHeaders(cfg.OTelExporterHeaders); len(headers) > 0 {
 		opts = append(opts, otlpmetrichttp.WithHeaders(headers))
 	}
