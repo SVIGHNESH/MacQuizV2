@@ -28,8 +28,13 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+      # Registries require a lowercase repository path, but
+      # github.repository_owner preserves the account's casing (SVIGHNESH),
+      # so the image name is derived here with the shell's ,, lowercasing.
       - id: tag
-        run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/macquiz-app" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -50,7 +55,7 @@ jobs:
           build-args: |
             VERSION=${{ steps.tag.outputs.tag }}
             COMMIT=${{ github.sha }}
-          tags: ghcr.io/${{ github.repository_owner }}/macquiz-app:${{ steps.tag.outputs.tag }}
+          tags: ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.tag }}
 
   rollout:
     needs: build
