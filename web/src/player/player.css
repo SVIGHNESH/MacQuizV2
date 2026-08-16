@@ -375,9 +375,9 @@
 }
 
 .nav-cell-answered {
-  border: 1px solid var(--color-border-input);
-  background: var(--color-surface);
-  color: var(--color-ink);
+  border: 1px solid var(--color-success);
+  background: var(--color-success-tint);
+  color: var(--color-success-on-tint);
   font: 600 13px/1 var(--font-sans);
 }
 
@@ -388,9 +388,13 @@
   font: 500 13px/1 var(--font-sans);
 }
 
-.nav-cell-answered:hover,
 .nav-cell-empty:hover {
   background: var(--color-well);
+}
+
+.nav-cell-answered:hover {
+  background: var(--color-success-tint);
+  filter: brightness(0.97);
 }
 
 /* Selection is border + wash + weight, never colour alone (docs/11 s4).
@@ -443,8 +447,8 @@
   height: 9px;
   flex: none;
   border-radius: 3px;
-  border: 1px solid var(--color-border-input);
-  background: var(--color-surface);
+  border: 1px solid var(--color-success);
+  background: var(--color-success-tint);
 }
 
 /* Submit sits with the whole-paper view - the answered count and the grid of
