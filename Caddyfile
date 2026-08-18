@@ -25,7 +25,11 @@
 	handle /api/* {
 		reverse_proxy app:8080
 	}
-	handle /ws {
+	# The wildcard is load-bearing: every gateway route lives at a subpath
+	# (/ws/quizzes/{id}/monitor, /ws/attempts/{id}, /ws/users/{id}/notify)
+	# and a bare /ws matcher is exact-match in Caddy, so it would send every
+	# socket to the SPA fallback instead of the app.
+	handle /ws/* {
 		reverse_proxy app:8080
 	}
 	# Liveness for the uptime monitor (docs/10-operations.md section 2).

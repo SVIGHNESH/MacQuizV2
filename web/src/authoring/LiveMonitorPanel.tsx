@@ -499,7 +499,7 @@ export default function LiveMonitorPanel({
                 </span>
                 <span className="tabular">
                   {row.answered_count !== null && row.question_count !== null
-                    ? `${row.current_question !== null ? `Q${row.current_question} · ` : ''}${row.answered_count} / ${row.question_count}`
+                    ? `${row.answered_count} / ${row.question_count}`
                     : '—'}
                 </span>
                 <span className="tabular">
