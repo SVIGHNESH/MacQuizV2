@@ -8,6 +8,7 @@ import AuditPanel from './AuditPanel'
 import SdcTeamPanel from '../components/SdcTeamPanel'
 import Avatar from '../components/Avatar'
 import ProfilePanel from '../components/ProfilePanel'
+import { ThemeToggle } from '../components/ThemeToggle'
 import '../authoring/authoring.css'
 import './admin.css'
 
@@ -99,6 +100,7 @@ export default function AdminWorkspace({ user }: { user: SessionUser }) {
               <span className="chip chip-role">Admin</span>
             </span>
           </button>
+          <ThemeToggle />
           <button
             className="button button-quiet rail-signout"
             type="button"

@@ -8,6 +8,7 @@ import MyAnalytics from './MyAnalytics'
 import SdcTeamPanel from '../components/SdcTeamPanel'
 import Avatar from '../components/Avatar'
 import ProfilePanel from '../components/ProfilePanel'
+import { ThemeToggle } from '../components/ThemeToggle'
 import '../authoring/authoring.css'
 import './player.css'
 
@@ -132,6 +133,7 @@ export default function StudentWorkspace({ user }: { user: SessionUser }) {
               <span className="chip chip-role">Student</span>
             </span>
           </button>
+          <ThemeToggle />
           <button
             className="button button-quiet rail-signout"
             type="button"

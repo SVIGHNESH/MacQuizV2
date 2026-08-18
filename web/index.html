@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MacQuiz</title>
+    <script>
+      // Stamp the resolved theme before first paint so the page never
+      // flashes light while a dark preference loads (mirrors src/lib/theme.ts).
+      ;(function () {
+        var stored = localStorage.getItem('mq-theme')
+        var pref = stored === 'light' || stored === 'dark' ? stored : 'system'
+        var dark =
+          pref === 'dark' ||
+          (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

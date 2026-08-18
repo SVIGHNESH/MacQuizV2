@@ -4,6 +4,8 @@
  * properties and never raw hex values.
  */
 :root {
+  color-scheme: light;
+
   /* Neutral ramp */
   --color-ink: #131a26;
   --color-ink-hover: #0a0e16;
@@ -88,4 +90,73 @@
   --motion-entrance: 0.35s cubic-bezier(0.22, 1, 0.36, 1);
   --motion-pulse-period: 2s;
   --motion-progress: width 0.4s ease;
+}
+
+/*
+ * Dark theme. src/lib/theme.ts always resolves the user's preference
+ * (light / dark / follow-system) to an explicit data-theme attribute on
+ * <html> before first paint, so this single block is the whole theme:
+ * only color-bearing tokens change, never type, radius, or motion.
+ * The ramp extends the slate island already in the brand (slate-950/900/800)
+ * with a slight blue bias, and --color-ink flips to ivory so components
+ * that use ink as a dark fill (buttons, the landing topline) invert cleanly.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Neutral ramp */
+  --color-ink: #e9eef7;
+  --color-ink-hover: #ffffff;
+  --color-text-strong: #d7dfec;
+  --color-text-secondary: #93a2ba;
+  --color-text-muted: #64748b;
+  --color-border-input: #33415c;
+  --color-border-hairline: #223047;
+  --color-well: #1a2539;
+  --color-page: #0c1322;
+  --color-table-header: #16203366;
+  --color-surface: #131c2e;
+
+  /* Primary / interactive */
+  --color-primary: #4c83f7;
+  --color-primary-hover: #6d9bff;
+  --color-primary-tint: #16233f;
+  --color-primary-on-tint: #a5c3fd;
+  --color-primary-selection-wash: #121d33;
+
+  /* Success / submitted */
+  --color-success: #34c98a;
+  --color-success-dot: #12b76a;
+  --color-success-tint: #0c2b1f;
+  --color-success-on-tint: #6fdcae;
+
+  /* Warning / integrity */
+  --color-warning: #f79009;
+  --color-warning-dot: #f79009;
+  --color-warning-tint: #2d2110;
+  --color-warning-on-tint: #fdb022;
+  --color-warning-border: #4d3a17;
+
+  /* Danger / live / kick */
+  --color-danger: #f2655a;
+  --color-danger-hover: #ff8478;
+  --color-danger-tint: #331512;
+  --color-danger-on-tint: #ff9c92;
+  --color-danger-border: #55221d;
+
+  /* Chart fills */
+  --color-chart-tint-1: #2c477e;
+  --color-chart-tint-2: #223963;
+
+  /* The leaderboard dark island keeps its own slate ramp unchanged; it
+     already lives in the dark. */
+
+  /* Elevation reads as deeper shadow on a dark ground */
+  --shadow-resting: 0 1px 2px rgba(2, 6, 23, 0.5);
+  --shadow-floating: 0 24px 64px -16px rgba(2, 6, 23, 0.85);
+  --shadow-primary-lift: 0 1px 2px rgba(76, 131, 247, 0.35);
+
+  /* Focus and overlays */
+  --focus-ring: 0 0 0 3px rgba(109, 155, 255, 0.28);
+  --overlay-modal: rgba(3, 7, 15, 0.68);
 }

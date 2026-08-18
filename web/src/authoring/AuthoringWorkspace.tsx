@@ -7,6 +7,7 @@ import TeacherAnalyticsPanel from './TeacherAnalyticsPanel'
 import SdcTeamPanel from '../components/SdcTeamPanel'
 import Avatar from '../components/Avatar'
 import ProfilePanel from '../components/ProfilePanel'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { VIOLATION_LABEL, type ViolationTally } from './model'
 import './authoring.css'
 
@@ -114,6 +115,7 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
               <span className="chip chip-role">Teacher</span>
             </span>
           </button>
+          <ThemeToggle />
           <button
             className="button button-quiet rail-signout"
             type="button"
