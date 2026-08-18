@@ -65,10 +65,19 @@ No specific defect named; general polish and motion-design pass requested.
 
 ### P3 - Feature requests (single mentions)
 
-- Dark mode.
+- Dark mode - **SHIPPED 18 Aug 2026**: light/dark/follow-system themes driven by the token system, resolved before first paint (no flash), with a compact sun/moon/half-disc icon toggle beside Sign out in every workspace.
 - Leaderboard and progress tracking to motivate repeat quiz-taking.
 - More interactive question types: image-based and scenario-based questions.
 - More/clearer instructions for users before or during a quiz.
+
+## Follow-up reports (after the form closed)
+
+### Scheduled quiz never flips to Live without a reload - FIXED 18 Aug 2026
+
+Reported with a screenshot: a quiz whose opening time had passed kept showing the "Opens ..." card until the student reloaded the page or switched sections.
+Cause: the assigned-quizzes list fetched once on mount and never re-asked the server, even though the server derives Scheduled/Live from the window at read time.
+Fix: the list now schedules a refetch just past the next opens/closes boundary (re-arming after each load), refreshes when the tab becomes visible again, and polls gently if the device clock disagrees with the server; a failed background refresh keeps the current list instead of showing an error page.
+Verified headlessly: a quiz seeded to open 25 seconds later flipped to a Live card with a Start button with no reload or navigation.
 
 ## Recommended action order
 
@@ -76,7 +85,8 @@ No specific defect named; general polish and motion-design pass requested.
 2. ~~Add a clear-selection control in the attempt player (P1)~~ - done 18 Aug 2026.
 3. Interview 2-3 teachers about what the analytics dashboards are missing (P1).
 4. Scope proctoring/monitoring improvements and a UI polish pass (P2).
-5. Backlog the P3 feature requests (dark mode, leaderboard, new question types, instructions).
+5. ~~Ship dark mode~~ - done 18 Aug 2026; backlog the remaining P3 requests (leaderboard, new question types, instructions).
+6. ~~Fix the Scheduled-to-Live card refresh~~ - done 18 Aug 2026, see Follow-up reports.
 
 ## Notes on data quality
 
