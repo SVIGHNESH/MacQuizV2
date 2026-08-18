@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import {
   formatClock,
@@ -31,26 +31,60 @@ export default function AssignedList({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const result = await api.GET('/api/v1/quizzes/assigned').catch(() => null)
-      if (cancelled) return
-      if (!result?.data) {
-        setLoadError(
-          result?.error?.message ??
-            'Could not load your quizzes. Reload to retry.',
-        )
-        return
-      }
-      setQuizzes(result.data.quizzes)
-    })()
-    return () => {
-      cancelled = true
+  const load = useCallback(async () => {
+    const result = await api.GET('/api/v1/quizzes/assigned').catch(() => null)
+    if (!result?.data) {
+      setLoadError(
+        result?.error?.message ?? 'Could not load your quizzes. Reload to retry.',
+      )
+      return
     }
+    setLoadError(null)
+    setQuizzes(result.data.quizzes)
   }, [])
 
-  if (loadError) return <p className="form-error">{loadError}</p>
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // A Scheduled card must flip to Live (and Live to Closed) without a manual
+  // reload (18 Aug feedback). The status is derived from the window on read,
+  // so schedule one refetch just past the next starts_at/ends_at boundary;
+  // each refetch re-arms for the boundary after that. The 1.5s pad absorbs
+  // small client-clock skew - if we still arrive early, the derived status is
+  // unchanged and the next boundary computation simply fires again.
+  useEffect(() => {
+    if (!quizzes) return
+    const now = Date.now()
+    const boundaries = quizzes
+      .flatMap((quiz) => [Date.parse(quiz.starts_at), Date.parse(quiz.ends_at)])
+      .filter((t) => !Number.isNaN(t) && t > now)
+    // Client clock ahead of the server: a boundary can read as past while
+    // the server still says scheduled/live. Poll gently until they agree.
+    const pending = quizzes.some((quiz) => quiz.status !== 'closed')
+    if (boundaries.length === 0) {
+      if (!pending) return
+      const timer = setTimeout(() => void load(), 15_000)
+      return () => clearTimeout(timer)
+    }
+    const delay = Math.min(Math.min(...boundaries) - now + 1_500, 2 ** 31 - 1)
+    const timer = setTimeout(() => void load(), delay)
+    return () => clearTimeout(timer)
+  }, [quizzes, load])
+
+  // Also refresh when the student comes back to the tab: cheap, and it
+  // covers every staleness this screen can accumulate while hidden.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [load])
+
+  // A failed background refresh keeps the list it already has; the error
+  // page is only for a first load with nothing better to show.
+  if (loadError && !quizzes) return <p className="form-error">{loadError}</p>
   if (!quizzes) {
     return (
       <p className="boot-note" role="status">
