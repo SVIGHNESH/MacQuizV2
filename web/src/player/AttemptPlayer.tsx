@@ -100,7 +100,9 @@ export default function AttemptPlayer({
   const { showToast } = useToast()
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   const [detail, setDetail] = useState<AttemptDetail | null>(null)
-  const [answers, setAnswers] = useState<Record<string, ResponseValue>>({})
+  // null means "explicitly cleared": the option renders unselected and the
+  // autosave writes a JSON null so the server also counts it unanswered.
+  const [answers, setAnswers] = useState<Record<string, ResponseValue | null>>({})
   const [remainingMs, setRemainingMs] = useState<number | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [confirming, setConfirming] = useState(false)
@@ -116,7 +118,7 @@ export default function AttemptPlayer({
   // bump forces a render so the indicator reads the current counts.
   const [, bump] = useReducer((n: number) => n + 1, 0)
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
-  const latest = useRef(new Map<string, ResponseValue>())
+  const latest = useRef(new Map<string, ResponseValue | null>())
   const dirty = useRef(new Set<string>())
   const inflight = useRef(new Set<string>())
   // Server-minus-client clock estimate; the countdown is cosmetic (docs/08).
@@ -499,7 +501,7 @@ export default function AttemptPlayer({
     return false
   }
 
-  const setAnswer = (questionId: string, value: ResponseValue) => {
+  const setAnswer = (questionId: string, value: ResponseValue | null) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }))
     latest.current.set(questionId, value)
     dirty.current.add(questionId)
@@ -838,6 +840,26 @@ export default function AttemptPlayer({
               disabled={phase.kind === 'submitting'}
               onChange={(value) => setAnswer(currentQuestion.id, value)}
             />
+            {currentQuestion.type !== 'short' &&
+              isAnswered(answers[currentQuestion.id]) && (
+                <button
+                  className="button button-quiet player-clear-selection"
+                  type="button"
+                  disabled={phase.kind === 'submitting'}
+                  onClick={() => {
+                    setAnswer(currentQuestion.id, null)
+                    // The nav cell must un-green too: clearing revokes the
+                    // "moved past it answered" confirmation.
+                    setConfirmed((prev) => {
+                      const next = new Set(prev)
+                      next.delete(currentQuestion.id)
+                      return next
+                    })
+                  }}
+                >
+                  Clear selection
+                </button>
+              )}
           </div>
 
           {/* Navigation only. Nothing in this row commits the attempt. */}
@@ -946,7 +968,7 @@ function PlayerQuestion({
   onChange,
 }: {
   question: AttemptQuestion
-  value: ResponseValue | undefined
+  value: ResponseValue | null | undefined
   disabled: boolean
   onChange: (value: ResponseValue) => void
 }) {

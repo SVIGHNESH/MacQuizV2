@@ -1667,7 +1667,7 @@ export interface components {
             now: string;
         };
         SaveAnswerRequest: {
-            /** @description The response value; shape depends on question type. */
+            /** @description The response value; shape depends on question type. An explicit null clears the saved answer: the question counts as unanswered again and is never graded (or penalized) as a wrong commitment. */
             response: unknown;
             /** @description Accumulated focus time on this question, for analytics. */
             time_spent_ms?: number;

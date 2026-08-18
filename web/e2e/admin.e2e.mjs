@@ -134,6 +134,9 @@ async function loginRetry(email, password) {
 
 async function adminConsoleFlow(browser) {
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 900 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD)

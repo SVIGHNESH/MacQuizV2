@@ -129,6 +129,9 @@ async function provisionStudent() {
 async function studentFlow(browser, oneTimePassword) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1360, height: 900 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 
@@ -265,6 +268,9 @@ async function studentFlow(browser, oneTimePassword) {
 async function adminFlow(browser) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1360, height: 900 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD)

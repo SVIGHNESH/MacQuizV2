@@ -347,6 +347,9 @@ async function provision() {
 
 async function playerFlow(browser) {
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1600 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 
@@ -418,6 +421,24 @@ async function playerFlow(browser) {
   // Grid cells only turn green when the student leaves a question via Next
   // with an option picked, so advance with the footer button; Q4 is answered
   // but never confirmed and must stay uncolored until the reload below.
+  await pickOption(page, 1, 'Mars')
+  // Clear selection (18 Aug feedback): the control un-picks the option and
+  // the question counts as unanswered again before re-answering.
+  check(
+    await page.waitForSelector('.player-clear-selection', { timeout: 4000 }).then(() => true).catch(() => false),
+    'a picked option offers Clear selection',
+  )
+  await page.click('.player-clear-selection')
+  check(
+    await waitForText(page, '.player-nav-count', '0 of 4 answered'),
+    'clearing returns the question to unanswered',
+  )
+  check(
+    await page.evaluate(
+      () => document.querySelectorAll('.option-row-selected').length === 0,
+    ),
+    'clearing deselects the option row',
+  )
   await pickOption(page, 1, 'Mars')
   await clickButtonWithText(page, 'Next', '.player-footer')
   await pickOption(page, 2, '2')

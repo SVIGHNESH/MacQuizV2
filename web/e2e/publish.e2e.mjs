@@ -285,6 +285,9 @@ async function provisionCast() {
 
 async function publishFlow(browser) {
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1400 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 
@@ -557,6 +560,9 @@ async function cancelFlow(browser) {
   // the jar, so this lands straight on the workspace (and spends none of the
   // login rate-limit budget the suite order is built around).
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1400 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await waitForText(page, '.page-title', 'Quizzes', 8000)

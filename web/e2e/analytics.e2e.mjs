@@ -277,6 +277,9 @@ async function takeAttempt(browser, email, password, secondAnswer) {
   // first student's session cookie instead of showing the login screen.
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1600 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await page.waitForSelector('#login-email', { timeout: 5000 })
@@ -325,6 +328,9 @@ async function waitForClose(endsAt) {
 async function dashboardFlow(browser) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1600 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await page.waitForSelector('#login-email', { timeout: 5000 })
@@ -453,6 +459,9 @@ async function teacherAnalyticsTabFlow(browser) {
   // Each flow runs in its own context (the student flows need parallel
   // sessions), so this page starts signed out and logs the teacher in.
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 900 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await page.waitForSelector('#login-email', { timeout: 8000 })
@@ -546,6 +555,9 @@ async function adminAnalyticsTabFlow(browser) {
   // and the admin signs in on its own cookie jar.
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 900 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 

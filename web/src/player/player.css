@@ -548,6 +548,20 @@
   color: var(--color-primary-on-tint); /* #1849a9 on white - 8.0:1 */
 }
 
+/* Undo for a committed choice (feedback: "clear selection"). Quiet and
+   compact - an escape hatch, not a peer of the option rows above it. */
+.player-clear-selection {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 6px 12px;
+  font: 550 12.5px/1 var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.player-clear-selection:hover {
+  color: var(--color-danger);
+}
+
 .player-fieldset {
   margin: 0;
   padding: 0;

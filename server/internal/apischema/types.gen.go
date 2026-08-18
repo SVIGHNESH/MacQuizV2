@@ -912,7 +912,7 @@ type ResultRowSubmitKind string
 
 // SaveAnswerRequest defines model for SaveAnswerRequest.
 type SaveAnswerRequest struct {
-	// Response The response value; shape depends on question type.
+	// Response The response value; shape depends on question type. An explicit null clears the saved answer: the question counts as unanswered again and is never graded (or penalized) as a wrong commitment.
 	Response interface{} `json:"response"`
 
 	// TimeSpentMs Accumulated focus time on this question, for analytics.

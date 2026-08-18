@@ -234,6 +234,9 @@ async function provision() {
 async function takeAttempt(browser) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1600 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await page.waitForSelector('#login-email', { timeout: 5000 })
@@ -273,6 +276,9 @@ async function waitForClose(endsAt) {
 async function csvExportFlow(browser) {
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 1600 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await page.waitForSelector('#login-email', { timeout: 5000 })

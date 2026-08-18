@@ -107,9 +107,10 @@ export function coerceResponse(
   }
 }
 
-/** True when the response counts as answered (a blank short answer does not). */
-export function isAnswered(value: ResponseValue | undefined): boolean {
-  if (value === undefined) return false
+/** True when the response counts as answered (a blank short answer does not;
+ * null is an explicitly cleared selection). */
+export function isAnswered(value: ResponseValue | null | undefined): boolean {
+  if (value === undefined || value === null) return false
   if (typeof value === 'string') return value.trim() !== ''
   if (Array.isArray(value)) return value.length > 0
   return true

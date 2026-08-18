@@ -149,6 +149,12 @@ func gradeOne(ctx context.Context, db *sql.DB, attemptID string, pub EventPublis
 	var score float64
 	for _, q := range questions {
 		response, answered := responses[q.ID]
+		// A cleared answer leaves a row whose response is SQL NULL (scanned
+		// as nil); it is a blank, not a commitment, so it grades exactly
+		// like a question that never had a row.
+		if answered && response == nil {
+			answered = false
+		}
 		if !answered {
 			// An unanswered question simply contributes nothing; there is no
 			// row to mark, and the snapshot documents what was skipped. In

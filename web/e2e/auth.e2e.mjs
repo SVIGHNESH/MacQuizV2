@@ -130,6 +130,9 @@ async function provisionTeacher() {
 
 async function adminFlow(browser) {
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 860 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 
@@ -173,6 +176,9 @@ async function adminFlow(browser) {
 
 async function teacherFlow(browser, oneTimePassword) {
   const page = await browser.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.setViewport({ width: 1280, height: 860 })
   await page.goto(BASE, { waitUntil: 'networkidle0' })
 
@@ -235,6 +241,9 @@ async function rateLimitFlow(browser) {
   // signed-in browser never renders the sign-in form at all.
   const context = await browser.createBrowserContext()
   const page = await context.newPage()
+  // Pin the theme: these suites assert exact light-theme colors, and a
+  // dark host OS would otherwise flip prefers-color-scheme under them.
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
   await page.goto(BASE, { waitUntil: 'networkidle0' })
   await signIn(page, victim, 'not-the-password')
 

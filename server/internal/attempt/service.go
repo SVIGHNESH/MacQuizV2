@@ -1,6 +1,7 @@
 package attempt
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -428,18 +429,28 @@ func (s *Service) SaveAnswer(ctx context.Context, actor authusers.User, attemptI
 		return Answer{}, time.Time{}, fmt.Errorf("check snapshot membership: %w", err)
 	}
 
+	// A JSON null clears the answer (feedback: "clear selection"). It is
+	// stored as SQL NULL so the roster's answered count (response IS NOT
+	// NULL) and the grader both read it as blank - never as an
+	// answered-and-wrong commitment that negative marking would price.
+	stored := []byte(response)
+	if string(bytes.TrimSpace(response)) == "null" {
+		stored = nil
+	}
 	var ans Answer
 	ans.QuestionID = questionID
+	var storedResponse []byte
 	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO attempt_answers (attempt_id, question_id, response, time_spent_ms)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (attempt_id, question_id)
 		 DO UPDATE SET response = $3, time_spent_ms = $4, saved_at = now()
 		 RETURNING response, time_spent_ms, saved_at`,
-		attemptID, questionID, []byte(response), timeSpentMs).Scan(
-		&ans.Response, &ans.TimeSpentMs, &ans.SavedAt); err != nil {
+		attemptID, questionID, stored, timeSpentMs).Scan(
+		&storedResponse, &ans.TimeSpentMs, &ans.SavedAt); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("upsert answer: %w", err)
 	}
+	ans.Response = storedResponse
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE attempts SET current_question = $1 WHERE id = $2`, ordinal, attemptID); err != nil {
 		return Answer{}, time.Time{}, fmt.Errorf("update current_question: %w", err)

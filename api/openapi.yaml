@@ -3345,7 +3345,10 @@ components:
       required: [response]
       properties:
         response:
-          description: The response value; shape depends on question type.
+          description: >-
+            The response value; shape depends on question type. An explicit
+            null clears the saved answer: the question counts as unanswered
+            again and is never graded (or penalized) as a wrong commitment.
         time_spent_ms:
           type: integer
           minimum: 0

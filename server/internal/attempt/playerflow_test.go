@@ -211,6 +211,34 @@ func TestPlayerFlowE2E(t *testing.T) {
 		}
 	})
 
+	t.Run("a null response clears the answer", func(t *testing.T) {
+		status, body, _ := itest.Call(t, server, "PUT",
+			"/api/v1/attempts/"+attemptID+"/answers/"+questionID,
+			map[string]any{"response": nil}, taker)
+		if status != 200 {
+			t.Fatalf("clear save = %d %v", status, body)
+		}
+		// Stored as SQL NULL: the row survives but counts as unanswered
+		// everywhere "response IS NOT NULL" defines answered.
+		var count, answered int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT count(*), count(response) FROM attempt_answers WHERE attempt_id = $1`,
+			attemptID).Scan(&count, &answered); err != nil {
+			t.Fatalf("read answers: %v", err)
+		}
+		if count != 1 || answered != 0 {
+			t.Fatalf("after clear: %d rows, %d answered; want 1 row, 0 answered", count, answered)
+		}
+		// Re-answering after a clear works like any other upsert (restoring
+		// the state the resume subtest below asserts on).
+		status, _, _ = itest.Call(t, server, "PUT",
+			"/api/v1/attempts/"+attemptID+"/answers/"+questionID,
+			map[string]any{"response": "a", "time_spent_ms": 9000}, taker)
+		if status != 200 {
+			t.Fatalf("re-answer after clear = %d", status)
+		}
+	})
+
 	t.Run("autosave rejects garbage", func(t *testing.T) {
 		// A question outside this attempt's snapshot.
 		status, _, _ := itest.Call(t, server, "PUT",
