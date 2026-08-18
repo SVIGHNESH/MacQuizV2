@@ -115,18 +115,20 @@ export default function AuthoringWorkspace({ user }: { user: SessionUser }) {
               <span className="chip chip-role">Teacher</span>
             </span>
           </button>
-          <ThemeToggle />
-          <button
-            className="button button-quiet rail-signout"
-            type="button"
-            disabled={signingOut}
-            onClick={() => {
-              setSigningOut(true)
-              void logout()
-            }}
-          >
-            {signingOut ? 'Signing out…' : 'Sign out'}
-          </button>
+          <div className="rail-actions">
+            <button
+              className="button button-quiet rail-signout"
+              type="button"
+              disabled={signingOut}
+              onClick={() => {
+                setSigningOut(true)
+                void logout()
+              }}
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 

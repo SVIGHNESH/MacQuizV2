@@ -155,8 +155,44 @@
   max-width: 100%;
 }
 
+.rail-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .rail-signout {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Icon-only theme control: a quiet 36px square that cycles
+   system -> light -> dark; the glyph names the current preference. */
+.rail-theme-toggle {
+  flex: 0 0 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--motion-micro),
+    border-color var(--motion-micro),
+    background var(--motion-micro);
+}
+
+.rail-theme-toggle:hover {
+  color: var(--color-ink);
+  background: var(--color-well);
+}
+
+.rail-theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Main content */
