@@ -15,6 +15,7 @@ import PreviewModal from './PreviewModal'
 import QuestionCard from './QuestionCard'
 import QuizStatsPanel from './QuizStatsPanel'
 import ResultsReleasePanel from './ResultsReleasePanel'
+import TeacherResultsPanel from './TeacherResultsPanel'
 import ScheduleSection from './ScheduleSection'
 import { useAutosave, type SaveResult, type SaveState } from './useAutosave'
 
@@ -705,6 +706,7 @@ function LoadedEditor({
           {terminal && (
             <div className="editor-tab-view" hidden={activeTab !== 'results'}>
               <ResultsReleasePanel quiz={quiz} onUpdated={setQuiz} />
+              <TeacherResultsPanel quizId={quiz.id} />
               <QuizStatsPanel
                 quizId={quiz.id}
                 quizTitle={quiz.title}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import Leaderboard from './Leaderboard'
+import { correctAnswerLabel, correctAnswerText, responseText } from '../lib/answers'
 import {
   formatElapsed,
   formatWhen,
@@ -219,80 +220,17 @@ function formatOrdinal(value: number): string {
   return `${rounded}${suffix}`
 }
 
-function keysOf(raw: unknown): string[] {
-  if (typeof raw === 'string') return [raw]
-  if (Array.isArray(raw)) return raw.filter((k): k is string => typeof k === 'string')
-  return []
-}
-
-/**
- * "B · Encrypted vault" - the option letter, then what it said. The table
- * never lists the options themselves, so a bare letter would be unreadable;
- * every key carries its text, including each key of a multi.
- */
-function labelForKeys(question: ResultQuestion, keys: string[]): string {
-  return keys
-    .map((key) => {
-      const option = (question.options ?? []).find((o) => o.key === key)
-      const letter = key.toUpperCase()
-      return option ? `${letter} · ${option.text}` : letter
-    })
-    .join(', ')
-}
-
-/** What the student put down, in the shape their question type takes. */
-function yourAnswer(question: ResultQuestion): string {
-  switch (question.type) {
-    case 'single':
-    case 'multi': {
-      const keys = keysOf(question.response)
-      return keys.length ? labelForKeys(question, keys) : ''
-    }
-    case 'truefalse':
-      return typeof question.response === 'boolean'
-        ? question.response
-          ? 'True'
-          : 'False'
-        : ''
-    case 'short':
-      return typeof question.response === 'string' ? question.response.trim() : ''
-  }
-}
-
-/** The key, shown only where the student did not already find it. */
-function correctAnswer(question: ResultQuestion): string {
-  switch (question.type) {
-    case 'single':
-    case 'multi':
-      return labelForKeys(question, keysOf(question.correct))
-    case 'truefalse':
-      return question.correct === true
-        ? 'True'
-        : question.correct === false
-          ? 'False'
-          : ''
-    case 'short': {
-      const accepted = (question.correct as { accepted?: unknown })?.accepted
-      return keysOf(accepted).join(', ')
-    }
-  }
-}
-
 function AnswerRow({ question }: { question: ResultQuestion }) {
-  const answered = yourAnswer(question)
+  const answered = responseText(question)
   const verdict =
     question.is_correct === null
       ? { tone: 'skipped', label: 'Not answered' }
       : question.is_correct
         ? { tone: 'correct', label: 'Correct' }
         : { tone: 'incorrect', label: 'Incorrect' }
-  const key = question.is_correct ? '' : correctAnswer(question)
-  const keyLabel =
-    question.type === 'short'
-      ? 'Accepted'
-      : question.type === 'multi'
-        ? 'Correct answers'
-        : 'Correct answer'
+  // The key is shown only where the student did not already find it.
+  const key = question.is_correct ? '' : correctAnswerText(question)
+  const keyLabel = correctAnswerLabel(question)
 
   return (
     <div className="answer-row">

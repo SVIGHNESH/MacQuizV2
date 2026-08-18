@@ -1978,6 +1978,49 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/ResultsNotReleased"
+  /api/v1/attempts/{id}/review:
+    get:
+      operationId: getAttemptReview
+      summary: The teacher's per-question review of one graded attempt (quiz owner)
+      description: >-
+        Which questions the student answered, which they skipped, the
+        response they gave, the key, and what each earned - the drill-down
+        behind one row of GET /quizzes/:id/results. Gated on quiz
+        ownership, not release: the owning teacher reads it as soon as
+        grading lands, before any release, because releasing is their
+        decision and they need the detail first. Owner-only - a non-owning
+        teacher or an admin reads 404, so an attempt's existence never
+        leaks. Refused with 409 ATTEMPT_NOT_GRADED until the attempt's
+        grading has landed. Questions come back in the same per-attempt
+        order the player showed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The teacher review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptReview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            ATTEMPT_NOT_GRADED - the attempt has not finished grading yet;
+            try again shortly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/attempts/{id}/leaderboard:
     get:
       operationId: getAttemptLeaderboard
@@ -3651,12 +3694,14 @@ components:
     ResultQuestion:
       type: object
       description: >-
-        One snapshot question in the released review - what was asked, what
-        the student answered, the key, and what it earned. Unanswered
-        questions keep response and is_correct null.
+        One snapshot question in a graded review (the student's released
+        review and the teacher's attempt review share this shape) - what was
+        asked, what the student answered, the key, and what it earned.
+        Unanswered questions keep response, is_correct, and time_spent_ms
+        null.
       required:
         [id, position, type, body, correct, points, response, is_correct,
-         points_awarded]
+         points_awarded, time_spent_ms]
       properties:
         id:
           type: string
@@ -3686,6 +3731,12 @@ components:
           nullable: true
         points_awarded:
           type: number
+        time_spent_ms:
+          type: integer
+          nullable: true
+          description: >-
+            Summed autosave-reported time on this question, in milliseconds.
+            Null for an unanswered question.
     AttemptResult:
       type: object
       description: >-
@@ -3720,6 +3771,54 @@ components:
         released_at:
           type: string
           format: date-time
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResultQuestion"
+    AttemptReview:
+      type: object
+      description: >-
+        The teacher's per-question review of one graded attempt (GET
+        /attempts/:id/review) - the drill-down behind one row of the
+        results table. Same question shape as the student's released
+        review, but gated on quiz ownership instead of release.
+      required:
+        [attempt, student_id, full_name, email, avatar, quiz_title, score,
+         score_overridden, max_score, released_at, questions]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/Attempt"
+        student_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        avatar:
+          type: string
+          nullable: true
+          description: The student's User.avatar value; null renders as initials.
+        quiz_title:
+          type: string
+        score:
+          type: number
+        score_overridden:
+          type: boolean
+          description: >-
+            True once the teacher has overridden this attempt's score to zero
+            (docs/06 line 80) - only ever true for a kicked attempt.
+        max_score:
+          type: number
+        released_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the quiz's results were released to students, or null while
+            they are still withheld - the review itself does not wait for
+            release.
         questions:
           type: array
           items:

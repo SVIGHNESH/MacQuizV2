@@ -1059,6 +1059,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The teacher's per-question review of one graded attempt (quiz owner)
+         * @description Which questions the student answered, which they skipped, the response they gave, the key, and what each earned - the drill-down behind one row of GET /quizzes/:id/results. Gated on quiz ownership, not release: the owning teacher reads it as soon as grading lands, before any release, because releasing is their decision and they need the detail first. Owner-only - a non-owning teacher or an admin reads 404, so an attempt's existence never leaks. Refused with 409 ATTEMPT_NOT_GRADED until the attempt's grading has landed. Questions come back in the same per-attempt order the player showed.
+         */
+        get: operations["getAttemptReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attempts/{id}/leaderboard": {
         parameters: {
             query?: never;
@@ -1811,7 +1831,7 @@ export interface components {
              */
             server_time: string;
         };
-        /** @description One snapshot question in the released review - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response and is_correct null. */
+        /** @description One snapshot question in a graded review (the student's released review and the teacher's attempt review share this shape) - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response, is_correct, and time_spent_ms null. */
         ResultQuestion: {
             /** Format: uuid */
             id: string;
@@ -1827,6 +1847,8 @@ export interface components {
             response: unknown;
             is_correct: boolean | null;
             points_awarded: number;
+            /** @description Summed autosave-reported time on this question, in milliseconds. Null for an unanswered question. */
+            time_spent_ms: number | null;
         };
         /** @description The released results payload for one attempt. The attempt keeps its usual score-free shape; the released score rides at the top level. */
         AttemptResult: {
@@ -1840,6 +1862,28 @@ export interface components {
             percentile: number | null;
             /** Format: date-time */
             released_at: string;
+            questions: components["schemas"]["ResultQuestion"][];
+        };
+        /** @description The teacher's per-question review of one graded attempt (GET /attempts/:id/review) - the drill-down behind one row of the results table. Same question shape as the student's released review, but gated on quiz ownership instead of release. */
+        AttemptReview: {
+            attempt: components["schemas"]["Attempt"];
+            /** Format: uuid */
+            student_id: string;
+            full_name: string;
+            /** Format: email */
+            email: string;
+            /** @description The student's User.avatar value; null renders as initials. */
+            avatar: string | null;
+            quiz_title: string;
+            score: number;
+            /** @description True once the teacher has overridden this attempt's score to zero (docs/06 line 80) - only ever true for a kicked attempt. */
+            score_overridden: boolean;
+            max_score: number;
+            /**
+             * Format: date-time
+             * @description When the quiz's results were released to students, or null while they are still withheld - the review itself does not wait for release.
+             */
+            released_at: string | null;
             questions: components["schemas"]["ResultQuestion"][];
         };
         /** @description One student's standing on a quiz, from their best graded attempt. */
@@ -3706,6 +3750,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["ResultsNotReleased"];
+        };
+    };
+    getAttemptReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The teacher review. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptReview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description ATTEMPT_NOT_GRADED - the attempt has not finished grading yet; try again shortly. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getAttemptLeaderboard: {

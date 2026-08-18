@@ -52,6 +52,57 @@ type gradedAnswer struct {
 	response      json.RawMessage
 	isCorrect     *bool
 	pointsAwarded float64
+	timeSpentMs   int
+}
+
+// loadGradedAnswers reads every attempt_answers row for one attempt, keyed by
+// question id. A question with no row was never answered - there is no
+// explicit "skipped" flag, absence is the fact itself.
+func loadGradedAnswers(ctx context.Context, db querier, attemptID string) (map[string]gradedAnswer, error) {
+	answers := map[string]gradedAnswer{}
+	rows, err := db.QueryContext(ctx,
+		`SELECT question_id, response, coalesce(is_correct, false),
+		        coalesce(points_awarded, 0), time_spent_ms
+		 FROM attempt_answers WHERE attempt_id = $1`, attemptID)
+	if err != nil {
+		return nil, fmt.Errorf("load graded answers: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var qid string
+		var response []byte
+		var isCorrect bool
+		var awarded float64
+		var timeSpent int
+		if err := rows.Scan(&qid, &response, &isCorrect, &awarded, &timeSpent); err != nil {
+			return nil, fmt.Errorf("scan graded answer: %w", err)
+		}
+		answers[qid] = gradedAnswer{
+			response: response, isCorrect: &isCorrect,
+			pointsAwarded: awarded, timeSpentMs: timeSpent,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("load graded answers: %w", err)
+	}
+	return answers, nil
+}
+
+// assembleResultQuestions pairs each snapshot question (already in the order
+// the player showed) with its graded answer and totals the possible points.
+func assembleResultQuestions(questions []Question, answers map[string]gradedAnswer) ([]ResultQuestion, float64, error) {
+	result := make([]ResultQuestion, len(questions))
+	var maxScore float64
+	for i, q := range questions {
+		ans, answered := answers[q.ID]
+		rq, err := buildResultQuestion(q, ans, answered)
+		if err != nil {
+			return nil, 0, err
+		}
+		result[i] = rq
+		maxScore += q.Points
+	}
+	return result, maxScore, nil
 }
 
 // buildResultQuestion converts one snapshot Question plus its (possibly
@@ -93,6 +144,8 @@ func buildResultQuestion(q Question, ans gradedAnswer, answered bool) (ResultQue
 		rq.Response = &response
 		rq.IsCorrect = ans.isCorrect
 		rq.PointsAwarded = resultFloat32(ans.pointsAwarded)
+		timeSpent := ans.timeSpentMs
+		rq.TimeSpentMs = &timeSpent
 	}
 	return rq, nil
 }
@@ -150,40 +203,15 @@ func (s *Service) Result(ctx context.Context, actor authusers.User, id string) (
 		shuffleForAttempt(questions, a.Id.String())
 	}
 
-	answers := map[string]gradedAnswer{}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT question_id, response, coalesce(is_correct, false),
-		        coalesce(points_awarded, 0)
-		 FROM attempt_answers WHERE attempt_id = $1`, id)
+	answers, err := loadGradedAnswers(ctx, s.db, id)
 	if err != nil {
-		return Result{}, fmt.Errorf("load graded answers: %w", err)
+		return Result{}, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var qid string
-		var response []byte
-		var isCorrect bool
-		var awarded float64
-		if err := rows.Scan(&qid, &response, &isCorrect, &awarded); err != nil {
-			return Result{}, fmt.Errorf("scan graded answer: %w", err)
-		}
-		answers[qid] = gradedAnswer{response: response, isCorrect: &isCorrect, pointsAwarded: awarded}
+	questionsOut, maxScore, err := assembleResultQuestions(questions, answers)
+	if err != nil {
+		return Result{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return Result{}, fmt.Errorf("load graded answers: %w", err)
-	}
-
-	res.Questions = make([]ResultQuestion, len(questions))
-	var maxScore float64
-	for i, q := range questions {
-		ans, answered := answers[q.ID]
-		rq, err := buildResultQuestion(q, ans, answered)
-		if err != nil {
-			return Result{}, err
-		}
-		res.Questions[i] = rq
-		maxScore += q.Points
-	}
+	res.Questions = questionsOut
 	res.MaxScore = resultFloat32(maxScore)
 
 	if pct := quizPercentile(ctx, s.db, a.QuizId.String(), score, maxScore); pct != nil {

@@ -1,6 +1,6 @@
 # MacQuiz User Feedback Report - 18 Aug 2026
 
-Source: Google Form "MacQuiz Feedback" (created via `scripts/feedback-form.gs`), 18 responses collected 14:21-16:12 on 18 Aug 2026 from test users/students.
+Source: Google Form "MacQuiz Feedback", 18 responses collected 14:21-16:12 on 18 Aug 2026 from test users/students.
 
 ## Summary
 

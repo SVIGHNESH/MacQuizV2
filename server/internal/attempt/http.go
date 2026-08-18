@@ -74,12 +74,15 @@ func (h *Handler) Routes() http.Handler {
 	})
 	// Kick is a live-moderation power for teachers and admins (docs/06 section
 	// 4); the owner-vs-admin resource decision stays in the service, where a
-	// non-owning teacher answers 404.
+	// non-owning teacher answers 404. The teacher review rides the same staff
+	// gate; its owner-only decision (quiz.edit - admins read 404, like the
+	// results table it drills into) also lives in the service.
 	r.Group(func(r chi.Router) {
 		r.Use(requireStaff)
 		r.Post("/{id}/kick", h.handleKick)
 		r.Post("/{id}/readmit", h.handleReadmit)
 		r.Post("/{id}/override-score", h.handleOverrideScore)
+		r.Get("/{id}/review", h.handleReview)
 	})
 	return r
 }
@@ -377,6 +380,23 @@ func (h *Handler) handleResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, result)
+}
+
+// handleReview serves GET /attempts/{id}/review: the teacher's per-question
+// drill-down behind one row of the results table. ATTEMPT_NOT_GRADED (409)
+// until the grading job has landed; ownership denials read as 404 from the
+// service.
+func (h *Handler) handleReview(w http.ResponseWriter, r *http.Request) {
+	actor, _ := authusers.ActorFrom(r.Context())
+	id, ok := pathUUID(w, r, "id", "no such attempt")
+	if !ok {
+		return
+	}
+	review, err := h.svc.Review(r.Context(), actor, id)
+	if h.writeAttemptError(w, "read review", err, "no such attempt") {
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, review)
 }
 
 // handleLeaderboard serves GET /attempts/{id}/leaderboard: the quiz's ranked

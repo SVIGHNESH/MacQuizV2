@@ -4,9 +4,10 @@
 //
 // Drives a real Chromium through: a teacher publishes a 1-question quiz to
 // one student with a short live window, the student takes and submits it,
-// the worker closes the quiz, and the teacher's Analytics panel shows a
-// "Download results CSV" link that actually serves a valid CSV gradebook
-// with the student's row in it.
+// the worker closes the quiz, and the teacher's Student results panel shows
+// a "Download results CSV" link that actually serves a valid CSV gradebook
+// with the student's row in it. The same panel's Review button must open
+// the per-question attempt review drawer (GET /attempts/:id/review).
 //
 // Run:  node e2e/resultscsv.e2e.mjs
 // Env:  E2E_BASE_URL (default http://localhost:5173)
@@ -305,13 +306,15 @@ async function csvExportFlow(browser) {
     return
   }
 
+  // The CSV download lives in the Student results panel (not the analytics
+  // panel): it exports that table and is available from grading onward.
   const href = await page.$eval(
-    '.stats-panel-head a[download]',
+    '.results-panel-head a[download]',
     (el) => el.getAttribute('href'),
   ).catch(() => null)
   check(
     typeof href === 'string' && href.endsWith('/results.csv'),
-    `the panel shows a "Download results CSV" link (got href ${href})`,
+    `the results panel shows a "Download results CSV" link (got href ${href})`,
   )
   await shot(page, '96-csv-export-panel.png')
 
@@ -346,6 +349,51 @@ async function csvExportFlow(browser) {
       result.body.includes('submitted'),
       'the CSV row shows the submitted status',
     )
+  }
+
+  // The per-student results table is the drill-down entry point: Alice's
+  // graded row carries a Review button that opens the per-question drawer.
+  check(
+    await waitForText(page, '.results-name-full', 'Alice Ace', 8000),
+    "the Student results table lists Alice's row",
+  )
+  check(
+    await waitForText(page, '.results-table .chip', 'Graded', 8000),
+    "Alice's row reads Graded",
+  )
+  await clickButtonWithText(page, 'Review', '.results-table')
+  const gotDrawer = await page
+    .waitForSelector('.review-drawer .review-q', { timeout: 8000 })
+    .then(() => true)
+    .catch(() => false)
+  check(gotDrawer, 'Review opens the attempt review drawer')
+  if (gotDrawer) {
+    check(
+      await waitForText(
+        page,
+        '.review-q-text',
+        'CSV exports are part of Milestone 8.',
+        4000,
+      ),
+      'the drawer shows the question text',
+    )
+    check(
+      await waitForText(page, '.review-verdict', 'Correct', 4000),
+      "the drawer marks Alice's answer Correct",
+    )
+    check(
+      await waitForText(page, '.review-q-foot', 'Points 1 / 1', 4000),
+      'the drawer shows the points earned',
+    )
+    await shot(page, '97-attempt-review-drawer.png')
+    await page.keyboard.press('Escape')
+    const closed = await page
+      .waitForFunction(() => !document.querySelector('.review-drawer'), {
+        timeout: 4000,
+      })
+      .then(() => true)
+      .catch(() => false)
+    check(closed, 'Escape closes the review drawer')
   }
 }
 

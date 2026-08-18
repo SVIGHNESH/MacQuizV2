@@ -391,6 +391,28 @@ type AttemptResult struct {
 	ScoreOverridden bool `json:"score_overridden"`
 }
 
+// AttemptReview The teacher's per-question review of one graded attempt (GET /attempts/:id/review) - the drill-down behind one row of the results table. Same question shape as the student's released review, but gated on quiz ownership instead of release.
+type AttemptReview struct {
+	// Attempt The student-facing attempt shape. The owner is always the caller and the score is withheld until the results-release policy lands with grading, so neither appears here.
+	Attempt Attempt `json:"attempt"`
+
+	// Avatar The student's User.avatar value; null renders as initials.
+	Avatar    *string             `json:"avatar"`
+	Email     openapi_types.Email `json:"email"`
+	FullName  string              `json:"full_name"`
+	MaxScore  float32             `json:"max_score"`
+	Questions []ResultQuestion    `json:"questions"`
+	QuizTitle string              `json:"quiz_title"`
+
+	// ReleasedAt When the quiz's results were released to students, or null while they are still withheld - the review itself does not wait for release.
+	ReleasedAt *time.Time `json:"released_at"`
+	Score      float32    `json:"score"`
+
+	// ScoreOverridden True once the teacher has overridden this attempt's score to zero (docs/06 line 80) - only ever true for a kicked attempt.
+	ScoreOverridden bool               `json:"score_overridden"`
+	StudentId       openapi_types.UUID `json:"student_id"`
+}
+
 // AttemptSummary One of the caller's own attempts as the assigned list shows it. score stays null until the quiz's results are released.
 type AttemptSummary struct {
 	AttemptNo   int                  `json:"attempt_no"`
@@ -860,7 +882,7 @@ type Ready struct {
 	Status string `json:"status"`
 }
 
-// ResultQuestion One snapshot question in the released review - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response and is_correct null.
+// ResultQuestion One snapshot question in a graded review (the student's released review and the teacher's attempt review share this shape) - what was asked, what the student answered, the key, and what it earned. Unanswered questions keep response, is_correct, and time_spent_ms null.
 type ResultQuestion struct {
 	Body QuestionBody `json:"body"`
 
@@ -874,8 +896,11 @@ type ResultQuestion struct {
 	Position      int                `json:"position"`
 
 	// Response The autosaved response; shape depends on question type.
-	Response *interface{}       `json:"response"`
-	Type     ResultQuestionType `json:"type"`
+	Response *interface{} `json:"response"`
+
+	// TimeSpentMs Summed autosave-reported time on this question, in milliseconds. Null for an unanswered question.
+	TimeSpentMs *int               `json:"time_spent_ms"`
+	Type        ResultQuestionType `json:"type"`
 }
 
 // ResultQuestionType defines model for ResultQuestion.Type.

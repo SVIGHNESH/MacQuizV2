@@ -68,6 +68,7 @@ Every avatar mutation writes a `profile.updated` audit row with the from/to diff
 | `POST /quizzes/:id/extend` | Live only: extend ends_at (audited, broadcast) |
 | `POST /quizzes/:id/close` | Live only: force-close early (audited, broadcast) |
 | `GET /quizzes/:id/results` | Per-student attempt/score table; owner sees scores as grading lands, before release |
+| `GET /attempts/:id/review` | Per-question review of one graded attempt (the results table's drill-down): response, key, verdict, points, and time per question; owner-only (admins read 404, like the table), 409 `ATTEMPT_NOT_GRADED` until grading lands |
 | `POST /quizzes/:id/release-results` | Closed only: release scores to students (audited, idempotent); publish's `release_policy: auto` does this automatically |
 
 Publish preconditions: at least one question, `starts_at < ends_at` and in the future, a duration, at least one assigned student.

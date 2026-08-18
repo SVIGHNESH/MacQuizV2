@@ -44,9 +44,13 @@ body {
     opacity: 0;
     transform: translateY(8px);
   }
+  /* Ends at `none`, not translateY(0): with fill-mode both the final value
+     is retained forever, and any retained transform makes the element a
+     containing block for position: fixed - which pinned modals and drawers
+     opened from inside a .panel to the panel's box instead of the viewport. */
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 

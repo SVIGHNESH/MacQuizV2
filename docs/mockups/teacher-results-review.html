@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MacQuiz v2 - Teacher results review (mockup)</title>
+<!--
+  Static production mockup for the teacher-facing quiz results screen:
+  1. Per-student results table (roster pattern) with the CSV download.
+  2. Per-student attempt review drawer: question-by-question answers,
+     correct / incorrect / skipped, points and time per question.
+  Tokens are copied verbatim from web/src/styles/tokens.css.
+  The real app self-hosts Inter; the CDN link below is mockup-only.
+-->
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<style>
+:root {
+  color-scheme: light;
+  --color-ink: #131a26;
+  --color-ink-hover: #0a0e16;
+  --color-text-strong: #344054;
+  --color-text-secondary: #667085;
+  --color-text-muted: #98a2b3;
+  --color-border-input: #d0d5dd;
+  --color-border-hairline: #e9ebef;
+  --color-well: #f2f4f7;
+  --color-page: #f4f5f7;
+  --color-table-header: #fafbfc;
+  --color-surface: #ffffff;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-tint: #eff4ff;
+  --color-primary-on-tint: #1849a9;
+  --color-primary-selection-wash: #f5f8ff;
+  --color-success: #079455;
+  --color-success-dot: #12b76a;
+  --color-success-tint: #ecfdf3;
+  --color-success-on-tint: #067647;
+  --color-warning: #dc6803;
+  --color-warning-dot: #f79009;
+  --color-warning-tint: #fffaeb;
+  --color-warning-on-tint: #93370d;
+  --color-warning-border: #f4e0b8;
+  --color-danger: #d92d20;
+  --color-danger-hover: #b42318;
+  --color-danger-tint: #fef3f2;
+  --color-danger-on-tint: #b42318;
+  --color-danger-border: #f6cfca;
+  --color-chart-tint-1: #b3ccf9;
+  --color-chart-tint-2: #c7d7fe;
+  --font-sans: 'InterVariable', 'Inter', system-ui, -apple-system, sans-serif;
+  --text-display: 750 34px/1.15 var(--font-sans);
+  --text-page-title: 750 22px/1.2 var(--font-sans);
+  --text-card-title: 650 15px/1.35 var(--font-sans);
+  --text-body: 450 13.5px/1.5 var(--font-sans);
+  --text-secondary: 450 12.5px/1.45 var(--font-sans);
+  --text-eyebrow: 650 11px/1.3 var(--font-sans);
+  --tracking-page-title: -0.02em;
+  --tracking-card-title: -0.008em;
+  --tracking-eyebrow: 0.1em;
+  --radius-control: 8px;
+  --radius-button: 10px;
+  --radius-option-row: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+  --shadow-resting: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-floating: 0 24px 64px -16px rgba(16, 24, 40, 0.4);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  --overlay-modal: rgba(13, 18, 28, 0.52);
+  --motion-micro: 0.15s ease;
+  --motion-entrance: 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-ink: #e9eef7;
+  --color-ink-hover: #ffffff;
+  --color-text-strong: #d7dfec;
+  --color-text-secondary: #93a2ba;
+  --color-text-muted: #64748b;
+  --color-border-input: #33415c;
+  --color-border-hairline: #223047;
+  --color-well: #1a2539;
+  --color-page: #0c1322;
+  --color-table-header: #16203366;
+  --color-surface: #131c2e;
+  --color-primary: #4c83f7;
+  --color-primary-hover: #6d9bff;
+  --color-primary-tint: #16233f;
+  --color-primary-on-tint: #a5c3fd;
+  --color-primary-selection-wash: #121d33;
+  --color-success: #34c98a;
+  --color-success-dot: #12b76a;
+  --color-success-tint: #0c2b1f;
+  --color-success-on-tint: #6fdcae;
+  --color-warning: #f79009;
+  --color-warning-dot: #f79009;
+  --color-warning-tint: #2d2110;
+  --color-warning-on-tint: #fdb022;
+  --color-warning-border: #4d3a17;
+  --color-danger: #f2655a;
+  --color-danger-hover: #ff8478;
+  --color-danger-tint: #331512;
+  --color-danger-on-tint: #ff9c92;
+  --color-danger-border: #55221d;
+  --color-chart-tint-1: #2c477e;
+  --color-chart-tint-2: #223963;
+  --shadow-resting: 0 1px 2px rgba(2, 6, 23, 0.5);
+  --shadow-floating: 0 24px 64px -16px rgba(2, 6, 23, 0.85);
+  --focus-ring: 0 0 0 3px rgba(109, 155, 255, 0.28);
+  --overlay-modal: rgba(3, 7, 15, 0.68);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: var(--text-body);
+  color: var(--color-text-strong);
+  background: var(--color-page);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--motion-micro), color var(--motion-micro);
+}
+.num { font-variant-numeric: tabular-nums; }
+
+.frame { max-width: 1080px; margin: 0 auto; padding: 28px 32px 64px; }
+
+/* ---- Page header ---- */
+.crumbs { font: var(--text-secondary); color: var(--color-text-muted); margin-bottom: 10px; }
+.crumbs b { color: var(--color-text-secondary); font-weight: 550; }
+.page-head { display: flex; align-items: center; gap: 12px; }
+.page-title { font: var(--text-page-title); letter-spacing: var(--tracking-page-title); color: var(--color-ink); margin: 0; }
+.head-spacer { flex: 1; }
+.chip {
+  font: 650 10.5px/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 5px 9px; border-radius: var(--radius-pill);
+}
+.chip-closed { background: var(--color-well); color: var(--color-text-secondary); }
+.released-note { font: var(--text-secondary); color: var(--color-text-secondary); }
+.released-note .dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: var(--color-success-dot); margin-right: 6px; }
+
+.theme-toggle {
+  border: 1px solid var(--color-border-hairline); background: var(--color-surface); color: var(--color-text-secondary);
+  width: 34px; height: 34px; border-radius: var(--radius-button); cursor: pointer; font-size: 15px; line-height: 1;
+  transition: border-color var(--motion-micro), color var(--motion-micro);
+}
+.theme-toggle:hover { border-color: var(--color-border-input); color: var(--color-text-strong); }
+
+/* ---- Tabs ---- */
+.tabs { display: flex; gap: 4px; margin: 22px 0 20px; border-bottom: 1px solid var(--color-border-hairline); }
+.tab {
+  font: 550 13px/1 var(--font-sans); color: var(--color-text-secondary);
+  padding: 10px 14px 12px; border: 0; background: none; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab[aria-selected='true'] { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 650; }
+
+/* ---- Stat cards ---- */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat {
+  background: var(--color-surface); border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card); padding: 16px 18px; box-shadow: var(--shadow-resting);
+}
+.stat .value { font: 750 26px/1.1 var(--font-sans); letter-spacing: -0.02em; color: var(--color-ink); }
+.stat .value .denom { color: var(--color-text-muted); font-weight: 550; }
+.stat .label { font: 550 11px/1.3 var(--font-sans); color: var(--color-text-muted); margin-top: 6px; }
+.stat-hero { background: var(--color-ink); border-color: var(--color-ink); }
+.stat-hero .value { color: var(--color-page); }
+.stat-hero .label { color: var(--color-text-muted); }
+
+/* ---- Results table card ---- */
+.card {
+  background: var(--color-surface); border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-resting); overflow: hidden;
+}
+.card-toolbar { display: flex; align-items: center; gap: 10px; padding: 16px 20px; }
+.card-title { font: var(--text-card-title); letter-spacing: var(--tracking-card-title); color: var(--color-ink); margin: 0; }
+.card-sub { font: var(--text-secondary); color: var(--color-text-muted); }
+.toolbar-spacer { flex: 1; }
+
+.button {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: 550 13px/1 var(--font-sans); border-radius: var(--radius-button);
+  padding: 9px 14px; cursor: pointer; text-decoration: none;
+  transition: background var(--motion-micro), border-color var(--motion-micro), color var(--motion-micro);
+}
+.button-quiet {
+  background: var(--color-surface); color: var(--color-text-strong);
+  border: 1px solid var(--color-border-input);
+}
+.button-quiet:hover { border-color: var(--color-text-muted); }
+.button-link {
+  background: none; border: 0; color: var(--color-primary); padding: 6px 8px; font-weight: 550;
+  border-radius: var(--radius-control);
+}
+.button-link:hover { color: var(--color-primary-hover); background: var(--color-primary-tint); }
+
+.rtable { width: 100%; }
+.rrow {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.5fr) 90px 130px 150px 90px 130px 84px;
+  align-items: center; gap: 8px; padding: 11px 20px;
+  border-top: 1px solid var(--color-well);
+}
+.rrow-head {
+  background: var(--color-table-header);
+  font: 650 10.5px/1.3 var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-muted); padding-top: 9px; padding-bottom: 9px;
+  border-top: 1px solid var(--color-border-hairline); border-bottom: 1px solid var(--color-border-hairline);
+}
+.rrow:not(.rrow-head):hover { background: var(--color-primary-selection-wash); }
+
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 999px; flex: none;
+  display: grid; place-items: center;
+  font: 650 11px/1 var(--font-sans);
+  background: var(--color-primary-tint); color: var(--color-primary-on-tint);
+}
+.avatar.t2 { background: var(--color-success-tint); color: var(--color-success-on-tint); }
+.avatar.t3 { background: var(--color-chart-tint-2); color: var(--color-primary-on-tint); }
+.avatar.t4 { background: var(--color-warning-tint); color: var(--color-warning-on-tint); }
+.avatar.t5 { background: var(--color-well); color: var(--color-text-secondary); }
+.who .name { font-weight: 600; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who .email { font: var(--text-secondary); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.status { display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--font-sans); }
+.status .dot { width: 7px; height: 7px; border-radius: 999px; }
+.st-graded { color: var(--color-success); }
+.st-graded .dot { background: var(--color-success-dot); }
+.st-kicked { color: var(--color-danger); }
+.st-kicked .dot { background: var(--color-danger); }
+.st-none { color: var(--color-text-muted); }
+.st-none .dot { background: var(--color-text-muted); }
+
+.score { display: flex; align-items: center; gap: 10px; }
+.score .n { font-weight: 650; color: var(--color-ink); }
+.score .denom { color: var(--color-text-muted); font-weight: 450; }
+.bar { flex: 1; max-width: 64px; height: 5px; border-radius: 999px; background: var(--color-well); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 999px; background: var(--color-primary); }
+
+.vio {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: 650 11.5px/1 var(--font-sans); color: var(--color-warning-on-tint);
+  background: var(--color-warning-tint); border: 1px solid var(--color-warning-border);
+  padding: 4px 8px; border-radius: var(--radius-pill);
+}
+.cell-muted { color: var(--color-text-muted); }
+.cell-sec { font: var(--text-secondary); color: var(--color-text-secondary); }
+
+.card-foot { padding: 12px 20px; border-top: 1px solid var(--color-border-hairline); font: var(--text-secondary); color: var(--color-text-muted); }
+
+/* ---- Review drawer ---- */
+.overlay {
+  position: fixed; inset: 0; background: var(--color-overlay, var(--overlay-modal));
+  backdrop-filter: blur(2px); display: none; z-index: 50;
+}
+.overlay.open { display: block; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 94vw); z-index: 51;
+  background: var(--color-surface); border-left: 1px solid var(--color-border-hairline);
+  box-shadow: var(--shadow-floating);
+  transform: translateX(103%); transition: transform var(--motion-entrance);
+  display: flex; flex-direction: column;
+}
+.drawer.open { transform: none; }
+@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+
+.drawer-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--color-border-hairline); }
+.drawer-top { display: flex; align-items: center; gap: 12px; }
+.drawer-top .avatar { width: 36px; height: 36px; font-size: 12.5px; }
+.drawer-name { font: var(--text-card-title); color: var(--color-ink); }
+.drawer-mail { font: var(--text-secondary); color: var(--color-text-muted); }
+.drawer-close {
+  margin-left: auto; border: 1px solid var(--color-border-hairline); background: none;
+  color: var(--color-text-secondary); width: 30px; height: 30px; border-radius: var(--radius-control);
+  cursor: pointer; font-size: 14px;
+}
+.drawer-close:hover { border-color: var(--color-border-input); color: var(--color-text-strong); }
+.drawer-meta { display: grid; grid-template-columns: repeat(4, auto); gap: 6px 26px; margin-top: 16px; }
+.meta-k { font: 650 10.5px/1.3 var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); }
+.meta-v { font: 600 13px/1.3 var(--font-sans); color: var(--color-ink); }
+
+.drawer-body { overflow-y: auto; padding: 18px 24px 28px; flex: 1; }
+.qcount-note { font: var(--text-secondary); color: var(--color-text-secondary); margin-bottom: 14px; }
+
+.q {
+  border: 1px solid var(--color-border-hairline); border-radius: var(--radius-card);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.q-head { display: flex; align-items: baseline; gap: 10px; }
+.q-no { font: 650 11px/1.3 var(--font-sans); letter-spacing: 0.08em; color: var(--color-text-muted); }
+.q-prompt { font: 550 13.5px/1.45 var(--font-sans); color: var(--color-ink); flex: 1; }
+.q-verdict {
+  font: 650 10.5px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: var(--radius-pill); flex: none;
+}
+.v-correct { background: var(--color-success-tint); color: var(--color-success-on-tint); }
+.v-wrong { background: var(--color-danger-tint); color: var(--color-danger-on-tint); }
+.v-skip { background: var(--color-well); color: var(--color-text-secondary); }
+
+.opts { display: grid; gap: 6px; margin-top: 11px; }
+.opt {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--color-border-hairline); border-radius: var(--radius-option-row);
+  padding: 8px 11px; font: var(--text-body); color: var(--color-text-strong);
+}
+.opt .key {
+  width: 22px; height: 22px; border-radius: 7px; flex: none;
+  display: grid; place-items: center;
+  font: 650 11px/1 var(--font-sans);
+  background: var(--color-well); color: var(--color-text-secondary);
+}
+.opt-picked { border-color: var(--color-primary); background: var(--color-primary-selection-wash); }
+.opt-picked .key { background: var(--color-primary); color: #fff; }
+:root[data-theme='dark'] .opt-picked .key { color: var(--color-page); }
+.opt-tag { margin-left: auto; font: 650 10.5px/1 var(--font-sans); letter-spacing: 0.05em; text-transform: uppercase; flex: none; }
+.tag-key { color: var(--color-success); }
+.tag-pick { color: var(--color-primary); }
+.short-answer {
+  margin-top: 11px; border: 1px dashed var(--color-border-input); border-radius: var(--radius-option-row);
+  padding: 9px 12px; color: var(--color-text-muted); font: var(--text-secondary);
+}
+.q-foot { display: flex; gap: 18px; margin-top: 11px; font: var(--text-secondary); color: var(--color-text-secondary); }
+.q-foot b { font-weight: 650; color: var(--color-text-strong); }
+
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .rrow { grid-template-columns: minmax(160px, 1.4fr) 110px 90px 84px; }
+  .rrow > :nth-child(2), .rrow > :nth-child(6), .rrow > :nth-child(5) { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="crumbs">Quizzes / <b>DBMS Unit 2 - Normalization</b></div>
+  <div class="page-head">
+    <h1 class="page-title">DBMS Unit 2 - Normalization</h1>
+    <span class="chip chip-closed">Closed</span>
+    <div class="head-spacer"></div>
+    <span class="released-note"><span class="dot"></span>Results released 18 Aug, 10:45</span>
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">&#9789;</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="false">Questions</button>
+    <button class="tab" role="tab" aria-selected="false">Audience</button>
+    <button class="tab" role="tab" aria-selected="true">Results</button>
+    <button class="tab" role="tab" aria-selected="false">Analytics</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat stat-hero"><div class="value num">14.2<span class="denom"> / 20</span></div><div class="label">Class mean</div></div>
+    <div class="stat"><div class="value num">15<span class="denom"> / 20</span></div><div class="label">Median</div></div>
+    <div class="stat"><div class="value num">26<span class="denom"> / 28</span></div><div class="label">Participation</div></div>
+    <div class="stat"><div class="value num">27</div><div class="label">Graded attempts</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-toolbar">
+      <div>
+        <h2 class="card-title">Student results</h2>
+        <div class="card-sub">28 assigned &middot; one row per attempt</div>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <a class="button button-quiet" href="#" onclick="return false">&#8595; Download results CSV</a>
+    </div>
+
+    <div class="rtable">
+      <div class="rrow rrow-head">
+        <div>Student</div><div>Attempt</div><div>Status</div><div>Score</div><div>Integrity</div><div>Submitted</div><div></div>
+      </div>
+
+      <div class="rrow">
+        <div class="who"><span class="avatar">PN</span><span><div class="name">Priya Nair</div><div class="email">priya.n@college.edu</div></span></div>
+        <div class="cell-sec num">1 <span class="cell-muted">of 1</span></div>
+        <div><span class="status st-graded"><span class="dot"></span>Graded</span></div>
+        <div class="score"><span class="num"><span class="n">14</span><span class="denom"> / 20</span></span><span class="bar"><i style="width:70%"></i></span></div>
+        <div class="cell-muted">-</div>
+        <div class="cell-sec num">10:31</div>
+        <div><button class="button button-link js-review">Review</button></div>
+      </div>
+
+      <div class="rrow">
+        <div class="who"><span class="avatar t2">AK</span><span><div class="name">Arjun Kulkarni</div><div class="email">arjun.k@college.edu</div></span></div>
+        <div class="cell-sec num">1 <span class="cell-muted">of 1</span></div>
+        <div><span class="status st-graded"><span class="dot"></span>Graded</span></div>
+        <div class="score"><span class="num"><span class="n">18</span><span class="denom"> / 20</span></span><span class="bar"><i style="width:90%"></i></span></div>
+        <div class="cell-muted">-</div>
+        <div class="cell-sec num">10:24</div>
+        <div><button class="button button-link js-review">Review</button></div>
+      </div>
+
+      <div class="rrow">
+        <div class="who"><span class="avatar t3">SD</span><span><div class="name">Sneha Deshmukh</div><div class="email">sneha.d@college.edu</div></span></div>
+        <div class="cell-sec num">1 <span class="cell-muted">of 1</span></div>
+        <div><span class="status st-graded"><span class="dot"></span>Graded</span></div>
+        <div class="score"><span class="num"><span class="n">11</span><span class="denom"> / 20</span></span><span class="bar"><i style="width:55%"></i></span></div>
+        <div><span class="vio">&#9650; 1</span></div>
+        <div class="cell-sec num">10:29</div>
+        <div><button class="button button-link js-review">Review</button></div>
+      </div>
+
+      <div class="rrow">
+        <div class="who"><span class="avatar t4">RV</span><span><div class="name">Rahul Verma</div><div class="email">rahul.v@college.edu</div></span></div>
+        <div class="cell-sec num">1 <span class="cell-muted">of 1</span></div>
+        <div><span class="status st-kicked"><span class="dot"></span>Kicked</span></div>
+        <div class="score"><span class="num"><span class="n">6</span><span class="denom"> / 20</span></span><span class="bar"><i style="width:30%"></i></span></div>
+        <div><span class="vio">&#9650; 3</span></div>
+        <div class="cell-sec num">10:18</div>
+        <div><button class="button button-link js-review">Review</button></div>
+      </div>
+
+      <div class="rrow">
+        <div class="who"><span class="avatar t5">MI</span><span><div class="name">Mohammed Irfan</div><div class="email">mohd.i@college.edu</div></span></div>
+        <div class="cell-muted">-</div>
+        <div><span class="status st-none"><span class="dot"></span>Not started</span></div>
+        <div class="cell-muted">-</div>
+        <div class="cell-muted">-</div>
+        <div class="cell-muted">-</div>
+        <div></div>
+      </div>
+    </div>
+
+    <div class="card-foot">CSV includes every assigned student and attempt: name, email, attempt, status, submit kind, timestamps, score, max score, override flag.</div>
+  </div>
+</div>
+
+<!-- Per-student attempt review drawer -->
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-label="Attempt review">
+  <div class="drawer-head">
+    <div class="drawer-top">
+      <span class="avatar">PN</span>
+      <div>
+        <div class="drawer-name">Priya Nair &middot; Attempt 1</div>
+        <div class="drawer-mail">priya.n@college.edu</div>
+      </div>
+      <button class="drawer-close" id="drawerClose" aria-label="Close review">&#10005;</button>
+    </div>
+    <div class="drawer-meta">
+      <div><div class="meta-k">Score</div><div class="meta-v num">14 / 20</div></div>
+      <div><div class="meta-k">Submitted</div><div class="meta-v num">10:31</div></div>
+      <div><div class="meta-k">Duration</div><div class="meta-v num">29:14</div></div>
+      <div><div class="meta-k">Answered</div><div class="meta-v num">9 / 10</div></div>
+    </div>
+  </div>
+
+  <div class="drawer-body">
+    <div class="qcount-note">Questions in the order the student saw them. Skipped questions are shown without judgment - a skip is not evidence of weakness.</div>
+
+    <div class="q">
+      <div class="q-head"><span class="q-no">Q1</span><span class="q-prompt">Which normal form removes partial dependencies on a composite primary key?</span><span class="q-verdict v-correct">Correct</span></div>
+      <div class="opts">
+        <div class="opt"><span class="key">A</span>First normal form (1NF)</div>
+        <div class="opt opt-picked"><span class="key">B</span>Second normal form (2NF)<span class="opt-tag tag-key">Correct answer</span></div>
+        <div class="opt"><span class="key">C</span>Third normal form (3NF)</div>
+        <div class="opt"><span class="key">D</span>Boyce-Codd normal form</div>
+      </div>
+      <div class="q-foot"><span>Points <b class="num">2 / 2</b></span><span>Time <b class="num">0:48</b></span></div>
+    </div>
+
+    <div class="q">
+      <div class="q-head"><span class="q-no">Q2</span><span class="q-prompt">Select all statements that are true of a candidate key.</span><span class="q-verdict v-wrong">Incorrect</span></div>
+      <div class="opts">
+        <div class="opt opt-picked"><span class="key">A</span>It uniquely identifies every row<span class="opt-tag tag-key">Correct answer</span></div>
+        <div class="opt"><span class="key">B</span>It must be minimal<span class="opt-tag tag-key">Correct answer</span></div>
+        <div class="opt opt-picked"><span class="key">C</span>A table can have at most one<span class="opt-tag tag-pick">Student's pick</span></div>
+        <div class="opt"><span class="key">D</span>It always contains a single column</div>
+      </div>
+      <div class="q-foot"><span>Points <b class="num">0 / 3</b></span><span>Time <b class="num">1:52</b></span></div>
+    </div>
+
+    <div class="q">
+      <div class="q-head"><span class="q-no">Q3</span><span class="q-prompt">State the condition a relation must satisfy to be in BCNF.</span><span class="q-verdict v-skip">Skipped</span></div>
+      <div class="short-answer">No answer saved for this question.</div>
+      <div class="q-foot"><span>Points <b class="num">0 / 2</b></span><span>Time <b class="num">0:12</b></span></div>
+    </div>
+
+    <div class="q">
+      <div class="q-head"><span class="q-no">Q4</span><span class="q-prompt">A relation in 3NF is free of which anomaly by definition?</span><span class="q-verdict v-wrong">Incorrect</span></div>
+      <div class="opts">
+        <div class="opt"><span class="key">A</span>Insertion anomaly</div>
+        <div class="opt"><span class="key">B</span>Deletion anomaly</div>
+        <div class="opt"><span class="key">C</span>Transitive dependency<span class="opt-tag tag-key">Correct answer</span></div>
+        <div class="opt opt-picked"><span class="key">D</span>Join dependency<span class="opt-tag tag-pick">Student's pick</span></div>
+      </div>
+      <div class="q-foot"><span>Points <b class="num">0 / 2</b></span><span>Time <b class="num">1:05</b></span></div>
+    </div>
+  </div>
+</aside>
+
+<script>
+  const overlay = document.getElementById('overlay');
+  const drawer = document.getElementById('drawer');
+  const open = () => { overlay.classList.add('open'); drawer.classList.add('open'); };
+  const close = () => { overlay.classList.remove('open'); drawer.classList.remove('open'); };
+  document.querySelectorAll('.js-review').forEach(b => b.addEventListener('click', open));
+  document.getElementById('drawerClose').addEventListener('click', close);
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  const root = document.documentElement;
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    root.dataset.theme = root.dataset.theme === 'dark' ? '' : 'dark';
+  });
+</script>
+</body>
+</html>
