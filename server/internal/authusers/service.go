@@ -28,7 +28,18 @@ var (
 	// ErrSessionInvalid covers unknown, expired, reused, and revoked
 	// refresh tokens; the client's only recovery is a fresh login.
 	ErrSessionInvalid = errors.New("session invalid")
+	// ErrSessionRaced is a rotated token replayed within the reuse grace
+	// window: almost certainly two tabs (or concurrent requests) of the same
+	// browser racing to refresh, not theft. The loser gets a 401 but keeps
+	// its cookies - the winner's fresh cookies are already in the shared jar.
+	ErrSessionRaced = errors.New("session refresh raced")
 )
+
+// RefreshReuseGrace is how long after a rotation a replay of the old token is
+// treated as a same-browser race (ErrSessionRaced, no revocation) rather than
+// theft (whole family revoked). Concurrent tabs refresh within milliseconds
+// of each other; a stolen token is typically replayed much later.
+const RefreshReuseGrace = 30 * time.Second
 
 // User is the account shape returned to clients. password_hash never leaves
 // the package.
@@ -154,6 +165,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (User, strin
 		return User{}, "", "", fmt.Errorf("load session: %w", err)
 	}
 
+	if usedAt.Valid && !revokedAt.Valid && now.Sub(usedAt.Time) <= RefreshReuseGrace {
+		return User{}, "", "", ErrSessionRaced
+	}
 	if usedAt.Valid || revokedAt.Valid {
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE user_sessions SET revoked_at = $1

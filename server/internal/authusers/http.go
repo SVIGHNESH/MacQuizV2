@@ -118,6 +118,13 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, access, refresh, err := h.svc.Refresh(r.Context(), c.Value)
+	if errors.Is(err, ErrSessionRaced) {
+		// A concurrent tab won the rotation; its Set-Cookie is already in
+		// the browser's jar, so do NOT clear cookies - just tell this
+		// caller its refresh didn't take and let it retry with the jar.
+		httpapi.WriteError(w, http.StatusUnauthorized, httpapi.CodeUnauthenticated, "refresh raced; retry")
+		return
+	}
 	if errors.Is(err, ErrSessionInvalid) {
 		h.clearSessionCookies(w)
 		httpapi.WriteError(w, http.StatusUnauthorized, httpapi.CodeUnauthenticated, "session expired; log in again")

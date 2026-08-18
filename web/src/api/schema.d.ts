@@ -95,7 +95,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate the refresh token and mint a new access token
-         * @description Uses the refresh cookie. Presenting an already-used or revoked token is treated as theft and revokes the whole session family.
+         * @description Uses the refresh cookie. Presenting an already-used token within 30 seconds of its rotation is treated as a same-browser race (401, no revocation, cookies untouched - retry with the current jar); any later replay, or a revoked token, is treated as theft and revokes the whole session family.
          */
         post: operations["refreshSession"];
         delete?: never;

@@ -119,13 +119,31 @@ func TestAuthFlowE2E(t *testing.T) {
 			t.Fatal("refresh did not rotate the refresh token")
 		}
 
-		// Replaying the pre-rotation token is reuse: it must fail AND kill
-		// the successor (the whole family), per docs/08-security.md.
+		// Replaying the pre-rotation token immediately is a same-browser
+		// race (two tabs refreshing at once), not theft: it must fail with
+		// 401 but leave the successor - and the family - alive.
 		status, _, _ = call(t, server, "POST", "/api/v1/auth/refresh", nil, first)
+		if status != 401 {
+			t.Fatalf("raced refresh token = %d, want 401", status)
+		}
+		status, _, third := call(t, server, "POST", "/api/v1/auth/refresh", nil, second)
+		if status != 200 {
+			t.Fatalf("successor token after raced reuse = %d, want 200 (family intact)", status)
+		}
+
+		// A replay outside the grace window is reuse: it must fail AND kill
+		// the successor (the whole family), per docs/08-security.md.
+		// Backdate the rotation instead of sleeping through the grace.
+		if _, err := sqlDB.ExecContext(ctx,
+			`UPDATE user_sessions SET used_at = used_at - interval '5 minutes'
+			 WHERE used_at IS NOT NULL`); err != nil {
+			t.Fatalf("backdate used_at: %v", err)
+		}
+		status, _, _ = call(t, server, "POST", "/api/v1/auth/refresh", nil, second)
 		if status != 401 {
 			t.Fatalf("reused refresh token = %d, want 401", status)
 		}
-		status, _, _ = call(t, server, "POST", "/api/v1/auth/refresh", nil, second)
+		status, _, _ = call(t, server, "POST", "/api/v1/auth/refresh", nil, third)
 		if status != 401 {
 			t.Fatalf("successor token after reuse = %d, want 401 (family revoked)", status)
 		}

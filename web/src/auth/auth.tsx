@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api } from '../api/client'
+import { api, keepSessionFresh, SESSION_EXPIRED_EVENT } from '../api/client'
 import {
   AuthActionError,
   AuthContext,
@@ -46,6 +46,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // The access cookie lives 15 minutes. authFetch transparently refreshes on
+  // a 401, but the WebSocket handshake and long idle stretches don't go
+  // through it, so also refresh proactively while signed in - well inside
+  // the token lifetime so a quiz never sees an expired cookie.
+  useEffect(() => {
+    if (state.phase !== 'signed-in') return
+    const interval = setInterval(() => {
+      void keepSessionFresh()
+    }, 10 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [state.phase])
+
+  // authFetch dispatches this only after a refresh-and-retry cycle still got
+  // a 401: the session is really gone, show the login screen instead of
+  // letting every request fail quietly.
+  useEffect(() => {
+    const onExpired = () => {
+      setState((prev) => (prev.phase === 'signed-in' ? { phase: 'signed-out' } : prev))
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {

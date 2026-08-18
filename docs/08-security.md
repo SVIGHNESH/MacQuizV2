@@ -6,6 +6,7 @@ Status: implementation baseline.
 ## 1. Authentication
 
 - Short-lived JWT access tokens (15 min) plus rotating refresh tokens in httpOnly cookies.
+- Refresh reuse detection: replaying a rotated token more than 30 s after rotation is theft and revokes the whole session family; within 30 s it is treated as concurrent tabs racing (401, no revocation) so a multi-tab browser cannot log itself out.
 - First login with an admin-issued credential forces a password reset.
 - Password hashing: Argon2id.
 - Single active session per student during attempts: starting an attempt from a second device invalidates the first socket and is logged as an event the teacher can see.
