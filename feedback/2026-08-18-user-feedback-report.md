@@ -39,12 +39,12 @@ The single biggest complaint, reported independently by at least 5 users:
 - "Session time out problem."
 
 
-### P1 - Bug: cannot clear a selected answer
+### P1 - Bug: cannot clear a selected answer - FIXED 18 Aug 2026
 
 - "clear selection are not found so i can not remove the selected one"
 
-The attempt player has no way to deselect a chosen option on a question.
-Add a "Clear selection" control (and verify the unanswered state propagates to the answer-nav cells and autosave).
+A "Clear selection" control now appears under any answered choice question.
+It autosaves a null that the server stores as a true blank, so a cleared question is never graded (or negative-marked) as a wrong commitment, and the sidebar cell returns to unanswered.
 
 ### P1 - Results and analytics dashboards (7 votes)
 
@@ -73,7 +73,7 @@ No specific defect named; general polish and motion-design pass requested.
 ## Recommended action order
 
 1. ~~Reproduce and fix the mid-attempt authentication failure (P0)~~ - done 18 Aug 2026, see the P0 section.
-2. Add a clear-selection control in the attempt player (P1).
+2. ~~Add a clear-selection control in the attempt player (P1)~~ - done 18 Aug 2026.
 3. Interview 2-3 teachers about what the analytics dashboards are missing (P1).
 4. Scope proctoring/monitoring improvements and a UI polish pass (P2).
 5. Backlog the P3 feature requests (dark mode, leaderboard, new question types, instructions).
