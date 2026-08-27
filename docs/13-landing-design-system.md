@@ -1,4 +1,15 @@
-# 13. Landing design language: "The Question Paper"
+# 13. Landing design language: "The Monograph"
+
+> Superseded note (August 2026).
+> The landing page was rebuilt as a dark monograph: `web/src/screens/LandingScreen.tsx` + `web/src/styles/landing.css`.
+> The page reads like a case-bound volume: a running head with a live page number, roman-numeral dividers, a preface, a contents index, the five steps of a paper as chapter spreads with figures, the three roles as draggable specimen cards, the two walkthroughs, and a closing section that hosts the team credits and the sign-in card.
+> Copy is product-only: no invented volume or page numbers, no colophon prose; the numerals and dividers are structure, not fiction.
+> Palette: the slate ramp (`--color-slate-950/900/800/400`) is the paper, `--color-primary` mixed 62% with white plays the foil/accent role, ivory is `slate-400` mixed 18% with white, red stays reserved for penalties, green for live signals.
+> Every colour is a token or a `color-mix()` of tokens, declared as `--mq-*` on `.landing`.
+> Fonts keep their roles from the section below: Fraunces for display, IBM Plex Mono for metadata, Inter for body.
+> The "question paper" system below still governs `web/public/guides/*` and any printable surface.
+
+## The earlier "Question Paper" dialect
 
 This is the design system of the signed-out landing page (`web/src/screens/LandingScreen.tsx` + the landing block of `web/src/App.css`).
 It is a marketing-surface dialect of the core app system (`docs/11-frontend-design-system.md`): it inherits every color token from `web/src/styles/tokens.css` and layers an editorial voice on top.
