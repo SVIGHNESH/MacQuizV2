@@ -56,6 +56,10 @@ jobs:
             VERSION=${{ steps.tag.outputs.tag }}
             COMMIT=${{ github.sha }}
           tags: ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.tag }}
+          # Layer cache keyed on go.mod/go.sum: an unchanged dependency set
+          # skips `go mod download` entirely instead of re-fetching it.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   rollout:
     needs: build

@@ -13,7 +13,9 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN go mod download
+# proxy.golang.org occasionally drops a stream mid-download; retry rather
+# than fail the whole deploy on a transient network blip.
+RUN for i in 1 2 3; do go mod download && break || { echo "go mod download failed (attempt $i)"; sleep 5; }; done && go mod verify
 
 COPY . .
 ARG VERSION=dev
