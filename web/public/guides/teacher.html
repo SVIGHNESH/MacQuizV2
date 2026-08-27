@@ -63,7 +63,7 @@
   <section class="section" id="set">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section A - Setting the paper</span>
+        <div class="chapter" data-part="Invigilator · Section A"><span class="chapter-no">01</span><span class="chapter-label">Setting the paper<small>Section A</small></span></div>
         <h2 class="section-title">First you write the questions, <em class="accent">one way or the other.</em></h2>
         <p class="section-sub">
           A new quiz starts as a Draft. Nothing about a Draft is visible to a single student, so
@@ -155,7 +155,7 @@
   <section class="section" id="hall">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section B - Choosing the hall</span>
+        <div class="chapter" data-part="Invigilator · Section B"><span class="chapter-no">02</span><span class="chapter-label">Choosing the hall<small>Section B</small></span></div>
         <h2 class="section-title">Then you decide who sits it, <em class="accent">and exactly when.</em></h2>
         <p class="section-sub">
           Publishing is the moment a Draft becomes real: the questions and guardrails are snapshotted
@@ -225,7 +225,7 @@
   <section class="section" id="invigilate">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section C - Invigilating</span>
+        <div class="chapter" data-part="Invigilator · Section C"><span class="chapter-no">03</span><span class="chapter-label">Invigilating<small>Section C</small></span></div>
         <h2 class="section-title">While it runs, you are <em class="accent">standing in the hall.</em></h2>
         <p class="section-sub">
           The live monitor is the closest thing MacQuiz has to walking between desks. It updates as
@@ -282,7 +282,7 @@
   <section class="section" id="settle">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section D - Settling the marks</span>
+        <div class="chapter" data-part="Invigilator · Section D"><span class="chapter-no">04</span><span class="chapter-label">Settling the marks<small>Section D</small></span></div>
         <h2 class="section-title">Afterwards, the paper <em class="accent">tells you what it found.</em></h2>
         <p class="section-sub">
           Grading starts the moment the quiz closes. You see scores as they land; students see nothing
@@ -364,5 +364,17 @@
   <span>RBMI &middot; Software Development Cell</span>
 </footer>
 
+<script>
+(function () {
+  var els = document.querySelectorAll('.section');
+  if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    els.forEach(function (n) { n.classList.add('is-in'); }); return;
+  }
+  var obs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('is-in'); obs.unobserve(e.target); } });
+  }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' });
+  els.forEach(function (n) { obs.observe(n); });
+})();
+</script>
 </body>
 </html>

@@ -64,7 +64,7 @@
   <section class="section" id="before">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section A - Before the paper</span>
+        <div class="chapter" data-part="Candidate · Section A"><span class="chapter-no">01</span><span class="chapter-label">Before the paper<small>Section A</small></span></div>
         <h2 class="section-title">Getting in, and <em class="accent">finding what is coming.</em></h2>
         <p class="section-sub">
           You do not create your own account. Your college does, and hands you the details.
@@ -113,7 +113,7 @@
   <section class="section" id="during">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section B - During the paper</span>
+        <div class="chapter" data-part="Candidate · Section B"><span class="chapter-no">02</span><span class="chapter-label">During the paper<small>Section B</small></span></div>
         <h2 class="section-title">Once you start, <em class="accent">the clock is running.</em></h2>
         <p class="section-sub">
           Two limits apply at once, and it is worth understanding which one will reach you first.
@@ -190,7 +190,7 @@
   <section class="section" id="wrong">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section C - If something goes wrong</span>
+        <div class="chapter" data-part="Candidate · Section C"><span class="chapter-no">03</span><span class="chapter-label">If something goes wrong<small>Section C</small></span></div>
         <h2 class="section-title">The honest answers to <em class="accent">"what if&hellip;"</em></h2>
         <p class="section-sub">
           These are the four things students actually worry about. All four have a defined outcome.
@@ -247,7 +247,7 @@
   <section class="section" id="after">
     <div class="wrap">
       <header class="section-head">
-        <span class="section-tag">Section D - After the paper</span>
+        <div class="chapter" data-part="Candidate · Section D"><span class="chapter-no">04</span><span class="chapter-label">After the paper<small>Section D</small></span></div>
         <h2 class="section-title">Where your marks <em class="accent">turn up.</em></h2>
         <p class="section-sub">
           Marking begins as soon as the paper closes. When you get to see it is your teacher's call.
@@ -313,5 +313,17 @@
   <span>RBMI &middot; Software Development Cell</span>
 </footer>
 
+<script>
+(function () {
+  var els = document.querySelectorAll('.section');
+  if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    els.forEach(function (n) { n.classList.add('is-in'); }); return;
+  }
+  var obs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('is-in'); obs.unobserve(e.target); } });
+  }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' });
+  els.forEach(function (n) { obs.observe(n); });
+})();
+</script>
 </body>
 </html>
