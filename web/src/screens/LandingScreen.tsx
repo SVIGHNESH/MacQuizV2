@@ -944,7 +944,14 @@ export default function LandingScreen() {
                   </a>
                   <span className="value">
                     Designed &amp; built end to end - backend, frontend, infrastructure.{' '}
-                    <span className="credit-handle">github.com/SVIGHNESH ↗</span>
+                    <a
+                      className="credit-handle"
+                      href="https://github.com/SVIGHNESH"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      github.com/SVIGHNESH ↗
+                    </a>
                   </span>
                 </div>
                 <div className="credit">

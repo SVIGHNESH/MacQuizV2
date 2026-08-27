@@ -1624,6 +1624,12 @@ body:has(.landing) .sdc-float {
   letter-spacing: 0.12em;
   color: var(--mq-accent);
   white-space: nowrap;
+  text-decoration: none;
+}
+
+.credit-handle:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .credit-list {
